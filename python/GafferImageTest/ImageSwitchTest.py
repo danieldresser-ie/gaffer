@@ -69,7 +69,7 @@ class ImageSwitchTest( GafferImageTest.ImageTestCase ) :
 		switch["in"][1].setInput( in1["out"] )
 
 		for p in [ switch["in"][0], switch["in"][1] ] :
-			for n in [ "format", "dataWindow", "metadata", "channelNames", "channelData" ] :
+			for n in [ "format", "dataWindow", "metadata", "deepState", "sampleOffsets", "channelNames", "channelData" ] :
 				a = switch.affects( p[n] )
 				self.assertEqual( len( a ), 1 )
 				self.assertTrue( a[0].isSame( switch["out"][n] ) )
@@ -78,7 +78,7 @@ class ImageSwitchTest( GafferImageTest.ImageTestCase ) :
 		self.assertEqual(
 			a,
 			set( [
-				"out.format", "out.dataWindow", "out.metadata", "out.channelNames", "out.channelData",
+				"out.format", "out.dataWindow", "out.metadata", "out.deepState", "out.sampleOffsets", "out.channelNames", "out.channelData",
 			] ),
 		)
 
@@ -86,7 +86,7 @@ class ImageSwitchTest( GafferImageTest.ImageTestCase ) :
 		self.assertEqual(
 			a,
 			set( [
-				"out.format", "out.dataWindow", "out.metadata", "out.channelNames", "out.channelData",
+				"out.format", "out.dataWindow", "out.metadata", "out.deepState", "out.sampleOffsets", "out.channelNames", "out.channelData",
 			] ),
 		)
 
