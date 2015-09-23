@@ -39,6 +39,8 @@
 #include "GafferBindings/ComputeNodeBinding.h"
 #include "GafferBindings/ValuePlugBinding.h"
 
+#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 #include "GafferImage/DeleteChannels.h"
 #include "GafferImage/CollectImages.h"
 #include "GafferImage/CopyChannels.h"
@@ -105,6 +107,18 @@ void GafferImageModule::bindImageProcessor()
 		.def( init<const std::string &, size_t, size_t>(
 				(
 					arg( "name" ) = GraphComponent::defaultName<ImageProcessor>(),
+					arg( "minInputs" ),
+					arg( "maxInputs" ) = Imath::limits<size_t>::max()
+				)
+			)
+		)
+	;
+
+	typedef ComputeNodeWrapper<FlatImageProcessor> FlatImageProcessorWrapper;
+	GafferBindings::DependencyNodeClass<FlatImageProcessor, FlatImageProcessorWrapper>()
+		.def( init<const std::string &, size_t, size_t>(
+				(
+					arg( "name" ) = GraphComponent::defaultName<FlatImageProcessor>(),
 					arg( "minInputs" ),
 					arg( "maxInputs" ) = Imath::limits<size_t>::max()
 				)

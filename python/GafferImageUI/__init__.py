@@ -68,6 +68,7 @@ import MergeUI
 import ImageNodeUI
 import ChannelDataProcessorUI
 import ImageProcessorUI
+import FlatImageProcessorUI
 import ImageMetadataUI
 import DeleteImageMetadataUI
 import CopyImageMetadataUI
