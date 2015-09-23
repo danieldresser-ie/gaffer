@@ -383,6 +383,7 @@ nodeMenu.append( "/Image/Utility/Sampler", GafferImage.ImageSampler, searchText 
 nodeMenu.append( "/Image/Utility/Catalogue", GafferImage.Catalogue )
 nodeMenu.append( "/Image/Utility/Catalogue Select", GafferImage.CatalogueSelect )
 nodeMenu.append( "/Image/Deep/AddDepth", GafferImage.AddDepth, searchText = "AddDepth" )
+nodeMenu.append( "/Image/Deep/Merge", GafferImage.DeepMerge, searchText = "DeepMerge" )
 
 # OSL nodes
 
