@@ -94,6 +94,7 @@ from CollectImagesTest import CollectImagesTest
 from CatalogueSelectTest import CatalogueSelectTest
 from AddDepthTest import AddDepthTest
 from DeepMergeTest import DeepMergeTest
+from DeepStateTest import DeepStateTest
 
 if __name__ == "__main__":
 	import unittest
