@@ -68,6 +68,7 @@
 #include "GafferImage/ImagePlug.h"
 #include "GafferImage/Clamp.h"
 #include "GafferImage/ImageSampler.h"
+#include "GafferImage/DeepState.h"
 
 #include "GafferImageUI/ImageGadget.h"
 #include "GafferImageUI/ImageView.h"
@@ -326,9 +327,14 @@ ImageView::ImageView( const std::string &name )
 	ImagePlugPtr preprocessorInput = new ImagePlug( "in" );
 	preprocessor->addChild( preprocessorInput );
 
+	DeepStatePtr deepStateNode = new DeepState();
+	preprocessor->setChild( "__deepState", deepStateNode );
+	deepStateNode->inPlug()->setInput( preprocessorInput );
+	deepStateNode->deepStatePlug()->setValue( ImagePlug::Flat );
+
 	ClampPtr clampNode = new Clamp();
 	preprocessor->setChild(  "__clamp", clampNode );
-	clampNode->inPlug()->setInput( preprocessorInput );
+	clampNode->inPlug()->setInput( deepStateNode->outPlug() );
 	clampNode->enabledPlug()->setValue( false );
 	clampNode->channelsPlug()->setValue( "*" );
 	clampNode->minClampToEnabledPlug()->setValue( true );
@@ -458,6 +464,16 @@ Gaffer::StringPlug *ImageView::displayTransformPlug()
 const Gaffer::StringPlug *ImageView::displayTransformPlug() const
 {
 	return getChild<StringPlug>( "displayTransform" );
+}
+
+GafferImage::DeepState *ImageView::deepStateNode()
+{
+	return getPreprocessor<Node>()->getChild<DeepState>( "__deepState" );
+}
+
+const GafferImage::DeepState *ImageView::deepStateNode() const
+{
+	return getPreprocessor<Node>()->getChild<DeepState>( "__deepState" );
 }
 
 GafferImage::Clamp *ImageView::clampNode()
