@@ -435,6 +435,30 @@ IECore::ConstCompoundDataPtr ImageReader::computeMetadata( const Gaffer::Context
 	}
 }
 
+// TODO deep state and channel offsets ( this has all changed completely )
+
+void ImageReader::hashDeepState( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+{
+	ImageNode::hashDeepState( parent, context, h );
+}
+
+int ImageReader::computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::Flat;
+}
+
+void ImageReader::hashSampleOffsets( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+{
+	ImageNode::hashSampleOffsets( parent, context, h );
+}
+
+IECore::ConstIntVectorDataPtr ImageReader::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::flatTileSampleOffsets();
+}
+
+
+
 void ImageReader::hashChannelNames( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	FrameMaskScope scope( context, this );
