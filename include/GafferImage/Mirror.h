@@ -39,12 +39,12 @@
 
 #include "Gaffer/CompoundNumericPlug.h"
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace GafferImage
 {
 
-class Mirror : public ImageProcessor
+class Mirror : public FlatImageProcessor
 {
 
 	public :
@@ -52,7 +52,7 @@ class Mirror : public ImageProcessor
 		Mirror( const std::string &name=defaultName<Mirror>() );
 		~Mirror() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Mirror, MirrorTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Mirror, MirrorTypeId, FlatImageProcessor );
 
 		Gaffer::BoolPlug *horizontalPlug();
 		const Gaffer::BoolPlug *horizontalPlug() const;
@@ -65,10 +65,10 @@ class Mirror : public ImageProcessor
 	protected :
 
 		void hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 	private :
 

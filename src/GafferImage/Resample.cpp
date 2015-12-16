@@ -241,7 +241,7 @@ IE_CORE_DEFINERUNTIMETYPED( Resample );
 size_t Resample::g_firstPlugIndex = 0;
 
 Resample::Resample( const std::string &name )
-	:   ImageProcessor( name )
+	:   FlatImageProcessor( name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild( new M33fPlug( "matrix" ) );
@@ -261,6 +261,8 @@ Resample::Resample( const std::string &name )
 	horizontalPassPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
 	horizontalPassPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );
 	horizontalPassPlug()->channelNamesPlug()->setInput( inPlug()->channelNamesPlug() );
+	horizontalPassPlug()->sampleOffsetsPlug()->setInput( inPlug()->sampleOffsetsPlug() );
+	horizontalPassPlug()->deepStatePlug()->setInput( inPlug()->deepStatePlug() );
 
 }
 
@@ -340,7 +342,7 @@ const ImagePlug *Resample::horizontalPassPlug() const
 
 void Resample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	if(
 		input == inPlug()->dataWindowPlug() ||
@@ -372,7 +374,7 @@ void Resample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outpu
 
 void Resample::hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashDataWindow( parent, context, h );
+	FlatImageProcessor::hashDataWindow( parent, context, h );
 
 	inPlug()->dataWindowPlug()->hash( h );
 	matrixPlug()->hash( h );
@@ -449,9 +451,9 @@ Imath::Box2i Resample::computeDataWindow( const Gaffer::Context *context, const 
 	return dataWindow;
 }
 
-void Resample::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Resample::hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashChannelData( parent, context, h );
+	FlatImageProcessor::hashFlatChannelData( parent, context, h );
 
 	V2f ratio, offset;
 	{
@@ -494,7 +496,7 @@ void Resample::hashChannelData( const GafferImage::ImagePlug *parent, const Gaff
 	h.append( tileOrigin );
 }
 
-IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Resample::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	V2f ratio, offset;
 	{

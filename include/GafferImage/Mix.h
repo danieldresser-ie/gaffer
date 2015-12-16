@@ -41,7 +41,7 @@
 #include "Gaffer/StringPlug.h"
 
 #include "GafferImage/ImagePlug.h"
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace GafferImage
 {
@@ -49,7 +49,7 @@ namespace GafferImage
 /// A node for blending between two images, based on a mask.
 /// Expands the dataWindow to the union of the two input dataWindows; create a union of
 /// channelNames from the connected inputs, and will blend the channelData according to the mask
-class Mix : public ImageProcessor
+class Mix : public FlatImageProcessor
 {
 
 	public :
@@ -57,7 +57,7 @@ class Mix : public ImageProcessor
 		Mix( const std::string &name=defaultName<Mix>() );
 		~Mix() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Mix, MixTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Mix, MixTypeId, FlatImageProcessor );
 
 		GafferImage::ImagePlug *maskPlug();
 		const GafferImage::ImagePlug *maskPlug() const;
@@ -76,14 +76,14 @@ class Mix : public ImageProcessor
 		/// Reimplemented to hash the connected input plugs
 		void hashDataWindow( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		void hashChannelNames( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 
 		/// Sets the data window to the union of all of the data windows.
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 		/// Creates a union of all of the connected inputs channelNames.
 		IECore::ConstStringVectorDataPtr computeChannelNames( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 	private :
 

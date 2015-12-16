@@ -94,7 +94,7 @@ IE_CORE_DEFINERUNTIMETYPED( Mirror );
 size_t Mirror::g_firstPlugIndex = 0;
 
 Mirror::Mirror( const std::string &name )
-	:	ImageProcessor( name )
+	:	FlatImageProcessor( name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild( new BoolPlug( "horizontal" ) );
@@ -131,7 +131,7 @@ const Gaffer::BoolPlug *Mirror::verticalPlug() const
 
 void Mirror::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	const bool affectsTransform =
 		input == inPlug()->formatPlug() ||
@@ -167,7 +167,7 @@ void Mirror::hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer:
 		return;
 	}
 
-	ImageProcessor::hashDataWindow( parent, context, h );
+	FlatImageProcessor::hashDataWindow( parent, context, h );
 	inPlug()->dataWindowPlug()->hash( h );
 	inPlug()->formatPlug()->hash( h );
 	h.append( horizontal );
@@ -197,7 +197,7 @@ Imath::Box2i Mirror::computeDataWindow( const Gaffer::Context *context, const Im
 	);
 }
 
-void Mirror::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Mirror::hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	const bool horizontal = horizontalPlug()->getValue();
 	const bool vertical = verticalPlug()->getValue();
@@ -208,7 +208,7 @@ void Mirror::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer
 		return;
 	}
 
-	ImageProcessor::hashChannelData( parent, context, h );
+	FlatImageProcessor::hashFlatChannelData( parent, context, h );
 
 	const std::string &channelName = context->get<string>( ImagePlug::channelNameContextName );
 	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
@@ -233,7 +233,7 @@ void Mirror::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer
 	h.append( vertical );
 }
 
-IECore::ConstFloatVectorDataPtr Mirror::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Mirror::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	const bool horizontal = horizontalPlug()->getValue();
 	const bool vertical = verticalPlug()->getValue();

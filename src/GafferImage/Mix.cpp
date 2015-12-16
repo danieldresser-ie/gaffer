@@ -53,7 +53,7 @@ IE_CORE_DEFINERUNTIMETYPED( Mix );
 size_t Mix::g_firstPlugIndex = 0;
 
 Mix::Mix( const std::string &name )
-	:	ImageProcessor( name, 2, 2 )
+	:	FlatImageProcessor( name, 2, 2 )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild( new ImagePlug( "mask", Gaffer::Plug::In ) );
@@ -103,7 +103,7 @@ const Gaffer::StringPlug *Mix::maskChannelPlug() const
 
 void Mix::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	if( input == maskChannelPlug() || input == mixPlug() || input == maskPlug()->channelDataPlug() )
 	{
@@ -137,7 +137,7 @@ void Mix::hashDataWindow( const GafferImage::ImagePlug *output, const Gaffer::Co
 		return;
 	}
 
-	ImageProcessor::hashDataWindow( output, context, h );
+	FlatImageProcessor::hashDataWindow( output, context, h );
 
 	for( ImagePlugIterator it( inPlugs() ); !it.done(); ++it )
 	{
@@ -181,7 +181,7 @@ void Mix::hashChannelNames( const GafferImage::ImagePlug *output, const Gaffer::
 		return;
 	}
 
-	ImageProcessor::hashChannelNames( output, context, h );
+	FlatImageProcessor::hashChannelNames( output, context, h );
 
 	for( ImagePlugIterator it( inPlugs() ); !it.done(); ++it )
 	{
@@ -231,7 +231,7 @@ IECore::ConstStringVectorDataPtr Mix::computeChannelNames( const Gaffer::Context
 	return inPlug()->channelNamesPlug()->defaultValue();
 }
 
-void Mix::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Mix::hashFlatChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	const float mix = mixPlug()->getValue();
 
@@ -246,7 +246,7 @@ void Mix::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::C
 		return;
 	}
 
-	ImageProcessor::hashChannelData( output, context, h );
+	FlatImageProcessor::hashFlatChannelData( output, context, h );
 	h.append( mix );
 
 	const std::string channelName = context->get<std::string>( ImagePlug::channelNameContextName );
@@ -285,7 +285,7 @@ void Mix::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::C
 		// matter, because they don't change the data window, or they use a Sampler to
 		// deal with invalid pixels. But because our data window is the union of all
 		// input data windows, we may be using/revealing the invalid parts of a tile. We
-		// deal with this in computeChannelData() by treating the invalid parts as black,
+		// deal with this in computeFlatChannelData() by treating the invalid parts as black,
 		// and must therefore hash in the valid bound here to take that into account.
 		const Box2i validBound = boxIntersection( tileBound, dataWindow );
 		h.append( validBound );
@@ -310,7 +310,7 @@ void Mix::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::C
 	h.append( maskValidBound );
 }
 
-IECore::ConstFloatVectorDataPtr Mix::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Mix::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 
 	const float mix = mixPlug()->getValue();

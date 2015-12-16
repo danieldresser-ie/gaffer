@@ -56,7 +56,7 @@ size_t Shape::g_firstPlugIndex = 0;
 static std::string g_shapeChannelName( "__shape" );
 
 Shape::Shape( const std::string &name )
-	:	ImageProcessor( name )
+	:	FlatImageProcessor( name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 
@@ -187,7 +187,7 @@ const ImagePlug *Shape::shadowShapePlug() const
 
 void Shape::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	// TypeId comparison is necessary to avoid calling pure virtual
 	// methods below if we're called before being fully constructed.
@@ -234,7 +234,7 @@ Imath::Box2i Shape::computeDataWindow( const Gaffer::Context *context, const Ima
 void Shape::hashChannelNames( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	assert( parent == shapePlug() );
-	ImageProcessor::hashChannelNames( parent, context, h );
+	FlatImageProcessor::hashChannelNames( parent, context, h );
 	// Because our channel names are constant, we don't need to add
 	// anything else to the hash.
 }
@@ -250,7 +250,20 @@ IECore::ConstStringVectorDataPtr Shape::computeChannelNames( const Gaffer::Conte
 	return result;
 }
 
-void Shape::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+int Shape::computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	// The shape itself will always be flat.  Eventually we should add a path where we swap the Merge nodes
+	// for an AddDepth followed by a DeepMerge if the input is deep, so that you can add shapes into deep images
+	// with a specified depth.
+	return ImagePlug::Flat;
+}
+
+IECore::ConstIntVectorDataPtr Shape::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::flatTileSampleOffsets();
+}
+
+void Shape::hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	assert( parent == shapePlug() || parent == shadowShapePlug()  );
 	const std::string &channelName = context->get<std::string>( ImagePlug::channelNameContextName );
@@ -269,14 +282,14 @@ void Shape::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer:
 		}
 		else
 		{
-			ImageProcessor::hashChannelData( parent, context, h );
+			FlatImageProcessor::hashFlatChannelData( parent, context, h );
 			h.append( shapeHash );
 			h.append( c );
 		}
 	}
 }
 
-IECore::ConstFloatVectorDataPtr Shape::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Shape::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	assert( parent == shapePlug() || parent == shadowShapePlug()  );
 	if( channelName == g_shapeChannelName )
@@ -326,7 +339,7 @@ bool Shape::affectsShapeDataWindow( const Gaffer::Plug *input ) const
 
 void Shape::hashShapeDataWindow( const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashDataWindow( shapePlug(), context, h );
+	FlatImageProcessor::hashDataWindow( shapePlug(), context, h );
 }
 
 bool Shape::affectsShapeChannelData( const Gaffer::Plug *input ) const
@@ -336,5 +349,5 @@ bool Shape::affectsShapeChannelData( const Gaffer::Plug *input ) const
 
 void Shape::hashShapeChannelData( const Imath::V2i &tileOrigin, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashChannelData( shapePlug(), context, h );
+	FlatImageProcessor::hashFlatChannelData( shapePlug(), context, h );
 }

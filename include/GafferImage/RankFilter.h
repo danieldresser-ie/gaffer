@@ -41,19 +41,19 @@
 #include "Gaffer/StringPlug.h"
 #include "Gaffer/TypedObjectPlug.h"
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace GafferImage
 {
 
-class RankFilter : public ImageProcessor
+class RankFilter : public FlatImageProcessor
 {
 
 	public :
 
 		~RankFilter() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::RankFilter, RankFilterTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::RankFilter, RankFilterTypeId, FlatImageProcessor );
 
 		Gaffer::V2iPlug *radiusPlug();
 		const Gaffer::V2iPlug *radiusPlug() const;
@@ -86,8 +86,8 @@ class RankFilter : public ImageProcessor
 		void hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 
 	private:

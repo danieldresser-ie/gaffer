@@ -39,12 +39,12 @@
 
 #include "Gaffer/StringPlug.h"
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace GafferImage
 {
 
-class CopyChannels : public ImageProcessor
+class CopyChannels : public FlatImageProcessor
 {
 
 	public :
@@ -52,7 +52,7 @@ class CopyChannels : public ImageProcessor
 		CopyChannels( const std::string &name=defaultName<CopyChannels>() );
 		~CopyChannels() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::CopyChannels, CopyChannelsTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::CopyChannels, CopyChannelsTypeId, FlatImageProcessor );
 
 		Gaffer::StringPlug *channelsPlug();
 		const Gaffer::StringPlug *channelsPlug() const;
@@ -68,10 +68,10 @@ class CopyChannels : public ImageProcessor
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 		void hashChannelNames( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-
 		IECore::ConstStringVectorDataPtr computeChannelNames( const Gaffer::Context *context, const ImagePlug *parent ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 	private :
 

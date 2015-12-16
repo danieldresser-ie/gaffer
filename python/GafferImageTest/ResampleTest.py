@@ -181,6 +181,13 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		r["filterScale"].setValue( imath.V2f( 10 ) )
 		self.assertEqual( r["out"]["dataWindow"].getValue(), imath.Box2i( d.min() - imath.V2i( 5 ), d.max() + imath.V2i( 5 ) ) )
 
+	def testNonFlatThrows( self ) :
+
+		resample = GafferImage.Resample()
+		resample["matrix"].setValue( imath.M33f().scale( imath.V2f( 0.5 ) ) )
+
+		self._testNonFlatThrows( resample )
+
 	def __matrix( self, inputDataWindow, outputDataWindow ) :
 
 		return imath.M33f()

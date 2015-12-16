@@ -40,7 +40,7 @@
 #include "Gaffer/NumericPlug.h"
 #include "Gaffer/CompoundNumericPlug.h"
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace Gaffer
 {
@@ -57,14 +57,14 @@ namespace GafferImage
 /// data window in the output image, using a chosen filter. Uses OIIO::Filter2D
 /// to provide the filter implementation, and is based heavily on OIIO's
 /// ImageBufAlgo resize() function.
-class Resample : public ImageProcessor
+class Resample : public FlatImageProcessor
 {
 	public :
 
 		Resample( const std::string &name=defaultName<Resample>() );
 		~Resample() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Resample, ResampleTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::Resample, ResampleTypeId, FlatImageProcessor );
 
 		enum Debug
 		{
@@ -100,10 +100,10 @@ class Resample : public ImageProcessor
 	protected :
 
 		void hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 	private :
 

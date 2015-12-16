@@ -73,7 +73,7 @@ IE_CORE_DEFINERUNTIMETYPED( Merge );
 size_t Merge::g_firstPlugIndex = 0;
 
 Merge::Merge( const std::string &name )
-	:	ImageProcessor( name, 2 )
+	:	FlatImageProcessor( name, 2 )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild(
@@ -107,7 +107,7 @@ const Gaffer::IntPlug *Merge::operationPlug() const
 
 void Merge::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	if( input == operationPlug() )
 	{
@@ -118,13 +118,19 @@ void Merge::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs 
 		if( inputImage->parent<ArrayPlug>() == inPlugs() )
 		{
 			outputs.push_back( outPlug()->getChild<ValuePlug>( input->getName() ) );
+			if( input == inputImage->deepStatePlug() )
+			{
+				outputs.push_back( outPlug()->dataWindowPlug() );
+				outputs.push_back( outPlug()->channelNamesPlug() );
+				outputs.push_back( outPlug()->channelDataPlug() );
+			}
 		}
 	}
 }
 
 void Merge::hashDataWindow( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashDataWindow( output, context, h );
+	FlatImageProcessor::hashDataWindow( output, context, h );
 
 	for( ImagePlugIterator it( inPlugs() ); !it.done(); ++it )
 	{
@@ -149,7 +155,7 @@ Imath::Box2i Merge::computeDataWindow( const Gaffer::Context *context, const Ima
 
 void Merge::hashChannelNames( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashChannelNames( output, context, h );
+	FlatImageProcessor::hashChannelNames( output, context, h );
 
 	for( ImagePlugIterator it( inPlugs() ); !it.done(); ++it )
 	{
@@ -189,9 +195,9 @@ IECore::ConstStringVectorDataPtr Merge::computeChannelNames( const Gaffer::Conte
 	return inPlug()->channelNamesPlug()->defaultValue();
 }
 
-void Merge::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Merge::hashFlatChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hashChannelData( output, context, h );
+	FlatImageProcessor::hashFlatChannelData( output, context, h );
 
 	const std::string channelName = context->get<std::string>( ImagePlug::channelNameContextName );
 	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
@@ -249,7 +255,7 @@ void Merge::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer:
 	operationPlug()->hash( h );
 }
 
-IECore::ConstFloatVectorDataPtr Merge::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Merge::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	switch( operationPlug()->getValue() )
 	{
@@ -283,7 +289,7 @@ IECore::ConstFloatVectorDataPtr Merge::computeChannelData( const std::string &ch
 			return merge( opMax, channelName, tileOrigin);
 	}
 
-	throw Exception( "Merge::computeChannelData : Invalid operation mode." );
+	throw Exception( "Merge::computeFlatChannelData : Invalid operation mode." );
 }
 
 template<typename F>

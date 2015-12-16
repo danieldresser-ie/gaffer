@@ -39,7 +39,7 @@
 
 #include "Gaffer/CompoundNumericPlug.h"
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 #include "GafferImage/ImageSwitch.h"
 
 namespace GafferImage
@@ -52,7 +52,7 @@ IE_CORE_FORWARDDECLARE( ImageTransform )
 /// Derived classes are responsible only for generating a mask for the
 /// shape, and the base class takes care of colouring it and compositing
 /// it over the input.
-class Shape : public ImageProcessor
+class Shape : public FlatImageProcessor
 {
 
 	public :
@@ -83,11 +83,13 @@ class Shape : public ImageProcessor
 
 		void hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		void hashChannelNames( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 		IECore::ConstStringVectorDataPtr computeChannelNames( const Gaffer::Context *context, const ImagePlug *parent ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		int computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		IECore::ConstIntVectorDataPtr computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 		/// Must be implemented to return true if the input plug affects the computation of the
 		/// data window for the shape.

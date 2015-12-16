@@ -174,6 +174,22 @@ const IntPlug *VectorWarp::vectorUnitsPlug() const
 	return getChild<IntPlug>( g_firstPlugIndex + 2 );
 }
 
+void VectorWarp::checkAllInputs() const
+{
+	checkInputIsFlat( vectorPlug() );
+	return Warp::checkAllInputs();
+}
+
+void VectorWarp::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
+{
+	Warp::affects( input, outputs );
+
+	if( input == vectorPlug()->deepStatePlug() )
+	{
+		outputs.push_back( outPlug()->channelDataPlug() );
+	}
+}
+
 bool VectorWarp::affectsEngine( const Gaffer::Plug *input ) const
 {
 	return

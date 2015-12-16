@@ -51,7 +51,7 @@ const char *g_blurFilterName = "smoothGaussian";
 size_t Blur::g_firstPlugIndex = 0;
 
 Blur::Blur( const std::string &name )
-	:   ImageProcessor( name )
+	:   FlatImageProcessor( name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 
@@ -158,7 +158,7 @@ const Resample *Blur::resample() const
 
 void Blur::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
 {
-	ImageProcessor::affects( input, outputs );
+	FlatImageProcessor::affects( input, outputs );
 
 	if(
 		input == expandDataWindowPlug() ||
@@ -183,7 +183,7 @@ void Blur::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs )
 
 void Blur::hash( const ValuePlug *output, const Context *context, IECore::MurmurHash &h ) const
 {
-	ImageProcessor::hash( output, context, h );
+	FlatImageProcessor::hash( output, context, h );
 
 	if( output->parent<ValuePlug>() == filterScalePlug() )
 	{
@@ -213,7 +213,7 @@ void Blur::compute( ValuePlug *output, const Context *context ) const
 		return;
 	}
 
-	ImageProcessor::compute( output, context );
+	FlatImageProcessor::compute( output, context );
 }
 
 void Blur::hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
@@ -240,7 +240,7 @@ Imath::Box2i Blur::computeDataWindow( const Gaffer::Context *context, const Imag
 	}
 }
 
-void Blur::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Blur::hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	if( radiusPlug()->getValue() != V2f( 0 ) )
 	{
@@ -252,7 +252,7 @@ void Blur::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::
 	}
 }
 
-IECore::ConstFloatVectorDataPtr Blur::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+IECore::ConstFloatVectorDataPtr Blur::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	if( radiusPlug()->getValue() != V2f( 0 ) )
 	{

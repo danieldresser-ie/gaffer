@@ -37,7 +37,7 @@
 #ifndef GAFFERSCENE_IMAGETRANSFORM_H
 #define GAFFERSCENE_IMAGETRANSFORM_H
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 namespace Gaffer
 {
@@ -52,14 +52,14 @@ namespace GafferImage
 
 IE_CORE_FORWARDDECLARE( Resample )
 
-class ImageTransform : public ImageProcessor
+class ImageTransform : public FlatImageProcessor
 {
 	public :
 
 		ImageTransform( const std::string &name=defaultName<ImageTransform>() );
 		~ImageTransform() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::ImageTransform, ImageTransformTypeId, ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferImage::ImageTransform, ImageTransformTypeId, FlatImageProcessor );
 
 		void affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const override;
 
@@ -77,8 +77,8 @@ class ImageTransform : public ImageProcessor
 		void hashDataWindow( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		Imath::Box2i computeDataWindow( const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
-		void hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const override;
 
 	private :
 
