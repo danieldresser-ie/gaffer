@@ -105,6 +105,63 @@ class OffsetTest( GafferImageTest.ImageTestCase ) :
 								sample( c["out"], channelName, imath.V2i( x, y ) ),
 						)
 
+	def testDeepOffset( self ) :
+
+		r = GafferImage.ImageReader()
+		r["fileName"].setValue( os.path.dirname( __file__ ) + "/images/checker8x8.exr" )
+
+		c = GafferImage.Constant()
+		c["format"].setValue( GafferImage.Format( imath.Box2i( imath.V2i( 0 ), imath.V2i( 8, 8 ) ), 1 ) )
+		c["color"].setValue( imath.Color4f( 0.0, 0.0, 0.0, 0.0 ) )
+
+		d = GafferImage.AddDepth()
+		d["in"].setInput( c["out"] )
+		d["depth"].setValue( 1.0 )
+
+		m = GafferImage.DeepMerge()
+		m["in"][0].setInput( r["out"] )
+		m["in"][1].setInput( d["out"] )
+
+		od = GafferImage.Offset()
+		od["in"].setInput( m["out"] )
+		od["offset"].setValue( imath.V2i( 1 ) )
+
+		od["out"].sampleOffsets( imath.V2i( 0 ) )
+		od["out"].channelData( "R", imath.V2i( 0 ) )
+
+		of = GafferImage.Offset()
+		of["in"].setInput( r["out"] )
+		of["offset"].setValue( imath.V2i( 1 ) )
+
+		of["out"].sampleOffsets( imath.V2i( 0 ) )
+		of["out"].channelData( "R", imath.V2i( 0 ) )
+
+		s = GafferImage.DeepState()
+		s["in"].setInput( od["out"] )
+		s["deepState"].setValue( GafferImage.ImagePlug.DeepState.Flat )
+
+		def sample( image, channelName, pos ) :
+
+			sampler = GafferImage.Sampler( image, channelName, image["dataWindow"].getValue() )
+			return sampler.sample( pos.x, pos.y )
+
+		for yOffset in range( -10, 10 ) :
+			for xOffset in range( -10, 10 ) :
+
+				od["offset"].setValue( imath.V2i( xOffset, yOffset ) )
+				of["offset"].setValue( imath.V2i( xOffset, yOffset ) )
+
+				self.assertEqual( of["out"]["dataWindow"].getValue(), s["out"]["dataWindow"].getValue() )
+
+				for y in range( 0, 8 ) :
+					for x in range( 0, 8 ) :
+						for channelName in ( "R", "G", "B", "A" ) :
+							self.assertEqual(
+								sample( of["out"], channelName, imath.V2i( x + xOffset, y + yOffset ) ),
+								sample( s["out"], channelName, imath.V2i( x + xOffset, y + yOffset ) ),
+						)
+
+
 	def testMultipleOfTileSize( self ) :
 
 		c = GafferImage.ImageReader()

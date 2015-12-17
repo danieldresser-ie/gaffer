@@ -37,6 +37,7 @@
 #include "Gaffer/Context.h"
 
 #include "GafferImage/Offset.h"
+#include "GafferImage/ImageAlgo.h"
 #include "GafferImage/BufferAlgo.h"
 
 using namespace std;
@@ -44,6 +45,25 @@ using namespace Imath;
 using namespace IECore;
 using namespace Gaffer;
 using namespace GafferImage;
+
+//////////////////////////////////////////////////////////////////////////
+// Utilities
+//////////////////////////////////////////////////////////////////////////
+
+namespace
+{
+
+// Index of pixel within a buffer.
+/// \todo Move to ImageAlgo?
+size_t bufferIndex( const V2i &p, const Box2i &b )
+{
+	assert( BufferAlgo::contains( b, p ) );
+	return
+		( p.y - b.min.y ) * b.size().x +
+		( p.x - b.min.x );
+}
+
+} // namespace
 
 //////////////////////////////////////////////////////////////////////////
 // Offset node
@@ -62,6 +82,7 @@ Offset::Offset( const std::string &name )
 	outPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
 	outPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );
 	outPlug()->channelNamesPlug()->setInput( inPlug()->channelNamesPlug() );
+	outPlug()->deepStatePlug()->setInput( inPlug()->deepStatePlug() );
 }
 
 Offset::~Offset()
@@ -84,10 +105,20 @@ void Offset::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs
 
 	if(
 		input->parent<Plug>() == offsetPlug() ||
-		input == inPlug()->channelDataPlug()
+		input == inPlug()->channelDataPlug() ||
+		input == inPlug()->dataWindowPlug()
 	)
 	{
 		outputs.push_back( outPlug()->channelDataPlug() );
+	}
+
+	if(
+		input->parent<Plug>() == offsetPlug() ||
+		input == inPlug()->sampleOffsetsPlug() ||
+		input == inPlug()->dataWindowPlug()
+	)
+	{
+		outputs.push_back( outPlug()->sampleOffsetsPlug() );
 	}
 
 	if(
@@ -123,7 +154,7 @@ Imath::Box2i Offset::computeDataWindow( const Gaffer::Context *context, const Im
 	return dataWindow;
 }
 
-void Offset::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+void Offset::hashSampleOffsets( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	ImagePlug::ChannelDataScope offsetScope( context );
 
@@ -132,11 +163,13 @@ void Offset::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer
 	if( offset.x % ImagePlug::tileSize() == 0 && offset.y % ImagePlug::tileSize() == 0 )
 	{
 		offsetScope.setTileOrigin( tileOrigin - offset );
-		h = inPlug()->channelDataPlug()->hash();
+		h = inPlug()->sampleOffsetsPlug()->hash();
 	}
 	else
 	{
-		ImageProcessor::hashChannelData( parent, context, h );
+		ImageProcessor::hashSampleOffsets( parent, context, h );
+
+		inPlug()->deepStatePlug()->hash( h );
 
 		Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
 
@@ -157,6 +190,132 @@ void Offset::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer
 			for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
 			{
 				offsetScope.setTileOrigin( inTileOrigin );
+				inPlug()->dataWindowPlug()->hash( h );
+				inPlug()->sampleOffsetsPlug()->hash( h );
+			}
+		}
+
+		h.append( offset );
+	}
+}
+
+IECore::ConstIntVectorDataPtr Offset::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	ImagePlug::ChannelDataScope offsetScope( context );
+
+	const V2i offset = offsetPlug()->getValue();
+	if( ( offset.x % ImagePlug::tileSize() == 0 && offset.y % ImagePlug::tileSize() == 0 ) )
+	{
+		offsetScope.setTileOrigin( tileOrigin - offset );
+		return inPlug()->sampleOffsetsPlug()->getValue();
+	}
+	else
+	{
+		if( inPlug()->deepStatePlug()->getValue() == ImagePlug::Flat )
+		{
+			return inPlug()->sampleOffsetsPlug()->getValue();
+		}
+		else
+		{
+			return computeDeepSampleOffsets( tileOrigin, context, parent );
+		}
+	}
+}
+
+IECore::ConstIntVectorDataPtr Offset::computeDeepSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	ImagePlug::ChannelDataScope offsetScope( context );
+
+	const V2i offset = offsetPlug()->getValue();
+
+	Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
+	const Box2i outTileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+	const Box2i inBound = BufferAlgo::intersection( 
+		inDataWindow,
+		Box2i( outTileBound.min - offset, outTileBound.max - offset )
+	);
+
+	IntVectorDataPtr outData = new IntVectorData;
+	std::vector<int> &out = outData->writable();
+	out.resize( ImagePlug::tileSize() * ImagePlug::tileSize(), 0 );
+
+	V2i inTileOrigin;
+	for( inTileOrigin.y = ImagePlug::tileOrigin( inBound.min ).y; inTileOrigin.y < inBound.max.y; inTileOrigin.y += ImagePlug::tileSize() )
+	{
+		for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
+		{
+			offsetScope.setTileOrigin( inTileOrigin );
+			ConstIntVectorDataPtr inData = inPlug()->sampleOffsetsPlug()->getValue();
+			const std::vector<int> &in = inData->readable();
+
+			const Imath::Box2i &inDataWindow = inPlug()->dataWindowPlug()->getValue();
+
+			V2i inPoint;
+			for( inPoint.y = std::max( outTileBound.min.y - offset.y, inTileOrigin.y ); inPoint.y < std::min( outTileBound.max.y - offset.y, inTileOrigin.y + ImagePlug::tileSize() ); ++inPoint.y )
+			{
+				for( inPoint.x = std::max( outTileBound.min.x - offset.x, inTileOrigin.x ); inPoint.x < std::min( outTileBound.max.x - offset.x, inTileOrigin.x + ImagePlug::tileSize() ); ++inPoint.x )
+				{
+					if( BufferAlgo::contains( inDataWindow, inPoint ) )
+					{
+						V2i outPoint = inPoint + offset;
+						const int numSamples = ImageAlgo::sampleCount( in, inPoint );
+						out[ImageAlgo::tileIndex( outPoint - tileOrigin )] = numSamples;
+					}
+				}
+			}
+		}
+	}
+
+	// out data is initially sample counts per pixel. These need to be
+	// turned into sample offsets.
+	int lastOffset = 0;
+	for( std::vector<int>::iterator outIt = out.begin(); outIt != out.end(); ++outIt )
+	{
+		*outIt += lastOffset;
+		lastOffset = *outIt;
+	}
+
+	return outData;
+}
+
+void Offset::hashChannelData( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+{
+	ImagePlug::ChannelDataScope offsetScope( context );
+
+	const V2i offset = offsetPlug()->getValue();
+	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
+	if( offset.x % ImagePlug::tileSize() == 0 && offset.y % ImagePlug::tileSize() == 0 )
+	{
+		offsetScope.setTileOrigin( tileOrigin - offset );
+		h = inPlug()->channelDataPlug()->hash();
+	}
+	else
+	{
+		ImageProcessor::hashChannelData( parent, context, h );
+
+		inPlug()->deepStatePlug()->hash( h );
+		outPlug()->sampleOffsetsPlug()->hash( h );
+
+		Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
+		const Box2i outTileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+		const Box2i inBound = BufferAlgo::intersection( 
+			inDataWindow,
+			Box2i( outTileBound.min - offset, outTileBound.max - offset )
+		);
+
+		// Note that two differing output tiles could depend on the same input tile, for
+		// example if the input image is small enough that there is a single valid tile.
+		// Hash in the bound to distinguish the output tiles in this case
+		h.append( inBound );
+
+		V2i inTileOrigin;
+		for( inTileOrigin.y = ImagePlug::tileOrigin( inBound.min ).y; inTileOrigin.y < inBound.max.y; inTileOrigin.y += ImagePlug::tileSize() )
+		{
+			for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
+			{
+				offsetScope.setTileOrigin( inTileOrigin );
+				inPlug()->dataWindowPlug()->hash( h );
+				inPlug()->sampleOffsetsPlug()->hash( h );
 				inPlug()->channelDataPlug()->hash( h );
 			}
 		}
@@ -172,54 +331,144 @@ IECore::ConstFloatVectorDataPtr Offset::computeChannelData( const std::string &c
 	const V2i offset = offsetPlug()->getValue();
 	if( offset.x % ImagePlug::tileSize() == 0 && offset.y % ImagePlug::tileSize() == 0 )
 	{
+		ContextPtr offsetContext = new Context( *context, Context::Borrowed );
+		Context::Scope scope( offsetContext.get() );
+
 		offsetScope.setTileOrigin( tileOrigin - offset );
 		return inPlug()->channelDataPlug()->getValue();
 	}
 	else
 	{
-		Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
-
-		const Box2i outTileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
-		const Box2i inBound = BufferAlgo::intersection( 
-			inDataWindow,
-			Box2i( outTileBound.min - offset, outTileBound.max - offset )
-		);
-
-		FloatVectorDataPtr outData = new FloatVectorData;
-		outData->writable().resize( ImagePlug::tileSize() * ImagePlug::tileSize() );
-		float *out = &outData->writable().front();
-
-		V2i inTileOrigin;
-		for( inTileOrigin.y = ImagePlug::tileOrigin( inBound.min ).y; inTileOrigin.y < inBound.max.y; inTileOrigin.y += ImagePlug::tileSize() )
+		if( inPlug()->deepStatePlug()->getValue() == ImagePlug::Flat )
 		{
-			for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
+			return computeFlatChannelData( channelName, tileOrigin, context, parent );
+		}
+		else
+		{
+			return computeDeepChannelData( channelName, tileOrigin, context, parent );
+		}
+	}
+}
+
+IECore::ConstFloatVectorDataPtr Offset::computeDeepChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	ImagePlug::ChannelDataScope offsetScope( context );
+
+	const V2i offset = offsetPlug()->getValue();
+
+	const Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
+	const Box2i outTileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+	const Box2i inBound = BufferAlgo::intersection(
+		inDataWindow,
+		Box2i( outTileBound.min - offset, outTileBound.max - offset )
+	);
+
+	FloatVectorDataPtr outData = new FloatVectorData;
+	std::vector<float> &out = outData->writable();
+
+	out.reserve( outPlug()->sampleOffsets( tileOrigin )->readable().back() );
+
+	std::vector<ImageAlgo::ConstFloatSampleRange> outPixels;
+	outPixels.resize( ImagePlug::tileSize() * ImagePlug::tileSize() );
+
+	std::vector<bool> outPixelsSet;
+	outPixelsSet.resize( ImagePlug::tileSize() * ImagePlug::tileSize(), false );
+
+	// This vector is to store the input data to ensure that it isn't
+	// destroyed until we are finished with it.
+	std::vector<ConstFloatVectorDataPtr> inDataVector;
+
+	V2i inTileOrigin;
+	for( inTileOrigin.y = ImagePlug::tileOrigin( inBound.min ).y; inTileOrigin.y < inBound.max.y; inTileOrigin.y += ImagePlug::tileSize() )
+	{
+		for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
+		{
+			offsetScope.setTileOrigin( inTileOrigin );
+			ConstFloatVectorDataPtr inData = inPlug()->channelDataPlug()->getValue();
+			const std::vector<float> &in = inData->readable();
+			inDataVector.push_back( inData );
+
+			const Imath::Box2i &inDataWindow = inPlug()->dataWindowPlug()->getValue();
+
+			ConstIntVectorDataPtr inSampleOffsetsData = inPlug()->sampleOffsetsPlug()->getValue();
+			const std::vector<int> &inSampleOffsets = inSampleOffsetsData->readable();
+
+			V2i inPoint;
+			for( inPoint.y = std::max( outTileBound.min.y - offset.y, inTileOrigin.y ); inPoint.y < std::min( outTileBound.max.y - offset.y, inTileOrigin.y + ImagePlug::tileSize() ); ++inPoint.y )
 			{
-				offsetScope.setTileOrigin( inTileOrigin );
-				ConstFloatVectorDataPtr inData = inPlug()->channelDataPlug()->getValue();
-				const float *in = &inData->readable().front();
-
-				const Box2i inTileBound( inTileOrigin, inTileOrigin + V2i( ImagePlug::tileSize() ) );
-				const Box2i inRegion = BufferAlgo::intersection(
-					inBound,
-					inTileBound
-				);
-
-				V2i inScanlineOrigin = inRegion.min;
-				const size_t scanlineLength = inRegion.size().x;
-				while( inScanlineOrigin.y < inRegion.max.y )
+				for( inPoint.x = std::max( outTileBound.min.x - offset.x, inTileOrigin.x ); inPoint.x < std::min( outTileBound.max.x - offset.x, inTileOrigin.x + ImagePlug::tileSize() ); ++inPoint.x )
 				{
-					memcpy(
-						// to
-						out + BufferAlgo::index( inScanlineOrigin + offset, outTileBound ),
-						// from
-						in + BufferAlgo::index( inScanlineOrigin, inTileBound ),
-						sizeof( float ) * scanlineLength
-					);
-					++inScanlineOrigin.y;
+					if( BufferAlgo::contains( inDataWindow, inPoint ) )
+					{
+						V2i outPoint = inPoint + offset;
+						outPixels[ImageAlgo::tileIndex( outPoint - tileOrigin )] = ImageAlgo::sampleRange( in, inSampleOffsets, inPoint );
+						outPixelsSet[ImageAlgo::tileIndex( outPoint - tileOrigin )] = true;
+					}
 				}
 			}
 		}
-
-		return outData;
 	}
+
+	std::vector<bool>::iterator outPixelsSetIt = outPixelsSet.begin();
+	for( std::vector<ImageAlgo::ConstFloatSampleRange>::iterator outPixelsIt = outPixels.begin(); outPixelsIt != outPixels.end(); ++outPixelsIt, ++outPixelsSetIt )
+	{
+		if( (*outPixelsSetIt) )
+		{
+			out.insert( out.end(), outPixelsIt->begin(), outPixelsIt->end() );
+		}
+	}
+
+	return outData;
+}
+
+IECore::ConstFloatVectorDataPtr Offset::computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	ImagePlug::ChannelDataScope offsetScope( context );
+
+	const V2i offset = offsetPlug()->getValue();
+
+	const Box2i outTileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+
+	const Box2i inDataWindow = inPlug()->dataWindowPlug()->getValue();
+	const Box2i inBound = BufferAlgo::intersection(
+		inDataWindow,
+		Box2i( outTileBound.min - offset, outTileBound.max - offset )
+	);
+
+	FloatVectorDataPtr outData = new FloatVectorData;
+	outData->writable().resize( ImagePlug::tileSize() * ImagePlug::tileSize() );
+	float *out = &outData->writable().front();
+
+	V2i inTileOrigin;
+	for( inTileOrigin.y = ImagePlug::tileOrigin( inBound.min ).y; inTileOrigin.y < inBound.max.y; inTileOrigin.y += ImagePlug::tileSize() )
+	{
+		for( inTileOrigin.x = ImagePlug::tileOrigin( inBound.min ).x; inTileOrigin.x < inBound.max.x; inTileOrigin.x += ImagePlug::tileSize() )
+		{
+			offsetScope.setTileOrigin( inTileOrigin );
+			ConstFloatVectorDataPtr inData = inPlug()->channelDataPlug()->getValue();
+			const float *in = &inData->readable().front();
+
+			const Box2i inTileBound( inTileOrigin, inTileOrigin + V2i( ImagePlug::tileSize() ) );
+			const Box2i inRegion = BufferAlgo::intersection(
+				inBound,
+				inTileBound
+			);
+
+			V2i inScanlineOrigin = inRegion.min;
+			const size_t scanlineLength = inRegion.size().x;
+			while( inScanlineOrigin.y < inRegion.max.y )
+			{
+				memcpy(
+					// to
+					out + bufferIndex( inScanlineOrigin + offset, outTileBound ),
+					// from
+					in + bufferIndex( inScanlineOrigin, inTileBound ),
+					sizeof( float ) * scanlineLength
+				);
+				++inScanlineOrigin.y;
+			}
+		}
+	}
+
+	return outData;
 }
