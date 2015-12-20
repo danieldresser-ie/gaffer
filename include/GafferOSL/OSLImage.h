@@ -38,7 +38,7 @@
 #ifndef GAFFEROSL_OSLIMAGE_H
 #define GAFFEROSL_OSLIMAGE_H
 
-#include "GafferImage/ImageProcessor.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 #include "GafferScene/ShaderPlug.h"
 
@@ -47,7 +47,7 @@
 namespace GafferOSL
 {
 
-class OSLImage : public GafferImage::ImageProcessor
+class OSLImage : public GafferImage::FlatImageProcessor
 {
 
 	public :
@@ -55,7 +55,7 @@ class OSLImage : public GafferImage::ImageProcessor
 		OSLImage( const std::string &name=defaultName<OSLImage>() );
 		~OSLImage() override;
 
-		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferOSL::OSLImage, OSLImageTypeId, GafferImage::ImageProcessor );
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferOSL::OSLImage, OSLImageTypeId, GafferImage::FlatImageProcessor );
 
 		GafferScene::ShaderPlug *shaderPlug();
 		const GafferScene::ShaderPlug *shaderPlug() const;
@@ -70,11 +70,11 @@ class OSLImage : public GafferImage::ImageProcessor
 
 		void hash( const Gaffer::ValuePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		void hashChannelNames( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
-		void hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+		void hashFlatChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 
 		void compute( Gaffer::ValuePlug *output, const Gaffer::Context *context ) const override;
 		IECore::ConstStringVectorDataPtr computeChannelNames( const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
-		IECore::ConstFloatVectorDataPtr computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
+		IECore::ConstFloatVectorDataPtr computeFlatChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
 
 	private :
 

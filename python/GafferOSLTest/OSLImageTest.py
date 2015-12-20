@@ -282,6 +282,37 @@ class OSLImageTest( GafferOSLTest.OSLTestCase ) :
 			for x in range( -128, 128 ) :
 				self.assertEqual( sampler.sample( x, y ), 1, "Pixel {},{}".format( x, y ) )
 
+	def testNonFlatHashPassThrough( self ) :
+
+		constant1 = GafferImage.Constant()
+		constant1["color"].setValue( imath.Color4f( 1 ) )
+
+		constant2 = GafferImage.Constant()
+		constant2["color"].setValue( imath.Color4f( 1 ) )
+
+		merge = GafferImage.DeepMerge()
+		merge["in"][0].setInput( constant1["out"] )
+		merge["in"][1].setInput( constant2["out"] )
+
+		outR = GafferOSL.OSLShader()
+		outR.loadShader( "ImageProcessing/OutChannel" )
+		outR["parameters"]["channelName"].setValue( "R" )
+		outR["parameters"]["channelValue"].setValue( 0 )
+
+		imageShader = GafferOSL.OSLShader()
+		imageShader.loadShader( "ImageProcessing/OutImage" )
+		imageShader["parameters"]["in0"].setInput( outR["out"]["channel"] )
+
+		image = GafferOSL.OSLImage()
+		image["in"].setInput( merge["out"] )
+		image["shader"].setInput( imageShader["out"] )
+
+		self.assertEqual( merge["out"].imageHash(), image["out"].imageHash() )
+
+		merge["enabled"].setValue( False )
+
+		self.assertNotEqual( merge["out"].imageHash(), image["out"].imageHash() )
+
 	def testGlobals( self ) :
 
 		constant = GafferImage.Constant()
