@@ -58,6 +58,18 @@ class ObjectToImageTest( GafferImageTest.ImageTestCase ) :
 
 		self.assertEqual( n["out"].image(), i )
 
+	def testDeepPlugs( self ) :
+
+		ts = GafferImage.ImagePlug.tileSize()
+
+		i = IECore.Reader.create( self.fileName ).read()
+
+		n = GafferImage.ObjectToImage()
+		n["object"].setValue( i )
+
+		self.assertEqual( n["out"]["deepState"].getValue(), GafferImage.ImagePlug.DeepState.Flat )
+		self.assertEqual( n["out"].sampleOffsets( imath.V2i( 0 ) ), GafferImage.ImagePlug.flatTileSampleOffsets() )
+
 	def testImageWithANegativeDataWindow( self ) :
 
 		i = IECore.Reader.create( self.negFileName ).read()
