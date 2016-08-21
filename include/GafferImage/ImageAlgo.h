@@ -128,7 +128,7 @@ void parallelGatherTiles(
 	TileOrder tileOrder = Unordered
 );
 
-// Process all tiles in parallel using TileFunctor, passing the
+// Process all channels per tile in parallel using TileFunctor, passing the
 // results in series to GatherFunctor.
 template <class TileFunctor, class GatherFunctor>
 void parallelGatherTiles(
@@ -140,6 +140,20 @@ void parallelGatherTiles(
 	TileOrder tileOrder = Unordered
 );
 
+// TODO - get rid of this
+// Process all tiles in parallel using tileFunctor, followed by all
+// channels per tile in parallel using tileChannelFunctor, then
+// pass all the results in series to gatherFunctor.
+template <class ProcessTileFunctor, class ProcessTileChannelFunctor, class GatherTileChannelFunctor>
+void parallelProcessTilesChannelsGather(
+	const ImagePlug *image,
+	const std::vector<std::string> &channelNames,
+	ProcessTileFunctor &processTileFunctor, // Signature: ProcessTileFunctor::Result tileFunctor( const ImagePlug *imagePlug, const V2i &tileOrigin )
+	ProcessTileChannelFunctor &processTileChannelFunctor, // Signature: ProcessTileChannelFunctor::Result tileChannelFunctor( const ImagePlug *imagePlug, const string &channelName, const V2i &tileOrigin )
+	GatherTileChannelFunctor &gatherTileChannelFunctor, // Signature : void gatherTileChannelFunctor( const ImagePlug *imagePlug, const V2i &tileOrigin, ProcessTileFunctor::Result, vector<ProcessTileChannelFunctor::Result> )
+	const Imath::Box2i &window = Imath::Box2i(), // Uses dataWindow if not specified
+	TileOrder tileOrder = Unordered
+);
 
 template <typename T>
 struct SampleRange
