@@ -145,6 +145,16 @@ Imath::Box2i Constant::computeDataWindow( const Gaffer::Context *context, const 
 	return formatPlug()->getValue().getDisplayWindow();
 }
 
+int Constant::computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::Flat;
+}
+
+IECore::ConstIntVectorDataPtr Constant::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::flatTileSampleOffsets();
+}
+
 IECore::ConstCompoundDataPtr Constant::computeMetadata( const Gaffer::Context *context, const ImagePlug *parent ) const
 {
 	return outPlug()->metadataPlug()->defaultValue();
