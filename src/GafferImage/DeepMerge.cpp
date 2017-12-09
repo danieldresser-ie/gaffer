@@ -440,6 +440,7 @@ IECore::ConstIntVectorDataPtr DeepMerge::computeSampleOffsets( const Imath::V2i 
 				}
 				else
 				{
+					// TODO - wrong?
 					// If there is no alpha channel, and we want to discard zero alpha values,
 					// then we can skip this entire loop, as all values would be discarded.
 					continue;
