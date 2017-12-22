@@ -41,6 +41,7 @@
 #include "GafferImage/CollectImages.h"
 #include "GafferImage/BufferAlgo.h"
 #include "GafferImage/ImageAlgo.h"
+#include "GafferImage/FlatImageProcessor.h"
 
 using namespace std;
 using namespace Imath;
@@ -215,6 +216,18 @@ GafferImage::Format CollectImages::computeFormat( const Gaffer::Context *context
 	}
 }
 
+// We can only collect flat images ( trying to combine aovs from deep images would be really tricky,
+// because the user would have to make sure all the sample counts were identical )
+int CollectImages::computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::Flat;
+}
+
+IECore::ConstIntVectorDataPtr CollectImages::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+	return ImagePlug::flatTileSampleOffsets();
+}
+
 void CollectImages::hashMetadata( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	ConstStringVectorDataPtr rootLayersData = rootLayersPlug()->getValue();
@@ -362,6 +375,10 @@ void CollectImages::hashChannelData( const GafferImage::ImagePlug *parent, const
 	editScope.set( ImagePlug::channelNameContextName, srcChannel );
 	editScope.set( layerVariable, srcLayer );
 
+	// We don't inherit from FlatImageProcessor because it doesn't work to check if the input is flat
+	// before setting layerVariable, but once we've set that, we can use this static function
+	FlatImageProcessor::checkInputIsFlat( inPlug() );
+
 	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
 	const Box2i tileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
 
@@ -423,6 +440,11 @@ IECore::ConstFloatVectorDataPtr CollectImages::computeChannelData( const std::st
 	// Then set up the scope to evaluate the input channel data
 	editScope.set( ImagePlug::channelNameContextName, srcChannel );
 	editScope.set( ImagePlug::tileOriginContextName, tileOrigin );
+
+	// We don't inherit from FlatImageProcessor because it doesn't work to check if the input is flat
+	// before setting layerVariable, but once we've set that, we can use this static function
+	FlatImageProcessor::checkInputIsFlat( inPlug() );
+	
 	ConstFloatVectorDataPtr inputData = inPlug()->channelDataPlug()->getValue();
 
 	if( validBound == tileBound )

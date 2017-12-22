@@ -173,7 +173,35 @@ class CollectImagesTest( GafferImageTest.ImageTestCase ) :
 		self.assertEqual( list(collect["out"]["channelNames"].getValue()), [ "A.B.R", "A.B.G", "A.B.B", "A.B.A" ] )
 		self.assertEqual( sampler["color"].getValue(), imath.Color4f( 0.2, 0.4, 0.6, 0.8 ) )
 
+	def testNonFlatThrows( self ) :
+
+		deep1 = self.deepImage()
+		deep2 = self.deepImage()
+		deep1["deepState"].setValue( GafferImage.ImagePlug.DeepState.Flat )
+		deep2["deepState"].setValue( GafferImage.ImagePlug.DeepState.Flat )
+
+		switch = GafferImage.ImageSwitch()
+		switch["in"][0].setInput( deep1["out"] )
+		switch["in"][1].setInput( deep2["out"] )
+
+		e = Gaffer.Expression()
+		switch.addChild( e )
+		e.setExpression( 'parent["index"] = context["collect:layerName"] != "A"', "python" )
+
+		collect = GafferImage.CollectImages()
+		collect["in"].setInput( switch["out"] )
 
 
+		collect["rootLayers"].setValue( IECore.StringVectorData( [ 'A', 'B' ] ) )
+
+		self.assertNotEqual( collect["out"].imageHash(), deep1["out"].imageHash() )
+
+		deep1["deepState"].setValue( GafferImage.ImagePlug.DeepState.Messy )
+		self.assertRaisesRegexp( RuntimeError, 'Deep data not supported in input "in"', collect["out"].imageHash )
+		deep1["deepState"].setValue( GafferImage.ImagePlug.DeepState.Flat )
+		deep2["deepState"].setValue( GafferImage.ImagePlug.DeepState.Messy )
+		self.assertRaisesRegexp( RuntimeError, 'Deep data not supported in input "in"', collect["out"].imageHash )
+		
+		
 if __name__ == "__main__":
 	unittest.main()
