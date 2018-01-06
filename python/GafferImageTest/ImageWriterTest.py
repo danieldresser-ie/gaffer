@@ -385,6 +385,27 @@ class ImageWriterTest( GafferImageTest.ImageTestCase ) :
 
 		self.assertEqual( w["webp"]["compressionQuality"].getValue(), 100 )
 
+	def testDeepWrite( self ) :
+
+		r = GafferImage.ImageReader()
+		r["fileName"].setValue( self.__rgbFilePath+".exr" )
+
+		e = GafferImage.Empty()
+		e['format'].setValue( r['out']['format'].getValue() )
+
+		m = GafferImage.DeepMerge()
+		m['in'][0].setInput( r['out'] )
+		m['in'][1].setInput( e['out'] )
+
+		testFile = self.__testFile( "deep", "RGBA", "exr" )
+
+		w = GafferImage.ImageWriter()
+		w['fileName'].setValue( testFile )
+		w['in'].setInput( m['out'] )
+
+		with Gaffer.Context() :
+			w["task"].execute()
+
 	# Write an RGBA image that has a data window to various supported formats and in both scanline and tile modes.
 	def __testExtension( self, ext, formatName, options = {}, metadataToIgnore = [] ) :
 
