@@ -907,16 +907,28 @@ IECore::ConstStringVectorDataPtr OpenImageIOReader::computeChannelNames( const G
 void OpenImageIOReader::hashDeepState( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	ImageNode::hashDeepState( output, context, h );
+	hashFileName( context, h );
+	refreshCountPlug()->hash( h );
+	missingFrameModePlug()->hash( h );
 }
 
 int OpenImageIOReader::computeDeepState( const Gaffer::Context *context, const ImagePlug *parent ) const
 {
-	return ImagePlug::Flat;
+	std::string fileName = fileNamePlug()->getValue();
+	FilePtr file = retrieveFile( fileName, (MissingFrameMode)missingFrameModePlug()->getValue(), this, context );
+	if( !file )
+	{
+		return ImagePlug::Flat;
+	}
+	return file->imageSpec().deep ? ImagePlug::Flat : ImagePlug::Tidy;
 }
 
 void OpenImageIOReader::hashSampleOffsets( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	ImagePlug::flatTileSampleOffsets()->hash( h );
+	ImageNode::hashSampleOffsets( output, context, h );
+	hashFileName( context, h );
+	refreshCountPlug()->hash( h );
+	missingFrameModePlug()->hash( h );
 }
 
 IECore::ConstIntVectorDataPtr OpenImageIOReader::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
