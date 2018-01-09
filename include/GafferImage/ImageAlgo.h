@@ -140,7 +140,8 @@ void parallelGatherTiles(
 	TileOrder tileOrder = Unordered
 );
 
-// TODO - get rid of this
+// TODO - it's probably fine to just use two separate calls to parallelGatherTiles, rather than adding
+// this complex monstrosity.
 // Process all tiles in parallel using tileFunctor, followed by all
 // channels per tile in parallel using tileChannelFunctor, then
 // pass all the results in series to gatherFunctor.

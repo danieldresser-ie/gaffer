@@ -250,15 +250,20 @@ ImagePlug::~ImagePlug()
 
 const IECore::IntVectorData *ImagePlug::flatTileSampleOffsets()
 {
+	// TODO - why doesn't this start at 0?
 	static boost::counting_iterator<int> begin( 1 ), end( ImagePlug::tileSize()*ImagePlug::tileSize() + 1 );
-	static IECore::ConstIntVectorDataPtr g_flatTileSampleOffsets( new IECore::IntVectorData( std::vector<int>( begin, end ) ) );
+	static IECore::ConstIntVectorDataPtr g_flatTileSampleOffsets(
+		new IECore::IntVectorData( std::vector<int>( begin, end ) )
+	);
 
 	return g_flatTileSampleOffsets.get();
 };
 
 const IECore::IntVectorData *ImagePlug::emptyTileSampleOffsets()
 {
-	static IECore::ConstIntVectorDataPtr g_emptyTileSampleOffsets( new IECore::IntVectorData( std::vector<int>( ImagePlug::tileSize()*ImagePlug::tileSize(), 0 ) ) );
+	static IECore::ConstIntVectorDataPtr g_emptyTileSampleOffsets(
+		new IECore::IntVectorData( std::vector<int>( ImagePlug::tileSize()*ImagePlug::tileSize(), 0 ) )
+	);
 	return g_emptyTileSampleOffsets.get();
 };
 

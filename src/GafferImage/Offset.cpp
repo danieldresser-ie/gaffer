@@ -414,6 +414,7 @@ IECore::ConstFloatVectorDataPtr Offset::computeDeepChannelData( const std::strin
 	{
 		if( (*outPixelsSetIt) )
 		{
+			// TODO - running the tests multithreaded with only 100 meg of cache, produces a segfault here
 			out.insert( out.end(), outPixelsIt->begin(), outPixelsIt->end() );
 		}
 	}

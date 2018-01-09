@@ -1014,6 +1014,7 @@ IECore::ConstFloatVectorDataPtr DeepState::computeChannelData( const std::string
 			flatData = flatChannelData( inData, alphaData, tileOrigin );
 		}
 
+		//assert( (int)flatData->readable().size() == ImagePlug::tileSize() * ImagePlug::tileSize() );
 		if( deepStateChange == ImagePlug::SingleSample )
 		{
 			return flatData;
