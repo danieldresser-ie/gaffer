@@ -1,6 +1,6 @@
 ##########################################################################
 #
-#  Copyright (c) 2016, Image Engine Design Inc. All rights reserved.
+#  Copyright (c) 2018, Image Engine Design Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -36,53 +36,43 @@
 
 import IECore
 
-import GafferSceneUI
+import Gaffer
+import GafferScene
+import GafferArnold
 
-with IECore.IgnoredExceptions( ImportError ) :
+class ArnoldShaderSwatch( GafferScene.ShaderBall ) :
 
-	import GafferAppleseed
-	GafferSceneUI.ShaderView.registerRenderer( "osl", GafferAppleseed.InteractiveAppleseedRender )
+	def __init__( self, name = "ArnoldShaderSwatch" ) :
 
-	def __appleseedShaderBall() :
+		GafferScene.ShaderBall.__init__( self, name )
 
-		result = GafferAppleseed.AppleseedShaderBall()
+		self["environment"] = Gaffer.StringPlug( defaultValue = "${GAFFER_ROOT}/resources/hdri/studio.exr" )
 
-		# Limit the number of samples.
-		result["maxSamples"]["enabled"].setValue( True )
-		result["maxSamples"]["value"].setValue( 32 )
+		self["__envMap"] = GafferArnold.ArnoldShader()
+		self["__envMap"].loadShader( "image" )
+		self["__envMap"]["parameters"]["filename"].setInput( self["environment"] )
 
-		# Reserve some cores for the rest of the UI
-		result["threads"]["enabled"].setValue( True )
-		result["threads"]["value"].setValue( -3 )
+		self["__skyDome"] = GafferArnold.ArnoldLight()
+		self["__skyDome"].loadShader( "skydome_light" )
+		self["__skyDome"]["parameters"]["color"].setInput( self["__envMap"]["out"] )
+		self["__skyDome"]["parameters"]["format"].setValue( "latlong" )
+		self["__skyDome"]["parameters"]["camera"].setValue( 0 )
 
-		return result
+		self["__parentLights"] = GafferScene.Parent()
+		self["__parentLights"]["in"].setInput( self._outPlug().getInput() )
+		self["__parentLights"]["child"].setInput( self["__skyDome"]["out"] )
+		self["__parentLights"]["parent"].setValue( "/" )
 
-	GafferSceneUI.ShaderView.registerScene( "osl", "Default", __appleseedShaderBall )
+		self["__arnoldOptions"] = GafferArnold.ArnoldOptions()
+		self["__arnoldOptions"]["in"].setInput( self["__parentLights"]["out"] )
+		self["__arnoldOptions"]["options"]["aaSamples"]["enabled"].setValue( True )
+		self["__arnoldOptions"]["options"]["aaSamples"]["value"].setValue( 3 )
 
-with IECore.IgnoredExceptions( ImportError ) :
+		self.addChild(
+			self["__arnoldOptions"]["options"]["threads"].createCounterpart( "threads", Gaffer.Plug.Direction.In )
+		)
+		self["__arnoldOptions"]["options"]["threads"].setInput( self["threads"] )
 
-	import GafferArnold
-	GafferSceneUI.ShaderView.registerRenderer( "ai", GafferArnold.InteractiveArnoldRender )
+		self._outPlug().setInput( self["__arnoldOptions"]["out"] )
 
-	def __arnoldShaderBall() :
-
-		result = GafferArnold.ArnoldShaderBall()
-
-		# Reserve some cores for the rest of the UI
-		result["threads"]["enabled"].setValue( True )
-		result["threads"]["value"].setValue( -3 )
-
-		return result
-
-	def __arnoldShaderSwatch() :
-
-		result = GafferArnold.ArnoldShaderSwatch()
-
-		# Reserve some cores for the rest of the UI
-		result["threads"]["enabled"].setValue( True )
-		result["threads"]["value"].setValue( -3 )
-
-		return result
-
-	GafferSceneUI.ShaderView.registerScene( "ai", "Default", __arnoldShaderBall )
-	GafferSceneUI.ShaderView.registerScene( "ai", "Swatch", __arnoldShaderSwatch )
+IECore.registerRunTimeTyped( ArnoldShaderSwatch, typeName = "GafferArnold::ArnoldShaderSwatch" )
