@@ -2129,6 +2129,12 @@ class InteractiveRenderController
 		InteractiveRenderController()
 		{
 			m_rendering = false;
+			m_minSamples = -5;
+		}
+
+		void setMinSamples( int minSamples )
+		{
+			m_minSamples = minSamples;
 		}
 
 		void setRendering( bool rendering )
@@ -2168,7 +2174,7 @@ class InteractiveRenderController
 		{
 			AtNode *options = AiUniverseGetOptions();
 			const int finalAASamples = AiNodeGetInt( options, g_aaSamplesArnoldString );
-			const int startAASamples = min( -5, finalAASamples );
+			const int startAASamples = min( m_minSamples, finalAASamples );
 
 			for( int aaSamples = startAASamples; aaSamples <= finalAASamples; ++aaSamples )
 			{
@@ -2193,6 +2199,7 @@ class InteractiveRenderController
 
 		std::thread m_thread;
 		tbb::atomic<bool> m_rendering;
+		int m_minSamples;
 
 };
 
@@ -2214,6 +2221,7 @@ IECore::InternedString g_logFileNameOptionName( "ai:log:filename" );
 IECore::InternedString g_logMaxWarningsOptionName( "ai:log:max_warnings" );
 IECore::InternedString g_pluginSearchPathOptionName( "ai:plugin_searchpath" );
 IECore::InternedString g_aaSeedOptionName( "ai:AA_seed" );
+IECore::InternedString g_aaMinInteractiveSamplesOptionName( "ai:AA_min_interactive_samples" );
 IECore::InternedString g_sampleMotionOptionName( "sampleMotion" );
 IECore::InternedString g_atmosphereOptionName( "ai:atmosphere" );
 IECore::InternedString g_backgroundOptionName( "ai:background" );
@@ -2322,6 +2330,18 @@ class ArnoldGlobals
 				{
 					return;
 				}
+			}
+			else if( name == g_aaMinInteractiveSamplesOptionName )
+			{
+				if( value == nullptr )
+				{
+					m_aaMinInteractiveSamples = boost::none;
+				}
+				else if( const IECore::IntData *d = reportedCast<const IECore::IntData>( value, "option", name ) )
+				{
+					m_aaMinInteractiveSamples = d->readable();
+				}
+				return;
 			}
 			else if( name == g_aaSeedOptionName )
 			{
@@ -2532,6 +2552,7 @@ class ArnoldGlobals
 					AiASSWrite( m_assFileName.c_str(), AI_NODE_ALL );
 					break;
 				case IECoreScenePreview::Renderer::Interactive :
+					m_interactiveRenderController.setMinSamples( m_aaMinInteractiveSamples.get_value_or( -5 ) );
 					m_interactiveRenderController.setRendering( true );
 					break;
 			}
@@ -2767,6 +2788,7 @@ class ArnoldGlobals
 		int m_consoleFlags;
 		boost::optional<int> m_frame;
 		boost::optional<int> m_aaSeed;
+		boost::optional<int> m_aaMinInteractiveSamples;
 		boost::optional<bool> m_sampleMotion;
 		ShaderCache *m_shaderCache;
 
