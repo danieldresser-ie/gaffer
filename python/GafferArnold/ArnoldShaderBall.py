@@ -58,6 +58,10 @@ class ArnoldShaderBall( GafferScene.ShaderBall ) :
 		self["__skyDome"]["parameters"]["format"].setValue( "latlong" )
 		self["__skyDome"]["parameters"]["camera"].setValue( 0 )
 
+		# For a quick shaderball preview, we don't want an env map with hard to sample details,
+		# so a quick 128 pixel importance map should be enough to capture the features
+		self["__skyDome"]["parameters"]["resolution"].setValue( 128 )
+
 		self["__parentLights"] = GafferScene.Parent()
 		self["__parentLights"]["in"].setInput( self._outPlug().getInput() )
 		self["__parentLights"]["child"].setInput( self["__skyDome"]["out"] )
