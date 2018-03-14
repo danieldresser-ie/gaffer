@@ -2251,6 +2251,20 @@ class ArnoldGlobals
 			option( g_pluginSearchPathOptionName, new IECore::StringData( "" ) );
 		}
 
+		~ArnoldGlobals()
+		{
+			std::cerr << "DESTRUCT\n";
+			AtRenderStatus status = AiRenderGetStatus();
+			if( status != AI_RENDER_STATUS_NOT_STARTED )
+			{
+				if( status != AI_RENDER_STATUS_FINISHED )
+				{
+					AiRenderAbort( AI_BLOCKING );
+				}
+				AiRenderEnd();
+			}
+		}
+
 		void option( const IECore::InternedString &name, const IECore::Object *value )
 		{
 			AtNode *options = AiUniverseGetOptions();
@@ -2553,14 +2567,42 @@ class ArnoldGlobals
 					break;
 				case IECoreScenePreview::Renderer::Interactive :
 					m_interactiveRenderController.setMinSamples( m_aaMinInteractiveSamples.get_value_or( -5 ) );
-					m_interactiveRenderController.setRendering( true );
+					//m_interactiveRenderController.setRendering( true );
+					AtRenderStatus status = AiRenderGetStatus();
+					if( status == AI_RENDER_STATUS_NOT_STARTED )
+					{
+						std::cerr << "Fresh start\n";
+						std::cerr << "Session mode: " << AiGetSessionMode() << "\n";
+						//AiRenderSetHintBool( AtString( "progressive" ), true );
+						AiRenderSetHintInt( AtString( "progressive_min_AA_samples" ), -1 );
+						AiRenderBegin( AI_RENDER_MODE_CAMERA );
+					}
+					else if( status == AI_RENDER_STATUS_PAUSED || status == AI_RENDER_STATUS_FINISHED )
+					{
+						std::cerr << "Restarting\n";
+						// TODO - what about Resume?
+						AiRenderRestart();
+					}
+					else
+					{
+						std::cerr << "HUH, status is: " << status << "\n";
+					}
 					break;
 			}
 		}
 
 		void pause()
 		{
-			m_interactiveRenderController.setRendering( false );
+			std::cerr << "Pausing?\n";
+			AtRenderStatus status = AiRenderGetStatus();
+			std::cerr << "Status test: " << status << "\n";
+			if( status == AI_RENDER_STATUS_RENDERING )
+			{
+				std::cerr << "Status before interrupt: " << AiRenderGetStatus() << "\n";
+				// TODO: How long is this likely to block for?
+				AiRenderInterrupt( AI_BLOCKING );
+				std::cerr << "Status after interrupt: " << AiRenderGetStatus() << "\n";
+			}
 		}
 
 	private :
