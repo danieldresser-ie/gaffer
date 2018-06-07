@@ -402,9 +402,9 @@ IECoreGL::Texture *blackTexture()
 ImageGadget::Tile::Tile( const Tile &other )
 	:	m_channelDataHash( other.m_channelDataHash ),
 		m_channelDataToConvert( other.m_channelDataToConvert ),
-		m_texture( other.m_texture )
+		m_texture( other.m_texture ),
+		m_active( false )
 {
-
 }
 
 ImageGadget::Tile::Update ImageGadget::Tile::computeUpdate( const GafferImage::ImagePlug *image )
@@ -416,6 +416,7 @@ ImageGadget::Tile::Update ImageGadget::Tile::computeUpdate( const GafferImage::I
 		return Update{ nullptr, nullptr, MurmurHash() };
 	}
 
+	m_active = true;
 	lock.release(); // Release while doing expensive calculation so UI thread doesn't wait.
 	ConstFloatVectorDataPtr channelData = image->channelDataPlug()->getValue( &h );
 	return Update{ this, channelData, h };
@@ -437,6 +438,7 @@ void ImageGadget::Tile::applyUpdates( const std::vector<Update> &updates )
 		{
 			u.tile->m_channelDataToConvert = u.channelData;
 			u.tile->m_channelDataHash = u.channelDataHash;
+			u.tile->m_active = false;
 		}
 	}
 
@@ -449,9 +451,10 @@ void ImageGadget::Tile::applyUpdates( const std::vector<Update> &updates )
 	}
 }
 
-const IECoreGL::Texture *ImageGadget::Tile::texture()
+const IECoreGL::Texture *ImageGadget::Tile::texture( bool &active )
 {
 	Mutex::scoped_lock lock( m_mutex );
+	active |= m_active;
 	ConstFloatVectorDataPtr channelDataToConvert = m_channelDataToConvert;
 	m_channelDataToConvert = nullptr;
 	lock.release(); // Don't hold lock while doing expensive conversion
@@ -628,6 +631,8 @@ const std::string &fragmentSource()
 		"uniform sampler2D blueTexture;\n"
 		"uniform sampler2D alphaTexture;\n"
 
+		"uniform bool active;\n"
+
 		"#if __VERSION__ >= 330\n"
 
 		"layout( location=0 ) out vec4 outColor;\n"
@@ -639,6 +644,10 @@ const std::string &fragmentSource()
 
 		"#endif\n"
 
+		"#define BORDER_EDGE 0.45\n"
+		"#define BORDER_WIDTH_EDGE 0.3\n"
+		"#define ACTIVE_COLOR vec4( 0.466, 0.612, 0.741, 1.0 )\n"
+
 		"void main()"
 		"{"
 		"	OUTCOLOR = vec4(\n"
@@ -646,7 +655,16 @@ const std::string &fragmentSource()
 		"		texture2D( greenTexture, gl_TexCoord[0].xy ).r,\n"
 		"		texture2D( blueTexture, gl_TexCoord[0].xy ).r,\n"
 		"		texture2D( alphaTexture, gl_TexCoord[0].xy ).r\n"
-		"	);"
+		"	);\n"
+
+		"	if( active )\n"
+		"	{\n"
+		"		vec2 p = abs( gl_TexCoord[0].xy - vec2( 0.5 ) );\n"
+		"		float e1 = step( BORDER_WIDTH_EDGE, p.x ) * step( BORDER_EDGE, p.y );\n"
+		"		float e2 = step( BORDER_WIDTH_EDGE, p.y ) * step( BORDER_EDGE, p.x );\n"
+		"		float e = e1 + e2 - e1 * e2;\n"
+		"		OUTCOLOR = mix( OUTCOLOR, ACTIVE_COLOR, e );\n"
+		"	}\n"
 		"}";
 
 		if( glslVersion() >= 330 )
@@ -705,6 +723,8 @@ void ImageGadget::renderTiles() const
 	glUniform1i( shader->uniformParameter( "blueTexture" )->location, textureUnits[2] );
 	glUniform1i( shader->uniformParameter( "alphaTexture" )->location, textureUnits[3] );
 
+	GLint activeParameterLocation = shader->uniformParameter( "active" )->location;
+
 	const Box2i dataWindow = this->dataWindow();
 	const float pixelAspect = this->format().getPixelAspect();
 
@@ -713,6 +733,7 @@ void ImageGadget::renderTiles() const
 	{
 		for( tileOrigin.x = ImagePlug::tileOrigin( dataWindow.min ).x; tileOrigin.x < dataWindow.max.x; tileOrigin.x += ImagePlug::tileSize() )
 		{
+			bool active = false;
 			for( int i = 0; i < 4; ++i )
 			{
 				glActiveTexture( GL_TEXTURE0 + textureUnits[i] );
@@ -720,13 +741,15 @@ void ImageGadget::renderTiles() const
 				Tiles::const_iterator it = m_tiles.find( TileIndex( tileOrigin, channelName ) );
 				if( it != m_tiles.end() )
 				{
-					it->second.texture()->bind();
+					it->second.texture( active )->bind();
 				}
 				else
 				{
 					blackTexture()->bind();
 				}
 			}
+
+			glUniform1i( activeParameterLocation, active );
 
 			const Box2i tileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
 			const Box2i validBound = BufferAlgo::intersection( tileBound, dataWindow );

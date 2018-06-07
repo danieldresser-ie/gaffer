@@ -232,13 +232,14 @@ class GAFFERIMAGEUI_API ImageGadget : public GafferUI::Gadget
 			static void applyUpdates( const std::vector<Update> &updates );
 
 			// Called from the UI thread.
-			const IECoreGL::Texture *texture();
+			const IECoreGL::Texture *texture( bool &active );
 
 			private :
 
 				IECore::MurmurHash m_channelDataHash;
 				IECore::ConstFloatVectorDataPtr m_channelDataToConvert;
 				IECoreGL::TexturePtr m_texture;
+				bool m_active;
 				typedef tbb::spin_mutex Mutex;
 				Mutex m_mutex;
 
