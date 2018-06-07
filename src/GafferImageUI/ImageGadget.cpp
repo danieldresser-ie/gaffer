@@ -660,9 +660,10 @@ const std::string &fragmentSource()
 		"	if( active )\n"
 		"	{\n"
 		"		vec2 p = abs( gl_TexCoord[0].xy - vec2( 0.5 ) );\n"
-		"		float e1 = step( BORDER_WIDTH_EDGE, p.x ) * step( BORDER_EDGE, p.y );\n"
-		"		float e2 = step( BORDER_WIDTH_EDGE, p.y ) * step( BORDER_EDGE, p.x );\n"
-		"		float e = e1 + e2 - e1 * e2;\n"
+//		"		float e1 = step( BORDER_WIDTH_EDGE, p.x ) * step( BORDER_EDGE, p.y );\n"
+//		"		float e2 = step( BORDER_WIDTH_EDGE, p.y ) * step( BORDER_EDGE, p.x );\n"
+//		"		float e = e1 + e2 - e1 * e2;\n"
+		"		float e = 1.0 - smoothstep( 0.0, 0.1, gl_TexCoord[0].y );\n"
 		"		OUTCOLOR = mix( OUTCOLOR, ACTIVE_COLOR, e );\n"
 		"	}\n"
 		"}";
