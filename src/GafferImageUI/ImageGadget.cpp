@@ -632,6 +632,7 @@ const std::string &fragmentSource()
 		"uniform sampler2D alphaTexture;\n"
 
 		"uniform bool active;\n"
+		"uniform float screenPixelWidth;\n"
 
 		"#if __VERSION__ >= 330\n"
 
@@ -644,12 +645,13 @@ const std::string &fragmentSource()
 
 		"#endif\n"
 
-		"#define BORDER_EDGE 0.45\n"
-		"#define BORDER_WIDTH_EDGE 0.3\n"
+		//"#define BORDER_EDGE 0.45\n"
+		//"#define BORDER_WIDTH_EDGE 0.3\n"
 		"#define ACTIVE_COLOR vec4( 0.466, 0.612, 0.741, 1.0 )\n"
 
 		"void main()"
 		"{"
+		"	float borderEdge = 0.02 * screenPixelWidth;"
 		"	OUTCOLOR = vec4(\n"
 		"		texture2D( redTexture, gl_TexCoord[0].xy ).r,\n"
 		"		texture2D( greenTexture, gl_TexCoord[0].xy ).r,\n"
@@ -660,11 +662,9 @@ const std::string &fragmentSource()
 		"	if( active )\n"
 		"	{\n"
 		"		vec2 p = abs( gl_TexCoord[0].xy - vec2( 0.5 ) );\n"
-//		"		float e1 = step( BORDER_WIDTH_EDGE, p.x ) * step( BORDER_EDGE, p.y );\n"
-//		"		float e2 = step( BORDER_WIDTH_EDGE, p.y ) * step( BORDER_EDGE, p.x );\n"
-//		"		float e = e1 + e2 - e1 * e2;\n"
-		"		float e = 1.0 - smoothstep( 0.0, 0.1, gl_TexCoord[0].y );\n"
-		"		OUTCOLOR = mix( OUTCOLOR, ACTIVE_COLOR, e );\n"
+		"		float e = step( 0.4, min( p.x, p.y ) ) * step( 0.5 - borderEdge, max( p.x, p.y ) );\n"
+		//"		float e = step( 0.35, 0.5 - min( p.x, p.y ) ) * step( 0.5 - borderEdge, max( p.x, p.y ) );\n"
+		"		OUTCOLOR += vec4( 1.0 ) * e * 0.1;\n"
 		"	}\n"
 		"}";
 
@@ -723,6 +723,12 @@ void ImageGadget::renderTiles() const
 	glUniform1i( shader->uniformParameter( "greenTexture" )->location, textureUnits[1] );
 	glUniform1i( shader->uniformParameter( "blueTexture" )->location, textureUnits[2] );
 	glUniform1i( shader->uniformParameter( "alphaTexture" )->location, textureUnits[3] );
+
+	const ViewportGadget *viewport = ancestor<ViewportGadget>();
+	V2f rasterScale = viewport->worldToRasterSpace( V3f(1) ) - viewport->worldToRasterSpace( V3f(0) );
+
+	float screenPixelWidth = std::max( fabsf( 1.0f / rasterScale[0] ), fabsf( 1.0f / rasterScale[1] ) );
+	glUniform1f( shader->uniformParameter( "screenPixelWidth" )->location, screenPixelWidth );
 
 	GLint activeParameterLocation = shader->uniformParameter( "active" )->location;
 
