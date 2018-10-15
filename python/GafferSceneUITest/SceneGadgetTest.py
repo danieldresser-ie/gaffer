@@ -226,7 +226,7 @@ class SceneGadgetTest( GafferUITest.TestCase ) :
 
 		s["s2"] = GafferScene.Sphere()
 		s["s2"]["name"].setValue( "littleSphere" )
-		s["s2"]["radius"].setValue( 0.1 )
+		s["s2"]["radius"].setValue( 0.3 )
 
 		s["p"] = GafferScene.Parent()
 		s["p"]["in"].setInput( s["s1"]["out"] )
@@ -296,6 +296,27 @@ class SceneGadgetTest( GafferUITest.TestCase ) :
 
 			s["f"]["enabled"].setValue( False )
 			sg.waitForCompletion()
+
+			print "TEST AGAIN"
+			print "\n\nVIEWPORT CAMERA\n\n"
+			print gw.getViewportGadget().getCamera().parameters()["clippingPlanes"]
+			print gw.getViewportGadget().getCameraTransform()
+
+			for i in range( -100, 100 ):
+				print i * 0.1, " : ",
+				gw.getViewportGadget().setCameraTransform( imath.M44f(
+					1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, i * 0.1, 1) )
+				#rasterPosition = imath.V2f( 0.5 ) * imath.V2f( gw.getViewportGadget().getViewport() )
+				#gadgetLine = gw.getViewportGadget().rasterToGadgetSpace( rasterPosition, sg )
+				ndcPosition = imath.V2f( 0.5 )
+				viewportGadget = sg.ancestor( GafferUI.ViewportGadget )
+
+				rasterPosition = ndcPosition * imath.V2f( viewportGadget.getViewport() )
+				gadgetLine = viewportGadget.rasterToGadgetSpace( rasterPosition, sg )
+				print sg.objectAt( gadgetLine )
+				
+			gw.getViewportGadget().setCameraTransform( imath.M44f(
+				1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2.76, 1) )
 
 			self.assertEqual( len( mh.messages ), 1 )
 			self.assertFalse( sg.bound().isEmpty() )
