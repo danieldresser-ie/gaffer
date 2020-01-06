@@ -38,8 +38,13 @@
 #define GAFFERIMAGEUI_DEEPSAMPLEGADGET_H
 
 #include "GafferUI/Gadget.h"
+#include "GafferUI/Style.h"
+#include "GafferUI/GraphGadget.h"
 
-#include "Gaffer/Animation.h"
+#include "GafferImageUI/TypeIds.h"
+
+#include "GafferImage/ImagePlug.h"
+
 #include "Gaffer/StandardSet.h"
 
 #include "boost/optional.hpp"
@@ -51,7 +56,7 @@ namespace Gaffer
 
 }
 
-namespace GaffeImageUI
+namespace GafferImageUI
 {
 
 class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
@@ -63,22 +68,18 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 		~DeepSampleGadget() override;
 
-		GAFFER_GRAPHCOMPONENT_DECLARE_TYPE( GaffeImageUI::DeepSampleGadget, DeepSampleGadgetTypeId, Gadget );
+		GAFFER_GRAPHCOMPONENT_DECLARE_TYPE( GafferImageUI::DeepSampleGadget, GafferImageUI::DeepSampleGadgetTypeId, GafferUI::Gadget );
 
 		void setImagePlug( GafferImage::ImagePlug *imagePlug);
 		GafferImage::ImagePlug *getImagePlug();
 
-		void setPixel( Imath::V2f pixel );
-		Imath::V2f *getPixel() const;
-
-		void setContext( Gaffer::Context *context );
-		Gaffer::Context *getContext() const;
+		void setDeepSamples( IECore::ConstCompoundDataPtr deepSamples );
 
 		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
 
 	protected :
 
-		void doRenderLayer( Layer layer, const Style *style ) const override;
+		void doRenderLayer( GafferUI::Gadget::Layer layer, const GafferUI::Style *style ) const override;
 
 	private :
 
@@ -86,36 +87,13 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 		void plugDirtied( Gaffer::Plug *plug );
 
-		bool buttonPress( GadgetPtr gadget, const ButtonEvent &event );
-		bool buttonRelease( GadgetPtr gadget, const ButtonEvent &event );
-		bool keyPress( GadgetPtr gadget, const KeyEvent &event );
-		bool keyRelease( GadgetPtr gadget, const KeyEvent &event );
-
-		bool mouseMove( GadgetPtr gadget, const ButtonEvent &event );
-		IECore::RunTimeTypedPtr dragBegin( GadgetPtr gadget, const DragDropEvent &event );
-		bool dragEnter( GadgetPtr gadget, const DragDropEvent &event );
-		bool dragMove( GadgetPtr gadget, const DragDropEvent &event );
-		bool dragEnd( GadgetPtr gadget, const DragDropEvent &event );
-		bool leave();
+		bool keyPress( GafferUI::GadgetPtr gadget, const GafferUI::KeyEvent &event );
 
 		// Find elements at certain positions
-		Gaffer::DeepSample::ConstKeyPtr keyAt( const IECore::LineSegment3f &position ) const;
+		int keyAt( const IECore::LineSegment3f &position ) const;
+		IECore::InternedString curveAt( const IECore::LineSegment3f &position ) const;
 
-		bool frameIndicatorUnderMouse( const IECore::LineSegment3f &position ) const;
-
-		void visiblePlugAdded( Gaffer::Set *set, IECore::RunTimeTyped *member );
-		void visiblePlugRemoved( Gaffer::Set *set, IECore::RunTimeTyped *member );
-
-		void editablePlugAdded( Gaffer::Set *set, IECore::RunTimeTyped *member );
-		void editablePlugRemoved( Gaffer::Set *set, IECore::RunTimeTyped *member );
-
-		void renderCurve( const Gaffer::DeepSample::CurvePlug *curvePlug, const Style *style ) const;
-		void renderFrameIndicator( int frame, const Style *style, bool preview=false, float lineWidth=2.0 ) const;
-
-		bool plugSetAcceptor( const Gaffer::Set *s, const Gaffer::Set::Member *m );
-		void updateKeyPreviewLocation( const Gaffer::DeepSample::CurvePlug *curvePlug, float time );
-
-		std::string undoMergeGroup() const;
+		//void renderCurve( const GafferImage::ImagePlug *imagePlug, const GafferUI::Style *style ) const;
 
 		bool onTimeAxis( int y ) const;
 		bool onValueAxis( int x ) const;
@@ -125,39 +103,10 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 		Gaffer::StandardSetPtr m_visiblePlugs;
 		Gaffer::StandardSetPtr m_editablePlugs;
 
-		std::set<Gaffer::DeepSample::KeyPtr> m_selectedKeys;
-		std::map<const Gaffer::DeepSample::Key*, std::pair<float, float> > m_originalKeyValues;
+		IECore::ConstCompoundDataPtr m_deepSampleDicts;
 
-		Imath::V2f m_dragStartPosition;
-		Imath::V2f m_lastDragPosition;
-
-		enum class DragMode
-		{
-			None,
-			Selecting,
-			Moving,
-			MoveFrame
-		};
-
-		DragMode m_dragMode;
-
-		enum class MoveAxis
-		{
-			Both,
-			Undefined,
-			X,
-			Y
-		};
-
-		MoveAxis m_moveAxis;
-
-		Gaffer::DeepSample::KeyPtr m_snappingClosestKey;
-		Gaffer::DeepSample::KeyPtr m_highlightedKey;
-		Gaffer::DeepSample::CurvePlugPtr m_highlightedCurve;
-
-		std::set<std::pair<Gaffer::DeepSample::KeyPtr, Gaffer::DeepSample::CurvePlugPtr> > m_overwrittenKeys;
-
-		int m_mergeGroupId;
+		int m_highlightedKey;
+		int m_highlightedCurve;
 
 		bool m_keyPreview;
 		Imath::V3f m_keyPreviewLocation;
@@ -174,6 +123,6 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 IE_CORE_DECLAREPTR( DeepSampleGadget );
 
-} // namespace GaffeImageUI
+} // namespace GafferImageUI
 
 #endif // GAFFERIMAGEUI_DEEPSAMPLEGADGET_H

@@ -44,6 +44,7 @@ from FormatPlugValueWidget import FormatPlugValueWidget
 from ChannelMaskPlugValueWidget import ChannelMaskPlugValueWidget
 from RGBAChannelsPlugValueWidget import RGBAChannelsPlugValueWidget
 from ChannelPlugValueWidget import ChannelPlugValueWidget
+from DeepPixelInfo import DeepPixelInfo
 
 import ImageReaderPathPreview
 

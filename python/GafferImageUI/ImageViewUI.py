@@ -67,6 +67,10 @@ Gaffer.Metadata.registerNode(
 	"toolbarLayout:customWidget:RightSpacer:section", "Top",
 	"toolbarLayout:customWidget:RightSpacer:index", -2,
 
+	"toolbarLayout:customWidget:StateWidget:widgetType", "GafferImageUI.ImageViewUI._DeepInfoButton",
+	"toolbarLayout:customWidget:StateWidget:section", "Top",
+	"toolbarLayout:customWidget:StateWidget:index", -3,
+
 	plugs = {
 
 		"clipping" : [
@@ -156,6 +160,19 @@ Gaffer.Metadata.registerNode(
 			"plugValueWidget:type", "GafferImageUI.ImageViewUI._SoloChannelPlugValueWidget",
 			"toolbarLayout:index", 1,
 			"toolbarLayout:divider", True,
+			"label", "",
+
+		],
+
+		"in.deep" : [
+
+			"description",
+			"""
+			TODO
+			""",
+
+			"plugValueWidget:type", "GafferImageUI.ImageViewUI._DeepInfoWidget",
+			"toolbarLayout:index", -3,
 			"label", "",
 
 		],
@@ -505,3 +522,45 @@ class _StateWidget( GafferUI.Widget ) :
 		paused = self.__imageGadget.getPaused()
 		self.__button.setImage( "viewPause.png" if not paused else "viewPaused.png" )
 		self.__busyWidget.setBusy( self.__imageGadget.state() == self.__imageGadget.State.Running )
+
+class _DeepInfoButton( GafferUI.Widget ) :
+
+	def __init__( self, imageView, **kw ) :
+
+		self.__button = GafferUI.Button( hasFrame = False )
+		GafferUI.Widget.__init__( self, self.__button, **kw )
+
+		self.__imageView = imageView
+
+		#self.__imageGadget = imageView.viewportGadget().getPrimaryChild().inPlug()["deep"]
+
+		self.__button.clickedSignal().connect( Gaffer.WeakMethod( self.__buttonClick ), scoped = False )
+
+		self.__update()
+		self.__deepInfoWindow = None
+
+	def __buttonClick( self, button ) :
+		print "IMAGEVIEW: ", type( self.__imageView )
+		if self.__imageView.parent():
+			print "P: ", self.__imageView.parent()
+			print "PP: ", self.__imageView.parent().parent()
+
+		if self.__deepInfoWindow is None :
+
+			self.__deepInfoWindow = GafferUI.Window( title = "Deep Info" )
+			with self.__deepInfoWindow :
+				with GafferUI.ListContainer() :
+					with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None, borderWidth = 4 ) :
+						self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
+
+			self.ancestor( GafferUI.Window ).addChildWindow( self.__deepInfoWindow )
+
+			self.__deepInfoWindow.resizeToFitChild()
+
+		self.__deepInfoWindow.setVisible( True )
+
+	def __update( self ) :
+
+		#paused = self.__imageGadget.getPaused()
+		deep = True
+		self.__button.setImage( "gammaOn.png" if deep else "minus.png" )

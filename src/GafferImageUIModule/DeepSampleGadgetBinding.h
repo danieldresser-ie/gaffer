@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2012, John Haddon. All rights reserved.
+//  Copyright (c) 2019, Image Engine Design Inc. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -34,22 +34,14 @@
 //
 //////////////////////////////////////////////////////////////////////////
 
-#ifndef GAFFERIMAGEUI_TYPEIDS_H
-#define GAFFERIMAGEUI_TYPEIDS_H
+#ifndef GAFFERIMAGEUIMODULE_DEEPSAMPLEGADGETBINDING_H
+#define GAFFERIMAGEUIMODULE_DEEPSAMPLEGADGETBINDING_H
 
-namespace GafferImageUI
+namespace GafferImageUIModule
 {
 
-enum TypeId
-{
-	ImageViewTypeId = 110850,
-	ImageGadgetTypeId = 110851,
-	V2fContextVariableTypeId = 110852,
-	DeepSampleGadgetTypeId = 110853,
+void bindDeepSampleGadget();
 
-	LastTypeId = 110899
-};
+} // namespace GafferImageUIModule
 
-} // namespace GafferImageUI
-
-#endif // GAFFERIMAGEUI_TYPEIDS_H
+#endif // GAFFERIMAGEUIMODULE_DEEPSAMPLEGADGETBINDING_H

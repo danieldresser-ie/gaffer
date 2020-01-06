@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2018, Matti Gruner. All rights reserved.
+//  Copyright (c) 2019, Image Engine Design Inc. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -34,7 +34,7 @@
 //
 //////////////////////////////////////////////////////////////////////////
 
-#include "GafferUI/AnimationGadget.h"
+#include "GafferImageUI/DeepSampleGadget.h"
 
 #include "GafferUI/Pointer.h"
 #include "GafferUI/Style.h"
@@ -59,13 +59,14 @@
 
 using namespace Gaffer;
 using namespace GafferUI;
+using namespace GafferImageUI;
 using namespace Imath;
 
 namespace
 {
 
 /// Aliases that define the intended use of each
-/// Gadget::Layer by the AnimationGadget components.
+/// Gadget::Layer by the DeepSampleGadget components.
 namespace AnimationLayer
 {
 	constexpr Gadget::Layer Grid = Gadget::Layer::Back;
@@ -212,64 +213,26 @@ void computeGrid( const ViewportGadget *viewportGadget, float fps, AxisDefinitio
 	}
 }
 
-std::string drivenPlugName( const Animation::CurvePlug *curvePlug )
-{
-	const FloatPlug *out = curvePlug->outPlug();
-
-	auto outputs = out->outputs();
-	if( outputs.empty() )
-	{
-		return "";
-	}
-
-	const ScriptNode *scriptNode = out->ancestor<ScriptNode>();
-	if( !scriptNode )
-	{
-		return "";
-	}
-
-	// Assuming that we only drive a single plug with this curve
-	return outputs.front()->relativeName( scriptNode );
-}
-
 } // namespace
 
 //////////////////////////////////////////////////////////////////////////
-// AnimationGadget implementation
+// DeepSampleGadget implementation
 //////////////////////////////////////////////////////////////////////////
 
-GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( AnimationGadget );
+GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( GafferImageUI::DeepSampleGadget );
 
-AnimationGadget::AnimationGadget()
-	: m_context( nullptr ), m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_dragStartPosition( 0 ), m_lastDragPosition( 0 ), m_dragMode( DragMode::None ), m_moveAxis( MoveAxis::Both ), m_snappingClosestKey( nullptr ), m_highlightedKey( nullptr ), m_highlightedCurve( nullptr ), m_mergeGroupId( 0 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none )
+DeepSampleGadget::DeepSampleGadget()
+	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none )
 {
-	buttonPressSignal().connect( boost::bind( &AnimationGadget::buttonPress, this, ::_1,  ::_2 ) );
-	buttonReleaseSignal().connect( boost::bind( &AnimationGadget::buttonRelease, this, ::_1,  ::_2 ) );
-
-	keyPressSignal().connect( boost::bind( &AnimationGadget::keyPress, this, ::_1,  ::_2 ) );
-	keyReleaseSignal().connect( boost::bind( &AnimationGadget::keyRelease, this, ::_1,  ::_2 ) );
-
-	mouseMoveSignal().connect( boost::bind( &AnimationGadget::mouseMove, this, ::_1, ::_2 ) );
-	dragBeginSignal().connect( boost::bind( &AnimationGadget::dragBegin, this, ::_1, ::_2 ) );
-	dragEnterSignal().connect( boost::bind( &AnimationGadget::dragEnter, this, ::_1, ::_2 ) );
-	dragMoveSignal().connect( boost::bind( &AnimationGadget::dragMove, this, ::_1, ::_2 ) );
-	dragEndSignal().connect( boost::bind( &AnimationGadget::dragEnd, this, ::_1, ::_2 ) );
-	leaveSignal().connect( boost::bind( &AnimationGadget::leave, this ) );
-
-	m_editablePlugs->memberAcceptanceSignal().connect( boost::bind( &AnimationGadget::plugSetAcceptor, this, ::_1, ::_2 ) );
-	m_editablePlugs->memberAddedSignal().connect( boost::bind( &AnimationGadget::editablePlugAdded, this, ::_1, ::_2 ) );
-	m_editablePlugs->memberRemovedSignal().connect( boost::bind( &AnimationGadget::editablePlugRemoved, this, ::_1, ::_2 ) );
-
-	m_visiblePlugs->memberAcceptanceSignal().connect( boost::bind( &AnimationGadget::plugSetAcceptor, this, ::_1, ::_2 ) );
-	m_visiblePlugs->memberAddedSignal().connect( boost::bind( &AnimationGadget::visiblePlugAdded, this, ::_1, ::_2 ) );
-	m_visiblePlugs->memberRemovedSignal().connect( boost::bind( &AnimationGadget::visiblePlugRemoved, this, ::_1, ::_2 ) );
+	keyPressSignal().connect( boost::bind( &DeepSampleGadget::keyPress, this, ::_1,  ::_2 ) );
+	requestRender();
 }
 
-AnimationGadget::~AnimationGadget()
+DeepSampleGadget::~DeepSampleGadget()
 {
 }
 
-void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
+void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 {
 	Gadget::doRenderLayer( layer, style );
 
@@ -286,7 +249,7 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 	case AnimationLayer::Grid :
 	{
 		AxisDefinition xAxis, yAxis;
-		computeGrid( viewportGadget, m_context->getFramesPerSecond(), xAxis, yAxis );
+		computeGrid( viewportGadget, 0.1, xAxis, yAxis );
 
 		Imath::Color4f axesColor( 60.0 / 255, 60.0 / 255, 60.0 / 255, 1.0f );
 
@@ -312,11 +275,11 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	case AnimationLayer::Curves :
 	{
-		for( const auto &member : *m_visiblePlugs )
+		/*for( const auto &member : *m_visiblePlugs )
 		{
 			const Animation::CurvePlug *curvePlug = IECore::runTimeCast<const Animation::CurvePlug>( &member );
-			renderCurve( curvePlug, style );
-		}
+			//renderCurve( curvePlug, style );
+		}*/
 
 		break;
 	}
@@ -325,15 +288,9 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 	{
 		Imath::Color3f black( 0, 0, 0 );
 
-		bool selecting = m_dragMode == DragMode::Selecting;
 		Box2f b;
-		if( selecting )
-		{
-			b.extendBy( V2f( m_dragStartPosition.x, m_dragStartPosition.y ) );
-			b.extendBy( V2f( m_lastDragPosition.x, m_lastDragPosition.y ) );
-		}
 
-		for( auto &runtimeTyped : *m_editablePlugs )
+		/*for( auto &runtimeTyped : *m_editablePlugs )
 		{
 			Animation::CurvePlug *curvePlug = IECore::runTimeCast<Animation::CurvePlug>( &runtimeTyped );
 
@@ -344,21 +301,14 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 				V2f keyPosition = viewportGadget->worldToRasterSpace( V3f( key.getTime(), key.getValue(), 0 ) );
 				style->renderAnimationKey( keyPosition, isSelected || isHighlighted ? Style::HighlightedState : Style::NormalState, isHighlighted ? 3.0 : 2.0, &black );
 			}
-		}
+		}*/
 		break;
 	}
 
 	case AnimationLayer::Axes :
 	{
 		AxisDefinition xAxis, yAxis;
-		computeGrid( viewportGadget, m_context->getFramesPerSecond(), xAxis, yAxis );
-
-		if( m_frameIndicatorPreviewFrame )
-		{
-			renderFrameIndicator( m_frameIndicatorPreviewFrame.get(), style, /* preview = */ true );
-		}
-
-		renderFrameIndicator( static_cast<int>( m_context->getFrame() ), style );
+		computeGrid( viewportGadget, 1, xAxis, yAxis );
 
 		// draw axes on top of everything.
 		Imath::Color4f axesColor( 60.0 / 255, 60.0 / 255, 60.0 / 255, 1.0 );
@@ -416,14 +366,6 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	case AnimationLayer::Overlay :
 	{
-		if( m_dragMode == DragMode::Selecting )
-		{
-			Box2f b;
-			b.extendBy( viewportGadget->gadgetToRasterSpace( V3f( m_dragStartPosition.x, m_dragStartPosition.y, 0 ), this ) );
-			b.extendBy( viewportGadget->gadgetToRasterSpace( V3f( m_lastDragPosition.x, m_lastDragPosition.y, 0 ), this ) );
-			style->renderSelectionBox( b );
-		}
-
 		if( m_keyPreview )
 		{
 			V2f keyPosition = viewportGadget->worldToRasterSpace( m_keyPreviewLocation );
@@ -439,213 +381,34 @@ void AnimationGadget::doRenderLayer( Layer layer, const Style *style ) const
 	}
 }
 
-Gaffer::StandardSet *AnimationGadget::visiblePlugs()
-{
-	return m_visiblePlugs.get();
-}
-
-const Gaffer::StandardSet *AnimationGadget::visiblePlugs() const
-{
-	return m_visiblePlugs.get();
-}
-
-Gaffer::StandardSet *AnimationGadget::editablePlugs()
-{
-	return m_editablePlugs.get();
-}
-
-const Gaffer::StandardSet *AnimationGadget::editablePlugs() const
-{
-	return m_editablePlugs.get();
-}
-
-void AnimationGadget::plugDirtied( Gaffer::Plug *plug )
+void DeepSampleGadget::plugDirtied( Gaffer::Plug *plug )
 {
 	requestRender();
 }
 
-std::string AnimationGadget::getToolTip( const IECore::LineSegment3f &line ) const
+std::string DeepSampleGadget::getToolTip( const IECore::LineSegment3f &line ) const
 {
-	if( const Animation::ConstKeyPtr key = keyAt( line ) )
+	if( int key = keyAt( line ) >= 0 )
 	{
-		return boost::str( boost::format( "%f -> %f" ) % key->getTime() % key->getValue() );
+		//return boost::str( boost::format( "%f -> %f" ) % key->getTime() % key->getValue() );
+		return boost::str( boost::format( "%i" ) % key );
 	}
-	else if( Animation::ConstCurvePlugPtr curvePlug = curveAt( line ) )
+
+	IECore::InternedString curveName = curveAt( line );
+	if( curveName.string().size() )
 	{
-		return drivenPlugName( curvePlug.get() );
+		return curveName.string();
 	}
 
 	return "";
 }
 
-void AnimationGadget::insertKeyframe( Animation::CurvePlug *curvePlug, float time )
-{
-	ScriptNode *scriptNode = curvePlug->ancestor<ScriptNode>();
-	UndoScope undoEnabled( scriptNode, UndoScope::Enabled, undoMergeGroup() );
-
-	float snappedTime = snapTimeToFrame( m_context->getFramesPerSecond(), time );
-
-	if( !curvePlug->closestKey( snappedTime, 0.004 ) ) // \todo: use proper ticks
-	{
-		float value = curvePlug->evaluate( snappedTime );
-		curvePlug->addKey( new Animation::Key( snappedTime, value ) );
-	}
-}
-
-void AnimationGadget::insertKeyframes()
-{
-	if( m_editablePlugs->size() == 0 )
-	{
-		return;
-	}
-
-	for( auto &runtimeTyped : *m_editablePlugs )
-	{
-		insertKeyframe( IECore::runTimeCast<Animation::CurvePlug>( &runtimeTyped ), m_context->getTime() );
-	}
-}
-
-void AnimationGadget::removeKeyframes()
-{
-	if( m_selectedKeys.empty() )
-	{
-		return;
-	}
-
-	auto first = m_editablePlugs->member( 0 );
-	ScriptNode *scriptNode = IECore::runTimeCast<Animation::CurvePlug>( first )->ancestor<ScriptNode>();
-	UndoScope undoEnabled( scriptNode, UndoScope::Enabled, undoMergeGroup() );
-
-	for( const auto &keyPtr : m_selectedKeys )
-	{
-		Animation::CurvePlug *parent = keyPtr->parent();
-		if( parent )
-		{
-			parent->removeKey( keyPtr );
-		}
-	}
-
-	m_selectedKeys.clear();
-}
-
-void AnimationGadget::moveKeyframes( const V2f currentDragPosition )
-{
-	if( m_selectedKeys.empty() )
-	{
-		return;
-	}
-
-	auto first = m_editablePlugs->member( 0 );
-	ScriptNode *scriptNode = IECore::runTimeCast<Animation::CurvePlug>( first )->ancestor<ScriptNode>();
-	UndoScope undoEnabled( scriptNode, UndoScope::Enabled, undoMergeGroup() );
-
-	V2f globalOffset = currentDragPosition - m_dragStartPosition;
-
-	// Compute snapping offset used for all keys
-	if( m_moveAxis != MoveAxis::Y )
-	{
-		// Update offset to make sure that the closest key ends up on an integer frame
-		float originalTime = m_originalKeyValues[m_snappingClosestKey.get()].first;
-		globalOffset.x = snapTimeToFrame( m_context->getFramesPerSecond(), originalTime + globalOffset.x ) - originalTime;
-	}
-
-	// When moving selected plugs, we need to make sure we're not temporarily
-	// dragging a plug over another selected plug (which would then lose its
-	// parent). To avoid that, we process Keys in an order such that we free up
-	// frames first.
-	std::vector<Animation::Key *> selectedKeys;
-	selectedKeys.reserve( m_selectedKeys.size() );
-	for( auto it = m_selectedKeys.begin(); it != m_selectedKeys.end(); ++it )
-	{
-		selectedKeys.push_back( it->get() );
-	}
-	const bool reverseOrder = globalOffset.x >= 0;
-	std::sort(
-		selectedKeys.begin(), selectedKeys.end(),
-		[reverseOrder]( const Animation::Key *lhs, const Animation::Key *rhs ) {
-			if( reverseOrder )
-			{
-				return rhs->getTime() < lhs->getTime();
-			}
-			return lhs->getTime() < rhs->getTime();
-		}
-	);
-
-	for( auto it = selectedKeys.begin(); it != selectedKeys.end(); ++it )
-	{
-		Animation::Key *key = *it;
-
-		if( m_moveAxis != MoveAxis::X )
-		{
-			key->setValue( m_originalKeyValues[key].second + globalOffset.y );
-		}
-
-		// Compute new time and make sure that we eliminate floating point precision
-		// issues that could cause keys landing a little bit off integer frames for
-		// keys that are meant to snap to frames.
-		float newTime = m_originalKeyValues[key].first + globalOffset.x;
-		newTime = snapTimeToFrame( m_context->getFramesPerSecond(), newTime, 0.004 );
-
-		if( m_moveAxis != MoveAxis::Y && newTime != key->getTime() )
-		{
-			// If a key already exists on the new frame, we overwrite it, but
-			// store it for reinserting should the drag continue and the frame
-			// free up again.
-			Animation::KeyPtr clashingKey = key->parent()->closestKey( newTime, 0.004 );
-			if( clashingKey && clashingKey != key )
-			{
-				m_overwrittenKeys.emplace( clashingKey, clashingKey->parent() );
-				clashingKey->parent()->removeKey( clashingKey );
-			}
-
-			key->setTime( newTime );
-		}
-	}
-
-	// Check if any of the previously overwritten keys can be inserted back into the curve
-	for( auto it = m_overwrittenKeys.begin(); it != m_overwrittenKeys.end(); )
-	{
-		Animation::KeyPtr clashingKey = it->second->closestKey( it->first->getTime(), 0.004 ); // \todo: use proper ticks
-
-		if( clashingKey )
-		{
-			++it;
-		}
-		else
-		{
-			it->second->addKey( it->first );
-			it = m_overwrittenKeys.erase( it );
-		}
-	}
-}
-
-void AnimationGadget::frame()
+void DeepSampleGadget::frame()
 {
 	Box3f b;
 
-	// trying to frame to selected keys first
-	if( !m_selectedKeys.empty() )
-	{
-		for( const auto &key : m_selectedKeys )
-		{
-			b.extendBy( V3f( key->getTime(), key->getValue(), 0 ) );
-		}
-	}
-	// trying to frame to editable curves next
-	else if( !( m_editablePlugs->size() == 0 ) )
-	{
-		for( const auto &runtimeTyped : *m_editablePlugs )
-		{
-			const Animation::CurvePlug *curvePlug = IECore::runTimeCast<const Animation::CurvePlug>( &runtimeTyped );
-
-			for( const auto &key : *curvePlug )
- 			{
-				b.extendBy( V3f( key.getTime(), key.getValue(), 0 ) );
-			}
-		}
-	}
 	// trying to frame to visible curves next
-	else if( !( m_visiblePlugs->size() == 0 ) )
+	/*if( !( m_visiblePlugs->size() == 0 ) )
 	{
 		for( const auto &runtimeTyped : *m_visiblePlugs )
 		{
@@ -674,474 +437,23 @@ void AnimationGadget::frame()
 	ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
 	// \todo: we might have to compensate for the axis we're drawing
 	viewportGadget->frame( bound );
+	*/
 
 	return;
 }
 
-bool AnimationGadget::buttonPress( GadgetPtr gadget, const ButtonEvent &event )
+bool DeepSampleGadget::keyPress( GadgetPtr gadget, const KeyEvent &event )
 {
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	if( event.button == ButtonEvent::Left && m_frameIndicatorPreviewFrame )
-	{
-		m_context->setFrame( m_frameIndicatorPreviewFrame.get() );
-		m_frameIndicatorPreviewFrame = boost::none;
-	}
-
-	return true;
-}
-
-bool AnimationGadget::buttonRelease( GadgetPtr gadget, const ButtonEvent &event )
-{
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	if( event.button != ButtonEvent::Left )
-	{
-		return false;
-	}
-
-	if( Animation::KeyPtr key = keyAt( event.line ) )
-	{
-		bool shiftHeld = event.modifiers & DragDropEvent::Shift;
-
-		// replacing selection
-		if( !shiftHeld )
-		{
-			m_selectedKeys.clear();
-			m_selectedKeys.insert( key );
-		}
-		else
-		{
-			// toggle selection
-			auto it = m_selectedKeys.find( key );
-			if( it != m_selectedKeys.end() )
-			{
-				m_selectedKeys.erase( key );
-			}
-			else
-			{
-				m_selectedKeys.insert( key );
-			}
-		}
-	}
-	else if( Animation::CurvePlugPtr curvePlug = curveAt( event.line ) )
-	{
-		bool controlHeld = event.modifiers & DragDropEvent::Control;
-
-		if( controlHeld ) // insert a keyframe
-		{
-			insertKeyframe( curvePlug.get(), i.x );
-			m_keyPreview = false;
-		}
-		else
-		{
-			if( m_editablePlugs->contains( curvePlug.get() ) ) // select all its keys
-			{
-				for( Animation::Key &key : *curvePlug )
-				{
-					m_selectedKeys.emplace( &key );
-				}
-			}
-			else // try to make it editable
-			{
-				bool shiftHeld = event.modifiers & DragDropEvent::Shift;
-				if( !shiftHeld )
-				{
-					m_editablePlugs->clear();
-				}
-
-				m_editablePlugs->add( curvePlug.get() );
-			}
-		}
-	}
-	else // background
-	{
-		m_selectedKeys.clear();
-	}
-
-	requestRender();
-
-	return true;
-}
-
-IECore::RunTimeTypedPtr AnimationGadget::dragBegin( GadgetPtr gadget, const DragDropEvent &event )
-{
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return nullptr;
-	}
-
-	ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-
-	switch ( event.buttons )
-	{
-
-	case ButtonEvent::Left :
-	{
-		Imath::V2f mouseRasterPosition = viewportGadget->worldToRasterSpace( i );
-
-		if( Animation::KeyPtr key = keyAt( event.line ) )
-		{
-			// If dragging an unselected Key, the assumption is that only this Key
-			// should be moved. On the other hand, if the key was selected, we will
-			// move the entire selection.
-			if( m_selectedKeys.count( key ) == 0 )
-			{
-				m_selectedKeys.clear();
-			}
-
-			m_selectedKeys.insert( key );
-			m_dragMode = DragMode::Moving;
-		}
-		else if( ( onTimeAxis( mouseRasterPosition.y ) && !onValueAxis( mouseRasterPosition.x ) ) || frameIndicatorUnderMouse( event.line ) )
-		{
-			m_dragMode = DragMode::MoveFrame;
-			m_frameIndicatorPreviewFrame = boost::none;
-		}
-		else // treating everything else as background and start selection
-		{
-			m_dragMode = DragMode::Selecting;
-		}
-
-		break;
-	}
-
-	case ButtonEvent::Middle :
-	{
-		m_dragMode = DragMode::Moving;
-		break;
-	}
-
-	default:
-	{
-	}
-
-	}
-
-	bool shiftHeld = event.modifiers & DragDropEvent::Shift;
-
-	// There's different ways to initiate dragging keys, but we need to do some
-	// additional work for all of them.
-	if( m_dragMode == DragMode::Moving )
-	{
-		if( shiftHeld )
-		{
-			m_moveAxis = MoveAxis::Undefined;
-		}
-
-		m_snappingClosestKey = nullptr;
-
-		// Clean up selection so that we operate on valid Keys only. Also, store
-		// current positions so that updating during drag can be done without many
-		// small incremental updates.
-		for( auto it = m_selectedKeys.begin(); it != m_selectedKeys.end(); )
-		{
-			auto key = (*it);
-
-			if( !key->parent() )
-			{
-				it = m_selectedKeys.erase( it );
-				continue;
-			}
-			else
-			{
-				++it;
-			}
-
-			m_originalKeyValues[key.get()] = std::make_pair( key->getTime(), key->getValue() );
-		}
-	}
-
-	if( m_dragMode == DragMode::Selecting )
-	{
-		if( !shiftHeld )
-		{
-			m_selectedKeys.clear();
-		}
-	}
-
-	if( m_dragMode == DragMode::MoveFrame )
-	{
-		viewportGadget->setDragTracking( ViewportGadget::DragTracking::XDragTracking );
-	}
-
-	m_dragStartPosition = m_lastDragPosition = V2f( i.x, i.y );
-
-	requestRender();
-	return IECore::NullObject::defaultNullObject();
-}
-
-bool AnimationGadget::mouseMove( GadgetPtr gadget, const ButtonEvent &event )
-{
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-	Imath::V2f mouseRasterPosition = viewportGadget->worldToRasterSpace( i );
-
-	if( onTimeAxis( mouseRasterPosition.y ) && !onValueAxis( mouseRasterPosition.x ) )
-	{
-		m_frameIndicatorPreviewFrame = static_cast<int>( round( timeToFrame( m_context->getFramesPerSecond(), i.x ) ) );
-	}
-	else
-	{
-		m_frameIndicatorPreviewFrame = boost::none;
-	}
-
-	if( Animation::KeyPtr key = keyAt( event.line ) )
-	{
-		m_highlightedKey = key;
-		m_highlightedCurve = nullptr;
-	}
-	else
-	{
-		if( m_highlightedKey )
-		{
-			m_highlightedKey = nullptr;
-		}
-
-		if( Animation::CurvePlugPtr curvePlug = curveAt( event.line ) )
-		{
-			m_highlightedCurve = curvePlug;
-
-			bool controlHeld = event.modifiers & DragDropEvent::Control;
-			if( controlHeld )
-			{
-				m_keyPreview = true;
-			}
-		}
-		else
-		{
-			if( m_highlightedCurve )
-			{
-				m_highlightedCurve = nullptr;
-				m_keyPreview = false;
-			}
-		}
-	}
-
-	updateKeyPreviewLocation( m_highlightedCurve.get(), i.x );
-	requestRender();
-
-	return true;
-}
-
-bool AnimationGadget::dragEnter( GadgetPtr gadget, const DragDropEvent &event )
-{
-	if( event.sourceGadget != this )
-	{
-		return false;
-	}
-
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	m_lastDragPosition = V2f( i.x, i.y );
-	requestRender();
-	return true;
-}
-
-bool AnimationGadget::dragMove( GadgetPtr gadget, const DragDropEvent &event )
-{
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	if( m_dragMode == DragMode::Moving && !m_selectedKeys.empty() )
-	{
-
-		if( m_moveAxis == MoveAxis::Undefined )
-		{
-			ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-
-			if( std::abs( i.x - m_dragStartPosition.x ) >= std::abs ( i.y - m_dragStartPosition.y ) )
-			{
-				m_moveAxis = MoveAxis::X;
-				Pointer::setCurrent( "moveHorizontally" );
-				viewportGadget->setDragTracking( ViewportGadget::DragTracking::XDragTracking );
-			}
-			else
-			{
-				m_moveAxis = MoveAxis::Y;
-				Pointer::setCurrent( "moveVertically" );
-				viewportGadget->setDragTracking( ViewportGadget::DragTracking::YDragTracking );
-			}
-		}
-
-		if( m_moveAxis != MoveAxis::Y && !m_snappingClosestKey )
-		{
-			// determine position of selected keyframe that is closest to pointer
-			// \todo: move into separate function, ideally consolidate with Animation::CurvePlug::closestKey?
-			auto rightIt = m_selectedKeys.lower_bound( Animation::KeyPtr( new Animation::Key(i.x, 0) ) );
-
-			if( rightIt == m_selectedKeys.end() )
-			{
-				m_snappingClosestKey = *m_selectedKeys.rbegin();
-			}
-			else if( (*rightIt)->getTime() == i.x || rightIt == m_selectedKeys.begin() )
-			{
-				m_snappingClosestKey = *rightIt;
-			}
-			else
-			{
-				auto leftIt = std::prev( rightIt );
-				m_snappingClosestKey = std::abs( i.x - (*leftIt)->getTime() ) < std::abs( i.x - (*rightIt)->getTime() ) ? *leftIt : *rightIt;
-			}
-		}
-
-		moveKeyframes( V2f( i.x, i.y ) );
-	}
-
-	if( m_dragMode == DragMode::MoveFrame )
-	{
-		m_context->setFrame( round( timeToFrame( m_context->getFramesPerSecond(), i.x ) ) );
-	}
-
-	m_lastDragPosition = V2f( i.x, i.y );
-
-	requestRender();
-	return true;
-}
-
-bool AnimationGadget::dragEnd( GadgetPtr gadget, const DragDropEvent &event )
-{
-	V3f i;
-	if( !event.line.intersect( Plane3f( V3f( 0, 0, 1 ), 0 ), i ) )
-	{
-		return false;
-	}
-
-	switch( m_dragMode )
-	{
-
-	case DragMode::Selecting :
-	{
-
-		Box2f b;
-		b.extendBy( V2f( m_dragStartPosition.x, m_dragStartPosition.y ) );
-		b.extendBy( V2f( m_lastDragPosition.x, m_lastDragPosition.y ) );
-
-		for( auto &member : *m_editablePlugs )
-		{
-			Animation::CurvePlug *curvePlug = IECore::runTimeCast<Animation::CurvePlug>( &member );
-
-			for( Animation::Key &key : *curvePlug )
-			{
-				if( b.intersects( V2f( key.getTime(), key.getValue() ) ) )
-				{
-					m_selectedKeys.emplace( &key );
-				}
-			}
-		}
-
-		break;
-	}
-	case DragMode::Moving :
-	{
-		m_overwrittenKeys.clear();
-		m_originalKeyValues.clear();
-		m_mergeGroupId++;
-		break;
-	}
-
-	default :
-		break;
-
-	}
-
-	ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-	viewportGadget->setDragTracking( ViewportGadget::DragTracking::XDragTracking | ViewportGadget::DragTracking::YDragTracking );
-
-	m_dragMode = DragMode::None;
-	m_moveAxis = MoveAxis::Both;
-	Pointer::setCurrent( "" );
-
-	requestRender();
-
-	return true;
-}
-
-bool AnimationGadget::leave()
-{
-	if( m_frameIndicatorPreviewFrame )
-	{
-		m_frameIndicatorPreviewFrame = boost::none;
-		requestRender();
-	}
-	return true;
-}
-
-bool AnimationGadget::keyPress( GadgetPtr gadget, const KeyEvent &event )
-{
-	if( event.key == "I" )
-	{
-		insertKeyframes();
-		m_mergeGroupId++;
-		requestRender();
-		return true;
-	}
-
 	if( event.key == "F" )
 	{
 		frame();
 		return true;
 	}
 
-	if( event.key == "Control" )
-	{
-		if( m_highlightedCurve )
-		{
-			m_keyPreview = true;
-			requestRender();
-		}
-		return true;
-	}
-
-	if( event.key == "Delete" || event.key == "Backspace" )
-	{
-		removeKeyframes();
-		m_mergeGroupId++;
-		requestRender();
-		return true;
-	}
-
 	return false;
 }
 
-bool AnimationGadget::keyRelease( GadgetPtr gadget, const KeyEvent &event )
-{
-	if( event.key == "Control" )
-	{
-		m_keyPreview = false;
-		requestRender();
-	}
-
-	return false;
-}
-
-std::string AnimationGadget::undoMergeGroup() const
-{
-	return boost::str( boost::format( "AnimationGadget%1%%2%" ) % this % m_mergeGroupId );
-}
-
-bool AnimationGadget::onTimeAxis( int y ) const
+bool DeepSampleGadget::onTimeAxis( int y ) const
 {
 	const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
 	Imath::V2i resolution = viewportGadget->getViewport();
@@ -1149,19 +461,16 @@ bool AnimationGadget::onTimeAxis( int y ) const
 	return y >= resolution.y - m_yMargin;
 }
 
-bool AnimationGadget::onValueAxis( int x ) const
+bool DeepSampleGadget::onValueAxis( int x ) const
 {
 	return x <= m_xMargin;
 }
 
-Animation::KeyPtr AnimationGadget::keyAt( const IECore::LineSegment3f &position )
-{
-	Animation::ConstKeyPtr k = const_cast<const AnimationGadget*>( this )->keyAt( position );
-	return const_cast<Animation::Key*>( k.get() );
-}
 
-Animation::ConstKeyPtr AnimationGadget::keyAt( const IECore::LineSegment3f &position ) const
+int DeepSampleGadget::keyAt( const IECore::LineSegment3f &position ) const
 {
+	return -1;
+	/*
 	std::vector<IECoreGL::HitRecord> selection;
 	std::vector<Animation::ConstKeyPtr> keys;
 
@@ -1195,17 +504,12 @@ Animation::ConstKeyPtr AnimationGadget::keyAt( const IECore::LineSegment3f &posi
 	}
 
 	return keys[selection[0].name-1];
+	*/
 }
 
-Animation::CurvePlugPtr AnimationGadget::curveAt( const IECore::LineSegment3f &position )
+IECore::InternedString DeepSampleGadget::curveAt( const IECore::LineSegment3f &position ) const
 {
-	Animation::ConstCurvePlugPtr c = const_cast<const AnimationGadget*>( this )->curveAt( position );
-	return const_cast<Animation::CurvePlug *>( c.get() );
-}
-
-Animation::ConstCurvePlugPtr AnimationGadget::curveAt( const IECore::LineSegment3f &position ) const
-{
-	std::vector<IECoreGL::HitRecord> selection;
+	/*std::vector<IECoreGL::HitRecord> selection;
 	std::vector<Animation::ConstCurvePlugPtr> curves;
 
 	{
@@ -1229,68 +533,18 @@ Animation::ConstCurvePlugPtr AnimationGadget::curveAt( const IECore::LineSegment
 		return nullptr;
 	}
 
-	return curves[selection[0].name-1];
+	return curves[selection[0].name-1];*/
+	return "";
 }
 
-bool AnimationGadget::frameIndicatorUnderMouse( const IECore::LineSegment3f &position ) const
+void DeepSampleGadget::setDeepSamples( IECore::ConstCompoundDataPtr deepSamples )
 {
-	std::vector<IECoreGL::HitRecord> hits;
-
-	{
-		ViewportGadget::SelectionScope selectionScope( position, this, hits, IECoreGL::Selector::IDRender );
-		IECoreGL::Selector *selector = IECoreGL::Selector::currentSelector();
-		const Style *style = this->style();
-		style->bind();
-		GLuint name = 1; // Name 0 is invalid, so we start at 1
-
-		selector->loadName( name );
-
-		renderFrameIndicator( static_cast<int>( m_context->getFrame() ), style, /* preview = */ false, /* lineWidth = */ 4.0 );
-	}
-
-	return !hits.empty();
-}
-
-void AnimationGadget::setContext( Context *context )
-{
-	m_context = context;
+	m_deepSampleDicts = deepSamples;
 	requestRender();
 }
 
-Context *AnimationGadget::getContext() const
-{
-	return m_context;
-}
 
-void AnimationGadget::visiblePlugAdded( Gaffer::Set *set, IECore::RunTimeTyped *member )
-{
-	Animation::CurvePlug *curvePlug = IECore::runTimeCast<Animation::CurvePlug>( member );
-
-	// \todo: should only connect if we don't monitor this node yet
-	if( Node *node = curvePlug->node() )
-	{
-		node->plugDirtiedSignal().connect( boost::bind( &AnimationGadget::plugDirtied, this, ::_1 ) );
-	}
-
-	requestRender();
-}
-
-void AnimationGadget::visiblePlugRemoved( Gaffer::Set *set, IECore::RunTimeTyped *member )
-{
-	requestRender();
-}
-
-void AnimationGadget::editablePlugAdded( Gaffer::Set *set, IECore::RunTimeTyped *member )
-{
-	requestRender();
-}
-
-void AnimationGadget::editablePlugRemoved( Gaffer::Set *set, IECore::RunTimeTyped *member )
-{
-	requestRender();
-}
-
-void AnimationGadget::renderCurve( const Animation::CurvePlug *curvePlug, const Style *style ) const
+/*void DeepSampleGadget::renderCurve( const Animation::CurvePlug *curvePlug, const Style *style ) const
 {
 	const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
 	ViewportGadget::RasterScope rasterScope( viewportGadget );
@@ -1313,7 +567,7 @@ void AnimationGadget::renderCurve( const Animation::CurvePlug *curvePlug, const 
 
 			if( key.getType() == Gaffer::Animation::Linear )
 			{
-				style->renderAnimationCurve( previousKeyPosition, keyPosition, /* inTangent */ V2f( 0 ), /* outTangent */ V2f( 0 ), isHighlighted ? Style::HighlightedState : Style::NormalState, &color3 );
+				style->renderAnimationCurve( previousKeyPosition, keyPosition, /inTangent/   V2f( 0 ), /outTangent/   V2f( 0 ), isHighlighted ? Style::HighlightedState : Style::NormalState, &color3 );
 			}
 			else if( key.getType() == Gaffer::Animation::Step )
 			{
@@ -1328,53 +582,4 @@ void AnimationGadget::renderCurve( const Animation::CurvePlug *curvePlug, const 
 		previousKeyPosition = keyPosition;
 	}
 }
-
-void AnimationGadget::renderFrameIndicator( int frame, const Style *style, bool preview, float lineWidth ) const
-{
-	const ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-	Imath::V2i resolution = viewportGadget->getViewport();
-	ViewportGadget::RasterScope rasterScope( viewportGadget );
-
-	const Imath::Color4f frameIndicatorColor = preview ? Imath::Color4f( 120 / 255.0f, 120 / 255.0f, 120 / 255.0f, 1.0f ) : Imath::Color4f( 240 / 255.0, 220 / 255.0, 40 / 255.0, 1.0f );
-
-	int currentFrameRasterPosition = viewportGadget->worldToRasterSpace( V3f( frameToTime<float>( m_context->getFramesPerSecond(), frame ), 0, 0 ) ).x;
-	style->renderLine( IECore::LineSegment3f( V3f( currentFrameRasterPosition, 0, 0 ), V3f( currentFrameRasterPosition, resolution.y, 0 ) ), lineWidth, &frameIndicatorColor );
-
-	if( !preview )
-	{
-		Imath::Color4f frameLabelColor( 60.0 / 255, 60.0 / 255, 60.0 / 255, 1.0 );
-
-		Box3f frameLabelBound = style->textBound( Style::BodyText, std::to_string( frame ) );
-		style->renderSolidRectangle( Box2f( V2f( currentFrameRasterPosition, resolution.y - m_yMargin ), V2f( currentFrameRasterPosition + frameLabelBound.size().x * m_textScale + 2*m_labelPadding, resolution.y - m_yMargin - frameLabelBound.size().y * m_textScale - 2*m_labelPadding ) ) );
-
-		glPushMatrix();
-			glTranslatef( currentFrameRasterPosition + m_labelPadding, resolution.y - m_yMargin - m_labelPadding, 0 ); // \todo
-			glScalef( m_textScale, -m_textScale, m_textScale );
-			style->renderText( Style::BodyText, std::to_string( frame ), Style::NormalState, &frameLabelColor );
-		glPopMatrix();
-	}
-}
-
-bool AnimationGadget::plugSetAcceptor( const Set *s, const Set::Member *m )
-{
-	const Animation::CurvePlug *cp = IECore::runTimeCast<const Animation::CurvePlug>( m );
-	if( !cp )
-	{
-		return false;
-	}
-
-	return true;
-}
-
-void AnimationGadget::updateKeyPreviewLocation( const Gaffer::Animation::CurvePlug *curvePlug, float time )
-{
-	if( !curvePlug )
-	{
-		m_keyPreviewLocation = V3f( 0 );
-		return;
-	}
-
-	float snappedTime = snapTimeToFrame( m_context->getFramesPerSecond(), time );
-	float value = curvePlug->evaluate( snappedTime );
-	m_keyPreviewLocation = V3f( snappedTime, value, 0 );
-}
+*/
