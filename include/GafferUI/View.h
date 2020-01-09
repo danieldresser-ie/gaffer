@@ -41,6 +41,7 @@
 #include "GafferUI/ViewportGadget.h"
 
 #include "Gaffer/Node.h"
+#include "Gaffer/StandardSet.h"
 
 #include "boost/regex.hpp"
 
@@ -101,6 +102,14 @@ class GAFFERUI_API View : public Gaffer::Node
 		virtual void setContext( Gaffer::ContextPtr context );
 		/// Signal emitted by setContext().
 		UnarySignal &contextChangedSignal();
+
+		/// May be overridden by derived classes to perform
+		/// additional work, but they _must_ call the base
+		/// class implementation.
+		virtual const Gaffer::StandardSet *getNodeSet();
+		virtual void setNodeSet( Gaffer::ConstStandardSetPtr nodeSet );
+		/// Signal emitted by setNodeSet().
+		UnarySignal &nodeSetChangedSignal();
 
 		/// Subclasses are responsible for presenting their content in this viewport.
 		ViewportGadget *viewportGadget();
@@ -173,6 +182,10 @@ class GAFFERUI_API View : public Gaffer::Node
 		ViewportGadgetPtr m_viewportGadget;
 		Gaffer::ContextPtr m_context;
 		UnarySignal m_contextChangedSignal;
+
+		Gaffer::ConstStandardSetPtr m_nodeSet;
+		UnarySignal m_nodeSetChangedSignal;
+
 		boost::signals::scoped_connection m_contextChangedConnection;
 
 		typedef std::map<IECore::TypeId, ViewCreator> CreatorMap;

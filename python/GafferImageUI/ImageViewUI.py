@@ -523,6 +523,54 @@ class _StateWidget( GafferUI.Widget ) :
 		self.__button.setImage( "viewPause.png" if not paused else "viewPaused.png" )
 		self.__busyWidget.setBusy( self.__imageGadget.state() == self.__imageGadget.State.Running )
 
+class _DeepInfoWindow( GafferUI.Window ) :
+	def __init__( self, imageView ):
+		GafferUI.Window.__init__( self, title = "Deep Info" )
+		self.__imageView = imageView
+		with self:
+			with GafferUI.ListContainer() :
+				with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None, borderWidth = 4 ) :
+					self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
+
+		self.__plugInputChangedConnection = imageView.inPlug().node().plugInputChangedSignal().connect( Gaffer.WeakMethod( self.__plugInputChanged ) )
+
+		self.__nodeSetChangedConnection = imageView.nodeSetChangedSignal().connect( Gaffer.WeakMethod( self.__nodeSetChanged ) )
+
+		self.__imagePlugs = []
+		self.__updateImagePlugs()
+		self.__nodeSetChanged( imageView.getNodeSet() )
+
+	def __plugInputChanged( self, plug ):
+		if type(plug) != GafferImage.ImagePlug:
+			return
+		print "PLUG: ", plug.fullName()
+		self.__updateImagePlugs()
+
+	def __nodeSetChanged( self, n ):
+		print "NODESET: ", n
+		#self.__memberAddedConnection = n.memberAddedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
+		self.__memberRemovedConnection = n.memberRemovedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
+
+	def __nodeSetUpdated( self, n, a ):
+		print "NODESET UPDATE: ", n, a
+		self.__updateImagePlugs()
+
+	def __updateImagePlugs( self ):
+		imagePlugs = [ self.__imageView.inPlug().getInput() ]
+		imageNodes = self.__imageView.getNodeSet()
+		for i in imageNodes:
+			for plug in Gaffer.Plug.RecursiveOutputRange( i ) :
+				if not plug.getName().startswith( "__" ) :
+					if type( plug ) == GafferImage.ImagePlug:
+						if not plug in imagePlugs:
+							imagePlugs.append( plug )	
+						break
+
+		if imagePlugs != self.__imagePlugs:
+			print "IMAGEPLUGS:", [p.fullName() for p in imagePlugs ]
+			self.__imagePlugs = imagePlugs
+			self.__deepPixelInfo.setImagePlugs( imagePlugs )
+
 class _DeepInfoButton( GafferUI.Widget ) :
 
 	def __init__( self, imageView, **kw ) :
@@ -541,21 +589,14 @@ class _DeepInfoButton( GafferUI.Widget ) :
 
 	def __buttonClick( self, button ) :
 		print "IMAGEVIEW: ", type( self.__imageView )
-		if self.__imageView.parent():
-			print "P: ", self.__imageView.parent()
-			print "PP: ", self.__imageView.parent().parent()
 
 		if self.__deepInfoWindow is None :
 
-			self.__deepInfoWindow = GafferUI.Window( title = "Deep Info" )
-			with self.__deepInfoWindow :
-				with GafferUI.ListContainer() :
-					with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None, borderWidth = 4 ) :
-						self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
+			self.__deepInfoWindow = _DeepInfoWindow( self.__imageView )
 
 			self.ancestor( GafferUI.Window ).addChildWindow( self.__deepInfoWindow )
 
-			self.__deepInfoWindow.resizeToFitChild()
+			#self.__deepInfoWindow.resizeToFitChild()
 
 		self.__deepInfoWindow.setVisible( True )
 

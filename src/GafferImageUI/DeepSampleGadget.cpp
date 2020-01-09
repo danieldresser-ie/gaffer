@@ -290,6 +290,65 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 		Box2f b;
 
+		for( auto const &imageData : m_deepSampleDicts->readable() )
+		{
+			const IECore::CompoundData *image = IECore::runTimeCast< IECore::CompoundData >( imageData.second.get() );
+
+			const IECore::FloatVectorData *zData = image->member<IECore::FloatVectorData>( "Z" );
+			const IECore::FloatVectorData *zBackData = image->member<IECore::FloatVectorData>( "ZBack" );
+			const IECore::FloatVectorData *aData = image->member<IECore::FloatVectorData>( "A" );
+
+			if( !zData )
+			{
+				continue;
+			}
+
+			if( !zBackData )
+			{
+				zBackData = zData;
+			}
+
+			for( auto const &channelData : image->readable() )
+			{
+				if( channelData.first == "Z" || channelData.first == "ZBack" )
+				{
+					continue;
+				}
+				const IECore::FloatVectorData *channel = IECore::runTimeCast< IECore::FloatVectorData >( channelData.second.get() );
+			
+					
+				Color3f c( 1.0 );
+				if( channelData.first == "R" )
+				{
+					c = Color3f( 1.0f, 0.0f, 0.0f );
+				}
+				else if( channelData.first == "G" )
+				{
+					c = Color3f( 0.0f, 1.0f, 0.0f );
+				}
+				else if( channelData.first == "B" )
+				{
+					c = Color3f( 0.0f, 0.0f, 1.0f );
+				}
+				V2f size( 2.0f );
+
+				IECoreGL::glColor( c );
+				float accum = 0;
+				float accumAlpha = 0;
+				for( unsigned int i = 0; i < channel->readable().size(); i++ )
+				{
+					V2f startPosition = viewportGadget->worldToRasterSpace( V3f( zData->readable()[i], accum, 0 ) );
+					accum += channel->readable()[i] - channel->readable()[i] * accumAlpha;
+					if( aData )
+					{
+						accumAlpha += aData->readable()[i] - aData->readable()[i] * accumAlpha;
+					}
+					V2f endPosition = viewportGadget->worldToRasterSpace( V3f( zBackData->readable()[i], accum, 0 ) );
+					style->renderSolidRectangle( Box2f( startPosition - size, startPosition + size ) );
+					style->renderSolidRectangle( Box2f( endPosition - size, endPosition + size ) );
+				}
+			}
+		}
 		/*for( auto &runtimeTyped : *m_editablePlugs )
 		{
 			Animation::CurvePlug *curvePlug = IECore::runTimeCast<Animation::CurvePlug>( &runtimeTyped );

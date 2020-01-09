@@ -90,6 +90,27 @@ View::UnarySignal &View::contextChangedSignal()
 	return m_contextChangedSignal;
 }
 
+const Gaffer::StandardSet *View::getNodeSet()
+{
+	return m_nodeSet.get();
+}
+
+void View::setNodeSet( Gaffer::ConstStandardSetPtr nodeSet )
+{
+	std::cerr << "setNodeSet\n";
+	if( m_nodeSet == nodeSet )
+	{
+		return;
+	}
+	m_nodeSet = nodeSet;
+	nodeSetChangedSignal()( this );
+}
+
+View::UnarySignal &View::nodeSetChangedSignal()
+{
+	return m_nodeSetChangedSignal;
+}
+
 ViewportGadget *View::viewportGadget()
 {
 	return m_viewportGadget.get();

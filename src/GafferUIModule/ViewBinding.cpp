@@ -104,6 +104,11 @@ ViewPtr create( Gaffer::PlugPtr input )
 	return View::create( input );
 }
 
+Gaffer::PlugPtr inPlugWrapper( View &view )
+{
+	return view.inPlug();
+}
+
 } // namespace
 
 namespace GafferUIModule
@@ -118,9 +123,13 @@ void bindView()
 {
 	GafferBindings::NodeClass<View, ViewWrapper>( nullptr, no_init )
 		.def( init<const std::string &, PlugPtr>() )
+		.def( "inPlug", &inPlugWrapper )
 		.def( "getContext", (Context *(View::*)())&View::getContext, return_value_policy<IECorePython::CastToIntrusivePtr>() )
 		.def( "setContext", &View::setContext )
 		.def( "contextChangedSignal", &View::contextChangedSignal, return_internal_reference<1>() )
+		.def( "getNodeSet", (StandardSet *(View::*)())&View::getNodeSet, return_value_policy<IECorePython::CastToIntrusivePtr>() )
+		.def( "setNodeSet", &View::setNodeSet )
+		.def( "nodeSetChangedSignal", &View::nodeSetChangedSignal, return_internal_reference<1>() )
 		.def( "viewportGadget", (ViewportGadget *(View::*)())&View::viewportGadget, return_value_policy<IECorePython::CastToIntrusivePtr>() )
 		.def( "_setPreprocessor", &View::setPreprocessor )
 		.def( "_getPreprocessor", &getPreprocessor )

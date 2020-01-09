@@ -213,6 +213,7 @@ class Viewer( GafferUI.NodeSetEditor ) :
 
 		if self.__currentView is not None :
 			self.__gadgetWidget.setViewportGadget( self.__currentView.viewportGadget() )
+			self.__currentView.setNodeSet( self.getNodeSet() )
 		else :
 			self.__gadgetWidget.setViewportGadget( GafferUI.ViewportGadget() )
 

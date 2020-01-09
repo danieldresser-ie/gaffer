@@ -40,6 +40,7 @@ import imath
 import IECore
 
 import Gaffer
+import GafferImage
 import GafferUI
 import GafferImageUI
 
@@ -61,11 +62,41 @@ class DeepPixelInfo( GafferUI.Widget ) :
 			self.__gadgetWidget.getViewportGadget().setPrimaryChild( self.__deepSamplesGadget )
 			self.__gadgetWidget.getViewportGadget().setVariableAspectZoom( True )
 
-		self.__imagePlugs = {}
-		self.__pixel = imath.V2i( 0, 0 )
+		self.__imagePlugs = []
+		self.__pixel = imath.V2i( 50, 50 )
 
-	def setImagePlugs( imagePlugs ):
-		pass
+	def setImagePlugs( self, imagePlugs ):
+		self.__imagePlugs = imagePlugs
+		self.__imagePlugsDirtyConnections = [
+			p.node().plugDirtiedSignal().connect( self.__plugDirtied ) for p in imagePlugs
+		]
+		self.updatePixelData()
 
-	def setPixel( pixel ):
-		pass
+	def setPixel( self, pixel ):
+		self.__pixel = pixel
+		self.updatePixelData()
+
+	def __plugDirtied( self, plug ):
+		if type( plug ) == GafferImage.ImagePlug:
+			if plug.direction() == Gaffer.Plug.Direction.Out:
+				self.updatePixelData()
+
+	def updatePixelData( self ):
+		print "UPDATE PIXEL DATA"
+		print self.__imagePlugs
+		print self.__pixel
+		deepSampler = GafferImage.DeepSampler()
+		deepSampler["pixel"].setValue( self.__pixel )
+
+		allPixelDeepSamples = {}
+
+		for p in self.__imagePlugs:
+			deepSampler["image"].setInput( p )
+			pixelData = deepSampler["pixelData"].getValue()
+			allPixelDeepSamples[p.fullName()] = pixelData
+
+		if len( allPixelDeepSamples ) == 1:
+			allPixelDeepSamples = { "" : allPixelDeepSamples.values()[0] }
+
+		print IECore.CompoundData( allPixelDeepSamples )
+		self.__deepSamplesGadget.setDeepSamples( IECore.CompoundData( allPixelDeepSamples ) )

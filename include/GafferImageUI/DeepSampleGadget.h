@@ -70,8 +70,8 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 		GAFFER_GRAPHCOMPONENT_DECLARE_TYPE( GafferImageUI::DeepSampleGadget, GafferImageUI::DeepSampleGadgetTypeId, GafferUI::Gadget );
 
-		void setImagePlug( GafferImage::ImagePlug *imagePlug);
-		GafferImage::ImagePlug *getImagePlug();
+		//void setImagePlug( GafferImage::ImagePlug *imagePlug);
+		//GafferImage::ImagePlug *getImagePlug();
 
 		void setDeepSamples( IECore::ConstCompoundDataPtr deepSamples );
 
@@ -93,7 +93,7 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 		int keyAt( const IECore::LineSegment3f &position ) const;
 		IECore::InternedString curveAt( const IECore::LineSegment3f &position ) const;
 
-		//void renderCurve( const GafferImage::ImagePlug *imagePlug, const GafferUI::Style *style ) const;
+		void renderCurve( IECore::ConstFloatVectorDataPtr z, IECore::ConstFloatVectorDataPtr zBack, IECore::ConstFloatVectorDataPtr a, IECore::ConstFloatVectorDataPtr v );
 
 		bool onTimeAxis( int y ) const;
 		bool onValueAxis( int x ) const;

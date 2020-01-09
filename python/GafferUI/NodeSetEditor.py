@@ -411,6 +411,8 @@ class NodeSetEditor( GafferUI.Editor ) :
 
 	def __setNodeSetInternal( self, nodeSet, callUpdateFromSet ) :
 
+		print "SET NODE SET: ", nodeSet
+
 		if self.__nodeSet.isSame( nodeSet ) :
 			return
 
