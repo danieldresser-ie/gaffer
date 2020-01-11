@@ -85,12 +85,14 @@ class DeepPixelInfo( GafferUI.Widget ) :
 		print "UPDATE PIXEL DATA"
 		print self.__imagePlugs
 		print self.__pixel
-		deepSampler = GafferImage.DeepSampler()
-		deepSampler["pixel"].setValue( self.__pixel )
 
 		allPixelDeepSamples = {}
 
 		for p in self.__imagePlugs:
+			# TODO - repeated construction of DeepSampler is stupid.  Why does it fail to
+			# return the correct results if I do a setInput in this loop?
+			deepSampler = GafferImage.DeepSampler()
+			deepSampler["pixel"].setValue( self.__pixel )
 			deepSampler["image"].setInput( p )
 			pixelData = deepSampler["pixelData"].getValue()
 			allPixelDeepSamples[p.fullName()] = pixelData

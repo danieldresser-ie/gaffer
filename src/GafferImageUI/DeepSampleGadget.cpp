@@ -275,21 +275,92 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 	case AnimationLayer::Curves :
 	{
-		/*for( const auto &member : *m_visiblePlugs )
+		for( auto const &imageData : m_deepSampleDicts->readable() )
 		{
-			const Animation::CurvePlug *curvePlug = IECore::runTimeCast<const Animation::CurvePlug>( &member );
-			//renderCurve( curvePlug, style );
-		}*/
+			const IECore::CompoundData *image = IECore::runTimeCast< IECore::CompoundData >( imageData.second.get() );
+
+			const IECore::FloatVectorData *zData = image->member<IECore::FloatVectorData>( "Z" );
+			const IECore::FloatVectorData *zBackData = image->member<IECore::FloatVectorData>( "ZBack" );
+			const IECore::FloatVectorData *aData = image->member<IECore::FloatVectorData>( "A" );
+
+			if( !zData || !zData->readable().size() )
+			{
+				continue;
+			}
+
+			if( !zBackData )
+			{
+				zBackData = zData;
+			}
+
+			for( auto const &channelData : image->readable() )
+			{
+				if( channelData.first == "Z" || channelData.first == "ZBack" )
+				{
+					continue;
+				}
+				const IECore::FloatVectorData *channel = IECore::runTimeCast< IECore::FloatVectorData >( channelData.second.get() );
+			
+					
+				Color3f c( 1.0 );
+				if( channelData.first == "R" )
+				{
+					c = Color3f( 1.0f, 0.0f, 0.0f );
+				}
+				else if( channelData.first == "G" )
+				{
+					c = Color3f( 0.0f, 1.0f, 0.0f );
+				}
+				else if( channelData.first == "B" )
+				{
+					c = Color3f( 0.0f, 0.0f, 1.0f );
+				}
+				Color4f c4( c[0], c[1], c[2], 0.0 );
+				V2f size( 2.0f );
+
+				//IECoreGL::glColor( c );
+				float accum = 0;
+				float accumAlpha = 0;
+				V2f prevPos = viewportGadget->worldToRasterSpace( V3f( zData->readable()[0], 0, 0 ) );
+				for( unsigned int i = 0; i < channel->readable().size(); i++ )
+				{
+					//
+					float a = 0;
+					if( aData )
+					{
+						a = aData->readable()[i];
+					}
+					float z = zData->readable()[i];
+					float zBack = zBackData->readable()[i];
+					float c = channel->readable()[i];
+
+					int steps = 100;
+					for( int i = 0; i < steps; i++ )
+					{
+						float lerp = float(i) / float( steps - 1 );
+						float cur = accum + ( 1 - accumAlpha ) * c * ( 1 - pow( 1 - a, lerp) ) / a;
+						//float cur = accum + ( 1 - accumAlpha ) * c;
+						V2f pos = viewportGadget->worldToRasterSpace( V3f( z + lerp * ( zBack - z ), cur, 0 ) );
+						//std::cerr << "huh: " << pos << "\n";
+
+						style->renderLine( IECore::LineSegment3f( V3f( prevPos.x, prevPos.y, 0 ), V3f( pos.x, pos.y, 0 ) ), 1.0 ); //, &c4 );
+						prevPos = pos;
+					}
+					//style->renderLine( IECore::LineSegment3f( V3f( startPosition.x, startPosition.y, 0 ), V3f( endPosition.x, endPosition.y, 0 ) ), 1.0 ); //, &c4 );
+					//prevPos = endPosition;
+
+					accum += c - c * accumAlpha;
+
+					accumAlpha += a - a * accumAlpha;
+				}
+			}
+		}
 
 		break;
 	}
 
 	case AnimationLayer::Keys :
 	{
-		Imath::Color3f black( 0, 0, 0 );
-
-		Box2f b;
-
 		for( auto const &imageData : m_deepSampleDicts->readable() )
 		{
 			const IECore::CompoundData *image = IECore::runTimeCast< IECore::CompoundData >( imageData.second.get() );
@@ -344,6 +415,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 						accumAlpha += aData->readable()[i] - aData->readable()[i] * accumAlpha;
 					}
 					V2f endPosition = viewportGadget->worldToRasterSpace( V3f( zBackData->readable()[i], accum, 0 ) );
+					//std::cerr << "e:" << endPosition << "\n";
 					style->renderSolidRectangle( Box2f( startPosition - size, startPosition + size ) );
 					style->renderSolidRectangle( Box2f( endPosition - size, endPosition + size ) );
 				}
