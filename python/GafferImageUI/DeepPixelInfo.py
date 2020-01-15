@@ -52,7 +52,27 @@ class DeepPixelInfo( GafferUI.Widget ) :
 
 		GafferUI.Widget.__init__( self, self.__column, **kw )
 
+		self.__pixel = Gaffer.V2iPlug( "pixelCoordinates" )
+		self.__channelMask = Gaffer.StringPlug( "channelMask" )
+		self.__logarithmic = Gaffer.BoolPlug( "logarithmic" )
+
+		# HACK for ChannelMaskPlug
+		self.__inputPlugs = Gaffer.ArrayPlug( "in", element = GafferImage.ImagePlug() )
+	
+		self.__dummyNode = Gaffer.Node()
+		self.__dummyNode.addChild( self.__pixel )
+		self.__dummyNode.addChild( self.__channelMask )
+		self.__dummyNode.addChild( self.__logarithmic )
+		self.__dummyNode.addChild( self.__inputPlugs )
+
+		self.__uiPlugDirtiedConnection = self.__dummyNode.plugDirtiedSignal().connect( Gaffer.WeakMethod( self.__uiPlugDirtied ) )
+
 		with self.__column :
+			with GafferUI.ListContainer( GafferUI.ListContainer.Orientation.Horizontal, spacing = 4 ) :
+				self.__p1 = GafferUI.PlugWidget( self.__pixel )
+				self.__p2 = GafferUI.PlugWidget( GafferImageUI.ChannelMaskPlugValueWidget( self.__channelMask ) )
+				self.__p3 = GafferUI.PlugWidget( self.__logarithmic )
+
 			self.__gadgetWidget = GafferUI.GadgetWidget(
 				bufferOptions = set(
 					[ GafferUI.GLWidget.BufferOptions.Depth,
@@ -63,18 +83,25 @@ class DeepPixelInfo( GafferUI.Widget ) :
 			self.__gadgetWidget.getViewportGadget().setVariableAspectZoom( True )
 
 		self.__imagePlugs = []
-		self.__pixel = imath.V2i( 50, 50 )
+
+	def __uiPlugDirtied( self, plug ):
+		if plug == self.__pixel or plug == self.__channelMask:
+			self.updatePixelData()
+		elif plug == self.__logarithmic:
+			self.__deepSamplesGadget.setLogarithmic( plug.getValue() )
 
 	def setImagePlugs( self, imagePlugs ):
 		self.__imagePlugs = imagePlugs
 		self.__imagePlugsDirtyConnections = [
 			p.node().plugDirtiedSignal().connect( self.__plugDirtied ) for p in imagePlugs
 		]
+		self.__inputPlugs.resize( len( imagePlugs ) )
+		for i in range( len( imagePlugs ) ):
+			self.__inputPlugs[i].setInput( imagePlugs[ i ] )
 		self.updatePixelData()
 
 	def setPixel( self, pixel ):
-		self.__pixel = pixel
-		self.updatePixelData()
+		self.__pixel.setValue( pixel )
 
 	def __plugDirtied( self, plug ):
 		if type( plug ) == GafferImage.ImagePlug:
@@ -82,20 +109,25 @@ class DeepPixelInfo( GafferUI.Widget ) :
 				self.updatePixelData()
 
 	def updatePixelData( self ):
-		print "UPDATE PIXEL DATA"
-		print self.__imagePlugs
-		print self.__pixel
 
 		allPixelDeepSamples = {}
+		channelMask = self.__channelMask.getValue()
+		print "UPDATE PIXEL DATA, with mask: ", channelMask
+		
 
 		for p in self.__imagePlugs:
 			# TODO - repeated construction of DeepSampler is stupid.  Why does it fail to
 			# return the correct results if I do a setInput in this loop?
 			deepSampler = GafferImage.DeepSampler()
-			deepSampler["pixel"].setValue( self.__pixel )
+			deepSampler["pixel"].setValue( self.__pixel.getValue() )
 			deepSampler["image"].setInput( p )
 			pixelData = deepSampler["pixelData"].getValue()
-			allPixelDeepSamples[p.fullName()] = pixelData
+
+			maskedPixelData = IECore.CompoundData()
+			for name, data in pixelData.items():
+				if name in [ "Z", "ZBack", "A" ] or IECore.StringAlgo.matchMultiple( name, channelMask ):
+					maskedPixelData[name] = data 
+			allPixelDeepSamples[p.fullName()] = maskedPixelData
 
 		if len( allPixelDeepSamples ) == 1:
 			allPixelDeepSamples = { "" : allPixelDeepSamples.values()[0] }

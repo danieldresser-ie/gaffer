@@ -57,6 +57,7 @@
 
 #include <cmath>
 
+using namespace IECore;
 using namespace Gaffer;
 using namespace GafferUI;
 using namespace GafferImageUI;
@@ -118,100 +119,6 @@ Color3f colorFromName( std::string name )
 	}
 }
 
-// Compute grid line locations. Note that positions are given in raster space so
-// that lines can get drawn directly.
-// For the time-dimension we limit the computed locations to multiples of one
-// frame plus one level of unlabeled dividing lines. Resulting at a minimum
-// distance between lines of a fifth of a frame when zoomed in all the way.
-// For the value dimension we allow sub-steps as small as 0.001.
-struct AxisDefinition
-{
-	std::vector<std::pair<float, float> > main;
-	std::vector<float> secondary;
-};
-
-void computeGrid( const ViewportGadget *viewportGadget, float fps, AxisDefinition &x, AxisDefinition &y )
-{
-	Imath::V2i resolution = viewportGadget->getViewport();
-
-	IECore::LineSegment3f min, max;
-	min = viewportGadget->rasterToWorldSpace( V2f( 0 ) );
-	max = viewportGadget->rasterToWorldSpace( V2f( resolution.x, resolution.y ) );
-	Imath::Box2f viewportBounds = Box2f( V2f( min.p0.x, min.p0.y ), V2f( max.p0.x, max.p0.y ) );
-
-	Box2f viewportBoundsFrames( timeToFrame( fps, viewportBounds.min ), timeToFrame( fps, viewportBounds.max ) );
-	V2i labelMinSize( 50, 20 );
-	int xStride = 1;
-	float yStride = 1;
-
-	// \todo the box's size() is unrealiable because it considers the box empty for the inverted coords we seem to have here
-	V2f pxPerUnit = V2f(
-		resolution.x / std::abs( viewportBoundsFrames.min.x - viewportBoundsFrames.max.x ),
-		resolution.y / std::abs( viewportBounds.min.y - viewportBounds.max.y ) );
-
-	// Compute the stride to use for the time dimension.
-	if( pxPerUnit.x < labelMinSize.x )
-	{
-		xStride = 5;
-		pxPerUnit.x *= 5;
-
-		// If there's not enough space for this zoom level, try using every 10th frame.
- 		while( pxPerUnit.x < labelMinSize.x && pxPerUnit.x != 0 )
-		{
-			xStride *= 10;
-			pxPerUnit.x *= 10;
-		}
-	}
-
-	// Compute the stride to use for the value dimension.
-	if( pxPerUnit.y < labelMinSize.y )
-	{
-		yStride = 5;
-		pxPerUnit.y *= 5;
-
-		// If there's not enough space for this zoom level, increase the spacing
-		// between values to be drawn.
-		while( pxPerUnit.y < labelMinSize.y && pxPerUnit.y != 0 )
-		{
-			yStride *= 10;
-			pxPerUnit.y *= 10;
-		}
-	}
-	else
-	{
-		// If we actually have too much space between values, progressively
-		// decrease the stride to show smaller value deltas.
-		float scale = 1;
-		while( pxPerUnit.y / 10.0 > labelMinSize.y && scale > 0.001 )
-		{
-			yStride *= 0.1;
-			pxPerUnit /= 10.0;
-			scale /= 10.0;
-		}
-	}
-
-	// Compute line locations based on bounds and strides in both dimensions.
-	int lowerBoundX = std::floor( viewportBoundsFrames.min.x / xStride ) * xStride - xStride;
-	int upperBoundX = std::ceil( viewportBoundsFrames.max.x );
-	for( int i = lowerBoundX; i < upperBoundX; i += xStride )
-	{
-		float time = frameToTime( fps, static_cast<float>( i ) );
-		x.main.push_back( std::make_pair( viewportGadget->worldToRasterSpace( V3f( time, 0, 0 ) ).x, i ) );
-
-		float subStride = frameToTime( fps, xStride / 5.0 );
-		for( int s = 1; s < 5; ++s )
-		{
-			x.secondary.push_back( viewportGadget->worldToRasterSpace( V3f( time + s * subStride, 0, 0 ) ).x );
-		}
-	}
-
-	float lowerBoundY = std::floor( viewportBounds.max.y / yStride ) * yStride - yStride;
-	float upperBoundY = viewportBounds.min.y + yStride;
-	for( float j = lowerBoundY; j < upperBoundY; j += yStride )
-	{
-			y.main.push_back( std::make_pair( viewportGadget->worldToRasterSpace( V3f( 0, j, 0 ) ).y, j ) );
-	}
-}
 
 } // namespace
 
@@ -222,7 +129,7 @@ void computeGrid( const ViewportGadget *viewportGadget, float fps, AxisDefinitio
 GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( GafferImageUI::DeepSampleGadget );
 
 DeepSampleGadget::DeepSampleGadget()
-	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none )
+	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none ), m_logarithmic( false )
 {
 	keyPressSignal().connect( boost::bind( &DeepSampleGadget::keyPress, this, ::_1,  ::_2 ) );
 	requestRender();
@@ -230,6 +137,83 @@ DeepSampleGadget::DeepSampleGadget()
 
 DeepSampleGadget::~DeepSampleGadget()
 {
+}
+
+void DeepSampleGadget::setDeepSamples( ConstCompoundDataPtr deepSamples )
+{
+	m_deepSampleDicts = deepSamples;
+	CompoundDataPtr accumDicts = new CompoundData();
+	
+	for( auto const &imageData : m_deepSampleDicts->readable() )
+	{
+		const CompoundData *image = IECore::runTimeCast< CompoundData >( imageData.second.get() );
+
+		ConstFloatVectorDataPtr zData = image->member<FloatVectorData>( "Z" );
+		ConstFloatVectorDataPtr zBackData = image->member<FloatVectorData>( "ZBack" );
+		ConstFloatVectorDataPtr aData = image->member<FloatVectorData>( "A" );
+
+		if( !zData || !zData->readable().size() )
+		{
+			continue;
+		}
+
+		if( !zBackData )
+		{
+			zBackData = zData;
+		}
+
+		FloatVectorDataPtr accumAlphaData = new FloatVectorData();
+		std::vector<float> &accumAlpha = accumAlphaData->writable();
+		accumAlpha.resize( zData->readable().size(), 0.0 );
+		if( aData )
+		{
+			float accum = 0;
+			const std::vector<float>& alpha = aData->readable();
+			for( unsigned int i = 0; i < alpha.size(); i++ )
+			{
+				accum += alpha[i] - alpha[i] * accum;
+				accumAlpha[i] = accum;
+			}
+		}
+
+		CompoundDataPtr newImage = new CompoundData();
+
+		// const cast is OK because the final result m_deepSampleDictsAccumulated is const
+		newImage->writable()["Z"] = boost::const_pointer_cast<FloatVectorData>( zData );
+		newImage->writable()["ZBack"] = boost::const_pointer_cast<FloatVectorData>( zBackData );
+		newImage->writable()["A"] = accumAlphaData;
+		for( auto const &channelData : image->readable() )
+		{
+			if( channelData.first == "Z" || channelData.first == "ZBack" || channelData.first == "A" )
+			{
+				continue;
+			}
+			const std::vector<float> &channel = IECore::runTimeCast< FloatVectorData >( channelData.second.get() )->readable();
+		
+			FloatVectorDataPtr accumData = new FloatVectorData();
+			std::vector<float> &accumVec = accumData->writable();
+			accumVec.resize( accumAlpha.size(), 0.0 );
+			float accum = 0;
+			for( unsigned int i = 0; i < channel.size(); i++ )
+			{
+				accum += channel[i] - channel[i] * ( i > 0 ? accumAlpha[i-1] : 0 );
+				accumVec[i] = accum;
+			}
+			newImage->writable()[ channelData.first ] = accumData;
+		}
+
+		accumDicts->writable()[ imageData.first ] = newImage;
+	}
+	m_deepSampleDictsAccumulated = accumDicts;
+	frame();
+	requestRender();
+}
+
+void DeepSampleGadget::setLogarithmic( bool log )
+{
+	m_logarithmic = log;
+	frame();
+	requestRender();
 }
 
 void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
@@ -249,25 +233,25 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 	case AnimationLayer::Grid :
 	{
 		AxisDefinition xAxis, yAxis;
-		computeGrid( viewportGadget, 0.1, xAxis, yAxis );
+		computeGrid( viewportGadget, xAxis, yAxis );
 
 		Imath::Color4f axesColor( 60.0 / 255, 60.0 / 255, 60.0 / 255, 1.0f );
 
 		// drawing base grid
 		for( const auto &x : xAxis.main )
 		{
-			style->renderLine( IECore::LineSegment3f( V3f( x.first, 0, 0 ), V3f( x.first, resolution.y, 0 ) ), x.second == 0.0f ? 3.0 : 2.0, &axesColor );
+			style->renderLine( LineSegment3f( V3f( x.first, 0, 0 ), V3f( x.first, resolution.y, 0 ) ), x.second == 0.0f ? 3.0 : 2.0, &axesColor );
 		}
 
 		for( const auto &y : yAxis.main )
 		{
-			style->renderLine( IECore::LineSegment3f( V3f( 0, y.first, 0 ), V3f( resolution.x, y.first, 0 ) ), y.second == 0.0f ? 3.0 : 2.0, &axesColor );
+			style->renderLine( LineSegment3f( V3f( 0, y.first, 0 ), V3f( resolution.x, y.first, 0 ) ), y.second == 0.0f ? 3.0 : 2.0, &axesColor );
 		}
 
 		// drawing sub grid for frames
 		for( float x : xAxis.secondary )
 		{
-			style->renderLine( IECore::LineSegment3f( V3f( x, 0, 0 ), V3f( x, resolution.y, 0 ) ), 1.0, &axesColor );
+			style->renderLine( LineSegment3f( V3f( x, 0, 0 ), V3f( x, resolution.y, 0 ) ), 1.0, &axesColor );
 		}
 
 		break;
@@ -277,11 +261,11 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 	{
 		for( auto const &imageData : m_deepSampleDicts->readable() )
 		{
-			const IECore::CompoundData *image = IECore::runTimeCast< IECore::CompoundData >( imageData.second.get() );
+			const CompoundData *image = IECore::runTimeCast< CompoundData >( imageData.second.get() );
 
-			const IECore::FloatVectorData *zData = image->member<IECore::FloatVectorData>( "Z" );
-			const IECore::FloatVectorData *zBackData = image->member<IECore::FloatVectorData>( "ZBack" );
-			const IECore::FloatVectorData *aData = image->member<IECore::FloatVectorData>( "A" );
+			const FloatVectorData *zData = image->member<FloatVectorData>( "Z" );
+			const FloatVectorData *zBackData = image->member<FloatVectorData>( "ZBack" );
+			const FloatVectorData *aData = image->member<FloatVectorData>( "A" );
 
 			if( !zData || !zData->readable().size() )
 			{
@@ -299,7 +283,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 				{
 					continue;
 				}
-				const IECore::FloatVectorData *channel = IECore::runTimeCast< IECore::FloatVectorData >( channelData.second.get() );
+				const FloatVectorData *channel = IECore::runTimeCast< FloatVectorData >( channelData.second.get() );
 			
 					
 				Color3f c( 1.0 );
@@ -321,7 +305,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 				//IECoreGL::glColor( c );
 				float accum = 0;
 				float accumAlpha = 0;
-				V2f prevPos = viewportGadget->worldToRasterSpace( V3f( zData->readable()[0], 0, 0 ) );
+				V2f prevPos = viewportGadget->worldToRasterSpace( V3f( zData->readable()[0], axisMapping( 0 ), 0 ) );
 				for( unsigned int i = 0; i < channel->readable().size(); i++ )
 				{
 					//
@@ -340,13 +324,13 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 						float lerp = float(i) / float( steps - 1 );
 						float cur = accum + ( 1 - accumAlpha ) * c * ( 1 - pow( 1 - a, lerp) ) / a;
 						//float cur = accum + ( 1 - accumAlpha ) * c;
-						V2f pos = viewportGadget->worldToRasterSpace( V3f( z + lerp * ( zBack - z ), cur, 0 ) );
+						V2f pos = viewportGadget->worldToRasterSpace( V3f( z + lerp * ( zBack - z ), axisMapping( cur ), 0 ) );
 						//std::cerr << "huh: " << pos << "\n";
 
-						style->renderLine( IECore::LineSegment3f( V3f( prevPos.x, prevPos.y, 0 ), V3f( pos.x, pos.y, 0 ) ), 1.0 ); //, &c4 );
+						style->renderLine( LineSegment3f( V3f( prevPos.x, prevPos.y, 0 ), V3f( pos.x, pos.y, 0 ) ), 1.0 ); //, &c4 );
 						prevPos = pos;
 					}
-					//style->renderLine( IECore::LineSegment3f( V3f( startPosition.x, startPosition.y, 0 ), V3f( endPosition.x, endPosition.y, 0 ) ), 1.0 ); //, &c4 );
+					//style->renderLine( LineSegment3f( V3f( startPosition.x, startPosition.y, 0 ), V3f( endPosition.x, endPosition.y, 0 ) ), 1.0 ); //, &c4 );
 					//prevPos = endPosition;
 
 					accum += c - c * accumAlpha;
@@ -363,11 +347,11 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 	{
 		for( auto const &imageData : m_deepSampleDicts->readable() )
 		{
-			const IECore::CompoundData *image = IECore::runTimeCast< IECore::CompoundData >( imageData.second.get() );
+			const CompoundData *image = IECore::runTimeCast< CompoundData >( imageData.second.get() );
 
-			const IECore::FloatVectorData *zData = image->member<IECore::FloatVectorData>( "Z" );
-			const IECore::FloatVectorData *zBackData = image->member<IECore::FloatVectorData>( "ZBack" );
-			const IECore::FloatVectorData *aData = image->member<IECore::FloatVectorData>( "A" );
+			const FloatVectorData *zData = image->member<FloatVectorData>( "Z" );
+			const FloatVectorData *zBackData = image->member<FloatVectorData>( "ZBack" );
+			const FloatVectorData *aData = image->member<FloatVectorData>( "A" );
 
 			if( !zData )
 			{
@@ -385,7 +369,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 				{
 					continue;
 				}
-				const IECore::FloatVectorData *channel = IECore::runTimeCast< IECore::FloatVectorData >( channelData.second.get() );
+				const FloatVectorData *channel = IECore::runTimeCast< FloatVectorData >( channelData.second.get() );
 			
 					
 				Color3f c( 1.0 );
@@ -408,13 +392,13 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 				float accumAlpha = 0;
 				for( unsigned int i = 0; i < channel->readable().size(); i++ )
 				{
-					V2f startPosition = viewportGadget->worldToRasterSpace( V3f( zData->readable()[i], accum, 0 ) );
+					V2f startPosition = viewportGadget->worldToRasterSpace( V3f( zData->readable()[i], axisMapping( accum ), 0 ) );
 					accum += channel->readable()[i] - channel->readable()[i] * accumAlpha;
 					if( aData )
 					{
 						accumAlpha += aData->readable()[i] - aData->readable()[i] * accumAlpha;
 					}
-					V2f endPosition = viewportGadget->worldToRasterSpace( V3f( zBackData->readable()[i], accum, 0 ) );
+					V2f endPosition = viewportGadget->worldToRasterSpace( V3f( zBackData->readable()[i], axisMapping( accum ), 0 ) );
 					//std::cerr << "e:" << endPosition << "\n";
 					style->renderSolidRectangle( Box2f( startPosition - size, startPosition + size ) );
 					style->renderSolidRectangle( Box2f( endPosition - size, endPosition + size ) );
@@ -439,7 +423,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 	case AnimationLayer::Axes :
 	{
 		AxisDefinition xAxis, yAxis;
-		computeGrid( viewportGadget, 1, xAxis, yAxis );
+		computeGrid( viewportGadget, xAxis, yAxis );
 
 		// draw axes on top of everything.
 		Imath::Color4f axesColor( 60.0 / 255, 60.0 / 255, 60.0 / 255, 1.0 );
@@ -447,7 +431,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 		style->renderSolidRectangle( Box2f( V2f( 0 ) , V2f( m_xMargin, resolution.y - m_yMargin ) ) );
 		style->renderSolidRectangle( Box2f( V2f( 0, resolution.y - m_yMargin ) , V2f( resolution.x, resolution.y ) ) );
 
-		boost::format formatX( "%.2f" );
+		boost::format formatX( "%.3f" );
 		boost::format formatY( "%.3f" );
 
 		// \todo: pull matrix stack operations out of the loops.
@@ -517,7 +501,7 @@ void DeepSampleGadget::plugDirtied( Gaffer::Plug *plug )
 	requestRender();
 }
 
-std::string DeepSampleGadget::getToolTip( const IECore::LineSegment3f &line ) const
+std::string DeepSampleGadget::getToolTip( const LineSegment3f &line ) const
 {
 	if( int key = keyAt( line ) >= 0 )
 	{
@@ -538,39 +522,37 @@ void DeepSampleGadget::frame()
 {
 	Box3f b;
 
-	// trying to frame to visible curves next
-	/*if( !( m_visiblePlugs->size() == 0 ) )
+	for( auto const &imageData : m_deepSampleDictsAccumulated->readable() )
 	{
-		for( const auto &runtimeTyped : *m_visiblePlugs )
+		const CompoundData *image = IECore::runTimeCast< CompoundData >( imageData.second.get() );
+
+		float minZ = image->member<FloatVectorData>( "Z" )->readable()[0];
+		float maxZ = image->member<FloatVectorData>( "ZBack" )->readable().back();
+
+		float channelMax = 0;	
+		for( auto const &channelData : image->readable() )
 		{
-			const Animation::CurvePlug *curvePlug = IECore::runTimeCast<const Animation::CurvePlug>( &runtimeTyped );
-
-			for( const auto &key : *curvePlug )
- 			{
-				b.extendBy( V3f( key.getTime(), key.getValue(), 0 ) );
+			if( channelData.first == "Z" || channelData.first == "ZBack" )
+			{
+				continue;
 			}
+			channelMax = std::max( channelMax,
+				IECore::runTimeCast< FloatVectorData >( channelData.second.get() )->readable().back()
+			);
 		}
+		b.extendBy( Box3f( V3f( minZ, axisMapping( 0 ), 0 ), V3f( maxZ, axisMapping( channelMax ), 0 ) ) );
 	}
-	// setting default framing as last resort
-	else
+
+	if( b.isEmpty() )
 	{
-		b = Box3f( V3f( -1, -1, 0), V3f( 1, 1, 0 ) );
+		b = Box3f( V3f( 0, 0, 0), V3f( 1, 1, 0 ) );
 	}
 
-	// add some padding in case only a single key was selected
-	Box3f bound( b.min - V3f( .1 ), b.max + V3f( .1 ) );
-
-	// scale bounding box so there's some space between keys and the axis
-	V3f center = bound.center();
-	bound.min = center + ( bound.min - center ) * 1.2;
-	bound.max = center + ( bound.max - center ) * 1.2;
+	V3f pad = V3f( std::max( 0.1, b.size()[0] * 0.1 ), std::max( 0.1, b.size()[1] * 0.1 ), 0 );
+	Box3f bound( b.min - pad, b.max + pad );
 
 	ViewportGadget *viewportGadget = ancestor<ViewportGadget>();
-	// \todo: we might have to compensate for the axis we're drawing
 	viewportGadget->frame( bound );
-	*/
-
-	return;
 }
 
 bool DeepSampleGadget::keyPress( GadgetPtr gadget, const KeyEvent &event )
@@ -598,7 +580,7 @@ bool DeepSampleGadget::onValueAxis( int x ) const
 }
 
 
-int DeepSampleGadget::keyAt( const IECore::LineSegment3f &position ) const
+int DeepSampleGadget::keyAt( const LineSegment3f &position ) const
 {
 	return -1;
 	/*
@@ -638,7 +620,7 @@ int DeepSampleGadget::keyAt( const IECore::LineSegment3f &position ) const
 	*/
 }
 
-IECore::InternedString DeepSampleGadget::curveAt( const IECore::LineSegment3f &position ) const
+IECore::InternedString DeepSampleGadget::curveAt( const LineSegment3f &position ) const
 {
 	/*std::vector<IECoreGL::HitRecord> selection;
 	std::vector<Animation::ConstCurvePlugPtr> curves;
@@ -668,11 +650,6 @@ IECore::InternedString DeepSampleGadget::curveAt( const IECore::LineSegment3f &p
 	return "";
 }
 
-void DeepSampleGadget::setDeepSamples( IECore::ConstCompoundDataPtr deepSamples )
-{
-	m_deepSampleDicts = deepSamples;
-	requestRender();
-}
 
 
 /*void DeepSampleGadget::renderCurve( const Animation::CurvePlug *curvePlug, const Style *style ) const
@@ -714,3 +691,122 @@ void DeepSampleGadget::setDeepSamples( IECore::ConstCompoundDataPtr deepSamples 
 	}
 }
 */
+
+void DeepSampleGadget::computeGrid( const ViewportGadget *viewportGadget, AxisDefinition &x, AxisDefinition &y ) const
+{
+	Imath::V2i resolution = viewportGadget->getViewport();
+
+	Imath::V2f targetSize( 160, 100 );
+
+	LineSegment3f min, max;
+	min = viewportGadget->rasterToWorldSpace( V2f( 0, resolution.y ) );
+	max = viewportGadget->rasterToWorldSpace( V2f( resolution.x, 0 ) );
+	//min = viewportGadget->rasterToWorldSpace( V2f( 0, 0 ) );
+	//max = viewportGadget->rasterToWorldSpace( V2f( resolution.x, resolution.y ) );
+	Imath::Box2f viewportBounds = Box2f( V2f( min.p0.x, reverseAxisMapping( min.p0.y ) ), V2f( max.p0.x, reverseAxisMapping( max.p0.y ) ) );
+
+	std::cerr << "bounds: " << viewportBounds.min << " : " << viewportBounds.max << "\n";
+	if( m_logarithmic && viewportBounds.min.y < 0 )
+	{
+		viewportBounds.min.y = 0;
+	}
+
+	V2i labelMinSize( 50, 20 );
+	float xStride = 1;
+	float yStride = 1;
+
+	// \todo the box's size() is unrealiable because it considers the box empty for the inverted coords we seem to have here
+	/*V2f pxPerUnit = V2f(
+		resolution.x / std::abs( viewportBounds.min.x - viewportBounds.max.x ),
+		resolution.y / std::abs( viewportBounds.min.y - viewportBounds.max.y ) );
+	*/
+
+	V2f lowerLeft = viewportGadget->worldToRasterSpace( V3f( viewportBounds.min.x, axisMapping( viewportBounds.min.y ), 0 ) );
+	V3f targetOffset = viewportGadget->rasterToWorldSpace( lowerLeft + targetSize ).p0;
+	targetOffset.y = reverseAxisMapping( targetOffset.y );
+
+	std::cerr << "targetOffset: " << V2f( targetOffset.x, targetOffset.y ) - viewportBounds.min << "\n";
+		
+	xStride = std::max( 0.00001, exp10( round( log10( fabs( targetOffset.x - viewportBounds.min.x ) ) ) ) );
+	yStride = std::min( 0.1, std::max( 0.00001, exp10( round( log10( fabs( targetOffset.y - viewportBounds.min.y ) ) ) ) ) );
+
+	std::cerr << "stride: " << xStride << " , " << yStride << "\n";
+
+	// Compute the stride to use for the time dimension.
+	/*if( pxPerUnit.x < labelMinSize.x )
+	{
+		xStride = 5;
+		pxPerUnit.x *= 5;
+
+		// If there's not enough space for this zoom level, try using every 10th frame.
+ 		while( pxPerUnit.x < labelMinSize.x && pxPerUnit.x != 0 )
+		{
+			xStride *= 10;
+			pxPerUnit.x *= 10;
+		}
+	}*/
+
+	// Compute the stride to use for the value dimension.
+	/*if( pxPerUnit.y < labelMinSize.y )
+	{
+		yStride = 5;
+		pxPerUnit.y *= 5;
+
+		// If there's not enough space for this zoom level, increase the spacing
+		// between values to be drawn.
+		while( pxPerUnit.y < labelMinSize.y && pxPerUnit.y != 0 )
+		{
+			yStride *= 10;
+			pxPerUnit.y *= 10;
+		}
+	}
+	else
+	{
+		// If we actually have too much space between values, progressively
+		// decrease the stride to show smaller value deltas.
+		float scale = 1;
+		while( pxPerUnit.y / 10.0 > labelMinSize.y && scale > 0.001 )
+		{
+			yStride *= 0.1;
+			pxPerUnit /= 10.0;
+			scale /= 10.0;
+		}
+	}*/
+
+	
+	// Compute line locations based on bounds and strides in both dimensions.
+	float lowerBoundX = std::floor( viewportBounds.min.x / xStride ) * xStride - xStride;
+	float upperBoundX = viewportBounds.max.x;
+	for( float i = lowerBoundX; i < upperBoundX; i += xStride )
+	{
+		float time = i;
+		x.main.push_back( std::make_pair( viewportGadget->worldToRasterSpace( V3f( time, 0, 0 ) ).x, i ) );
+
+		float subStride = xStride / 5.0;
+		for( int s = 1; s < 5; ++s )
+		{
+			x.secondary.push_back( viewportGadget->worldToRasterSpace( V3f( time + s * subStride, 0, 0 ) ).x );
+		}
+	}
+
+	float lowerBoundY = std::floor( viewportBounds.min.y / yStride ) * yStride - yStride;
+	if( m_logarithmic && lowerBoundY < 0.0f )
+	{
+		lowerBoundY = 0.0f;
+	}
+	float upperBoundY = viewportBounds.max.y;
+	float prevRasterPos = viewportGadget->worldToRasterSpace( V3f( 0, axisMapping( lowerBoundY ), 0 ) ).y;
+	for( float j = lowerBoundY; j < upperBoundY; j += yStride )
+	{
+			float rasterPos = viewportGadget->worldToRasterSpace( V3f( 0, axisMapping( j ), 0 ) ).y;
+			y.main.push_back( std::make_pair( viewportGadget->worldToRasterSpace( V3f( 0, axisMapping( j ), 0 ) ).y, j ) );
+
+			std::cerr << "C:" <<  fabs( rasterPos - prevRasterPos ) << " : " << targetSize.y << "\n";
+
+			if( fabs( rasterPos - prevRasterPos ) > targetSize.y && yStride > 0.00001 )
+			{
+				yStride *= 0.1;
+			}
+			prevRasterPos = rasterPos;
+	}
+}

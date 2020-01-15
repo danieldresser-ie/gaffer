@@ -40,6 +40,7 @@
 #include "GafferUI/Gadget.h"
 #include "GafferUI/Style.h"
 #include "GafferUI/GraphGadget.h"
+#include "GafferUI/ViewportGadget.h"
 
 #include "GafferImageUI/TypeIds.h"
 
@@ -74,6 +75,7 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 		//GafferImage::ImagePlug *getImagePlug();
 
 		void setDeepSamples( IECore::ConstCompoundDataPtr deepSamples );
+		void setLogarithmic( bool log );
 
 		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
 
@@ -98,12 +100,43 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 		bool onTimeAxis( int y ) const;
 		bool onValueAxis( int x ) const;
 
+		inline float axisMapping( float y ) const
+		{
+			return m_logarithmic ?
+				( y >= 1 ? 1.0f : 1 - log10( 1 - y ) ) :
+				y;
+		}
+
+		inline float reverseAxisMapping( float y ) const
+		{
+			return m_logarithmic ?
+				( 1 - exp10( 1 - y ) ) :
+				y;
+		}
+
+		// Compute grid line locations. Note that positions are given in raster space so
+		// that lines can get drawn directly.
+		// For the time-dimension we limit the computed locations to multiples of one
+		// frame plus one level of unlabeled dividing lines. Resulting at a minimum
+		// distance between lines of a fifth of a frame when zoomed in all the way.
+		// For the value dimension we allow sub-steps as small as 0.001.
+		struct AxisDefinition
+		{
+			std::vector<std::pair<float, float> > main;
+			std::vector<float> secondary;
+		};
+
+		void computeGrid( const GafferUI::ViewportGadget *viewportGadget, AxisDefinition &x, AxisDefinition &y ) const;
+
 		Gaffer::Context *m_context;
 
 		Gaffer::StandardSetPtr m_visiblePlugs;
 		Gaffer::StandardSetPtr m_editablePlugs;
 
+
+
 		IECore::ConstCompoundDataPtr m_deepSampleDicts;
+		IECore::ConstCompoundDataPtr m_deepSampleDictsAccumulated;
 
 		int m_highlightedKey;
 		int m_highlightedCurve;
@@ -119,6 +152,7 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 		boost::optional<int> m_frameIndicatorPreviewFrame;
 
+		bool m_logarithmic;
 };
 
 IE_CORE_DECLAREPTR( DeepSampleGadget );
