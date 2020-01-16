@@ -37,7 +37,10 @@
 #include "boost/python.hpp"
 #include "fmt/format.h"
 
+#include "GafferBindings/DependencyNodeBinding.h"
+
 #include "GafferImageTest/ContextSanitiser.h"
+#include "GafferImageTest/DeepOversample.h"
 
 #include "GafferTest/ContextTest.h"
 
@@ -170,4 +173,6 @@ BOOST_PYTHON_MODULE( _GafferImageTest )
 	def( "connectProcessTilesToPlugDirtiedSignal", &connectProcessTilesToPlugDirtiedSignal );
 	def( "testEditableScopeForFormat", &testEditableScopeForFormat );
 	def( "validateVisitPixels", &validateVisitPixels );
+
+	GafferBindings::DependencyNodeClass<DeepOversample>();
 }

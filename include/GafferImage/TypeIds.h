@@ -129,6 +129,7 @@ enum TypeId
 	DeepRecolorTypeId = 110834,
 	SaturationTypeId = 110835,
 	DeepSliceTypeId = 110836,
+	DeepOversampleTypeId = 110837, // Used by node in GafferImageTest
 
 	LastTypeId = 110849
 };
