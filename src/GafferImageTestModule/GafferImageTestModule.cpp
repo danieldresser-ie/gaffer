@@ -36,7 +36,10 @@
 
 #include "boost/python.hpp"
 
+#include "GafferBindings/DependencyNodeBinding.h"
+
 #include "GafferImageTest/ContextSanitiser.h"
+#include "GafferImageTest/DeepOversample.h"
 
 #include "GafferImage/ImageAlgo.h"
 #include "GafferImage/ImagePlug.h"
@@ -109,4 +112,6 @@ BOOST_PYTHON_MODULE( _GafferImageTest )
 
 	def( "processTiles", &processTilesWrapper );
 	def( "connectProcessTilesToPlugDirtiedSignal", &connectProcessTilesToPlugDirtiedSignal );
+
+	GafferBindings::DependencyNodeClass<DeepOversample>();
 }
