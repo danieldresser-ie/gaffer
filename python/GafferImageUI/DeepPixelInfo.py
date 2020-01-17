@@ -124,7 +124,9 @@ class DeepPixelInfo( GafferUI.Widget ) :
 			deepSampler = GafferImage.DeepSampler()
 			deepSampler["pixel"].setValue( self.__pixel.getValue() )
 			deepSampler["image"].setInput( p )
-			pixelData = deepSampler["pixelData"].getValue()
+
+			with p.node().scriptNode().context():
+				pixelData = deepSampler["pixelData"].getValue()
 
 			maskedPixelData = IECore.CompoundData()
 			for name, data in pixelData.items():
