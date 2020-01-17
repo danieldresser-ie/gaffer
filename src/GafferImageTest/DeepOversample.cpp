@@ -1,7 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
 //  Copyright (c) 2019, Image Engine Design Inc. All rights reserved.
-//  Copyright (c) 2015, Nvizible Ltd. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -153,7 +152,7 @@ void DeepOversample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *
 	std::vector<int> &subSamples = subSamplesData->writable();
 	if( GafferImage::ImageAlgo::channelExists( inPlug()->channelNames()->readable(), "A" ) )
 	{
-		float thresh = maxSampleAlphaPlug()->getValue();
+		float thresh = std::max( 0.0001f, maxSampleAlphaPlug()->getValue() );
 
 		GafferImage::ImagePlug::ChannelDataScope channelScope( context );
 		channelScope.setChannelName( "A" );
@@ -169,10 +168,9 @@ void DeepOversample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *
 			float accumAlpha = 0;
 			for( int j = prev; j < index; j++ )
 			{
-				float sampleThresh = thresh / ( 1 - accumAlpha );
 				float a = alpha[j];
 
-				int subSteps = ceil( log( 1 - a ) / log( 1 - sampleThresh ) );
+				int subSteps = std::max( 1, int( ceil( a * ( 1 - accumAlpha ) / thresh ) ) );
 				
 				subSamples[j] = subSteps;
 				subStepCount += subSteps;
@@ -243,7 +241,6 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 
 	GafferImage::ImagePlug::ChannelDataScope channelScope( context );
 
-	// TODO - check if channel names Z ZBack A don't exist, update hash and affects
 	channelScope.remove( GafferImage::ImagePlug::channelNameContextName );
 	
 	ConstIntVectorDataPtr subSamplesData = subSamplesPlug()->getValue();
@@ -252,6 +249,17 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 	FloatVectorDataPtr channelData = new FloatVectorData();
 	std::vector<float> &channel = channelData->writable();
 	channel.resize( subSamples.back() );
+
+	int size = 0;
+	ConstFloatVectorDataPtr alphaData;
+	const float *alpha = nullptr;
+	if( GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
+	{
+		channelScope.setChannelName( "A" );
+		alphaData = inPlug()->channelDataPlug()->getValue();
+		alpha = &( alphaData->readable()[0] );
+		size = alphaData->readable().size();
+	}
 
 	if( channelName == "Z" || channelName == "ZBack" )
 	{
@@ -275,35 +283,39 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 
 		const std::vector<float> &z = zData->readable();
 		const std::vector<float> &zBack = zBackData->readable();
-	
-		int outIndex = 0;	
-		for( unsigned int i = 0; i < z.size(); i++ )
+
+		int outIndex = 0;
+		for( unsigned int j = 0; j < z.size(); j++ )
 		{
-			int s = subSamples[i]; 
-			float sInv = 1.0f / float( s );
-			for( int j = 0; j < s; j++ )
+			float a = alpha ? alpha[j] : 0.0f;
+
+			int s = subSamples[j]; 
+
+			float increment = a / float( s );
+			float denomMult = 0;
+			if( a < 1.0f - 1e-8f )
 			{
-				channel[outIndex] = z[i] + ( zBack[i] - z[i] ) * ( j + back ) * sInv;
+				denomMult = 1 / ( -log1p( -a ) );
+			}
+			
+			for( int k = 0; k < s; k++ )
+			{
+				float targetAlpha = ( k + back ) * increment;
+
+				float lerp = -log1p( -std::min( 1.0f - 1e-8f, targetAlpha ) ) * denomMult;
+
+				channel[outIndex] = z[j] + ( zBack[j] - z[j] ) * lerp;
 				outIndex++;
 			}
 		}
 	}
 	else
 	{
-		int size = 0;
-		ConstFloatVectorDataPtr alphaData;
-		const float *alpha = nullptr;
-		if( GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
-		{
-			channelScope.setChannelName( "A" );
-			alphaData = inPlug()->channelDataPlug()->getValue();
-			alpha = &( alphaData->readable()[0] );
-			size = alphaData->readable().size();
-		}
 
+		bool writeAlpha = channelName == "A";
 		ConstFloatVectorDataPtr inChannelData;
 		const float *inChannel = nullptr;
-		if( channelName != "A" )
+		if( !writeAlpha )
 		{
 			channelScope.setChannelName( channelName );
 			inChannelData = inPlug()->channelDataPlug()->getValue();
@@ -315,14 +327,30 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 		for( int i = 0; i < size; i++ )
 		{
 			int s = subSamples[i];
-			float increment = 1.0/float(s);
 			float a = alpha ? alpha[i] : 0;
-			float subA = a > 0.0f ? 1 - pow( 1 - a, increment ) : increment;
-			float v = inChannel ? inChannel[i] / a * subA : subA;
-			for( int j = 0; j < s; j++ )
+
+			if( a == 0 && writeAlpha )
 			{
-				channel[outIndex] = v;
-				outIndex++;
+				for( int k = 0; k < s; k++ )
+				{
+					channel[outIndex] = 0.0f;
+					outIndex++;
+				}
+			}
+			else
+			{
+				if( a == 0 )
+				{
+					a = 1;
+				}
+
+				float v = inChannel ? inChannel[i] / a : 1.0f;
+				for( int k = 0; k < s; k++ )
+				{
+					float subA = a > 0.0f ? a / ( s - a * k ) : 1.0 / s;
+					channel[outIndex] = v * subA;
+					outIndex++;
+				}
 			}
 		}
 	}
