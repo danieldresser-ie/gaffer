@@ -75,6 +75,7 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 		//GafferImage::ImagePlug *getImagePlug();
 
 		void setDeepSamples( IECore::ConstCompoundDataPtr deepSamples );
+		void setAutoFrame( bool autoFrame );
 		void setLogarithmic( bool log );
 
 		std::string getToolTip( const IECore::LineSegment3f &line ) const override;
@@ -152,6 +153,7 @@ class GAFFERUI_API DeepSampleGadget : public GafferUI::Gadget
 
 		boost::optional<int> m_frameIndicatorPreviewFrame;
 
+		bool m_autoFrame;
 		bool m_logarithmic;
 };
 

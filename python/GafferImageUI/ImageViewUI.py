@@ -538,7 +538,7 @@ class _DeepInfoWindow( GafferUI.Window ) :
 
 		self.__imagePlugs = []
 		self.__updateImagePlugs()
-		self.__nodeSetChanged( imageView.getNodeSet() )
+		self.__nodeSetChanged( imageView )
 
 	def __plugInputChanged( self, plug ):
 		if type(plug) != GafferImage.ImagePlug:
@@ -546,7 +546,8 @@ class _DeepInfoWindow( GafferUI.Window ) :
 		print "PLUG: ", plug.fullName()
 		self.__updateImagePlugs()
 
-	def __nodeSetChanged( self, n ):
+	def __nodeSetChanged( self, v ):
+		n = v.getNodeSet()
 		print "NODESET: ", n
 		#self.__memberAddedConnection = n.memberAddedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
 		self.__memberRemovedConnection = n.memberRemovedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )

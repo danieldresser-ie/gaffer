@@ -65,6 +65,7 @@ void GafferImageUIModule::bindDeepSampleGadget()
 	scope s = GadgetClass<DeepSampleGadget>()
 		.def( init<>() )
 		.def( "setDeepSamples", &DeepSampleGadget::setDeepSamples )
+		.def( "setAutoFrame", &DeepSampleGadget::setAutoFrame )
 		.def( "setLogarithmic", &DeepSampleGadget::setLogarithmic )
 		;
 

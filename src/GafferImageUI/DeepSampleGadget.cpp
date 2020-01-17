@@ -129,7 +129,7 @@ Color3f colorFromName( std::string name )
 GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( GafferImageUI::DeepSampleGadget );
 
 DeepSampleGadget::DeepSampleGadget()
-	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none ), m_logarithmic( false )
+	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none ), m_autoFrame( true ), m_logarithmic( false )
 {
 	keyPressSignal().connect( boost::bind( &DeepSampleGadget::keyPress, this, ::_1,  ::_2 ) );
 	requestRender();
@@ -174,7 +174,36 @@ void DeepSampleGadget::setDeepSamples( ConstCompoundDataPtr deepSamples )
 				accum += alpha[i] - alpha[i] * accum;
 				accumAlpha[i] = accum;
 			}
+
+			/*
+			std::cerr << "A SAMPLES:\n";
+			for( unsigned int i = 0; i < alpha.size(); i++ )
+			{
+				std::cerr << alpha[i] << " ";
+			}
+			std::cerr << "\n";
+			*/
 		}
+
+		/*
+		std::cerr << "Z SAMPLES:\n";
+		for( unsigned int i = 0; i < zData->readable().size(); i++ )
+		{
+			std::cerr << zData->readable()[i] << " ";
+		}
+		std::cerr << "\n";
+
+		std::cerr << "ZBack SAMPLES:\n";
+		for( unsigned int i = 0; i < zBackData->readable().size(); i++ )
+		{
+			std::cerr << zBackData->readable()[i] << " ";
+			if( zBackData->readable()[i] > 100000 )
+			{
+				zBackData = zData;
+			}
+		}
+		std::cerr << "\n";
+		*/
 
 		CompoundDataPtr newImage = new CompoundData();
 
@@ -205,14 +234,25 @@ void DeepSampleGadget::setDeepSamples( ConstCompoundDataPtr deepSamples )
 		accumDicts->writable()[ imageData.first ] = newImage;
 	}
 	m_deepSampleDictsAccumulated = accumDicts;
-	frame();
+	if( m_autoFrame )
+	{
+		frame();
+	}
 	requestRender();
+}
+
+void DeepSampleGadget::setAutoFrame( bool autoFrame )
+{
+	m_autoFrame = autoFrame;
 }
 
 void DeepSampleGadget::setLogarithmic( bool log )
 {
 	m_logarithmic = log;
-	frame();
+	if( m_autoFrame )
+	{
+		frame();
+	}
 	requestRender();
 }
 
@@ -322,7 +362,7 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 					for( int i = 0; i < steps; i++ )
 					{
 						float lerp = float(i) / float( steps - 1 );
-						float cur = accum + ( 1 - accumAlpha ) * c * ( 1 - pow( 1 - a, lerp) ) / a;
+						float cur = a == 0.0f ? accum + c * lerp : accum + ( 1 - accumAlpha ) * c * ( 1 - pow( 1 - a, lerp) ) / a;
 						//float cur = accum + ( 1 - accumAlpha ) * c;
 						V2f pos = viewportGadget->worldToRasterSpace( V3f( z + lerp * ( zBack - z ), axisMapping( cur ), 0 ) );
 						//std::cerr << "huh: " << pos << "\n";
@@ -705,7 +745,6 @@ void DeepSampleGadget::computeGrid( const ViewportGadget *viewportGadget, AxisDe
 	//max = viewportGadget->rasterToWorldSpace( V2f( resolution.x, resolution.y ) );
 	Imath::Box2f viewportBounds = Box2f( V2f( min.p0.x, reverseAxisMapping( min.p0.y ) ), V2f( max.p0.x, reverseAxisMapping( max.p0.y ) ) );
 
-	std::cerr << "bounds: " << viewportBounds.min << " : " << viewportBounds.max << "\n";
 	if( m_logarithmic && viewportBounds.min.y < 0 )
 	{
 		viewportBounds.min.y = 0;
@@ -725,12 +764,8 @@ void DeepSampleGadget::computeGrid( const ViewportGadget *viewportGadget, AxisDe
 	V3f targetOffset = viewportGadget->rasterToWorldSpace( lowerLeft + targetSize ).p0;
 	targetOffset.y = reverseAxisMapping( targetOffset.y );
 
-	std::cerr << "targetOffset: " << V2f( targetOffset.x, targetOffset.y ) - viewportBounds.min << "\n";
-		
 	xStride = std::max( 0.00001, exp10( round( log10( fabs( targetOffset.x - viewportBounds.min.x ) ) ) ) );
 	yStride = std::min( 0.1, std::max( 0.00001, exp10( round( log10( fabs( targetOffset.y - viewportBounds.min.y ) ) ) ) ) );
-
-	std::cerr << "stride: " << xStride << " , " << yStride << "\n";
 
 	// Compute the stride to use for the time dimension.
 	/*if( pxPerUnit.x < labelMinSize.x )
@@ -800,8 +835,6 @@ void DeepSampleGadget::computeGrid( const ViewportGadget *viewportGadget, AxisDe
 	{
 			float rasterPos = viewportGadget->worldToRasterSpace( V3f( 0, axisMapping( j ), 0 ) ).y;
 			y.main.push_back( std::make_pair( viewportGadget->worldToRasterSpace( V3f( 0, axisMapping( j ), 0 ) ).y, j ) );
-
-			std::cerr << "C:" <<  fabs( rasterPos - prevRasterPos ) << " : " << targetSize.y << "\n";
 
 			if( fabs( rasterPos - prevRasterPos ) > targetSize.y && yStride > 0.00001 )
 			{

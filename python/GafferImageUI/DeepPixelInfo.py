@@ -54,6 +54,7 @@ class DeepPixelInfo( GafferUI.Widget ) :
 
 		self.__pixel = Gaffer.V2iPlug( "pixelCoordinates" )
 		self.__channelMask = Gaffer.StringPlug( "channelMask" )
+		self.__autoFrame = Gaffer.BoolPlug( "autoFrame", defaultValue = True )
 		self.__logarithmic = Gaffer.BoolPlug( "logarithmic" )
 
 		# HACK for ChannelMaskPlug
@@ -62,6 +63,7 @@ class DeepPixelInfo( GafferUI.Widget ) :
 		self.__dummyNode = Gaffer.Node()
 		self.__dummyNode.addChild( self.__pixel )
 		self.__dummyNode.addChild( self.__channelMask )
+		self.__dummyNode.addChild( self.__autoFrame )
 		self.__dummyNode.addChild( self.__logarithmic )
 		self.__dummyNode.addChild( self.__inputPlugs )
 
@@ -71,7 +73,8 @@ class DeepPixelInfo( GafferUI.Widget ) :
 			with GafferUI.ListContainer( GafferUI.ListContainer.Orientation.Horizontal, spacing = 4 ) :
 				self.__p1 = GafferUI.PlugWidget( self.__pixel )
 				self.__p2 = GafferUI.PlugWidget( GafferImageUI.ChannelMaskPlugValueWidget( self.__channelMask ) )
-				self.__p3 = GafferUI.PlugWidget( self.__logarithmic )
+				self.__p3 = GafferUI.PlugWidget( self.__autoFrame )
+				self.__p4 = GafferUI.PlugWidget( self.__logarithmic )
 
 			self.__gadgetWidget = GafferUI.GadgetWidget(
 				bufferOptions = set(
@@ -89,6 +92,8 @@ class DeepPixelInfo( GafferUI.Widget ) :
 			self.updatePixelData()
 		elif plug == self.__logarithmic:
 			self.__deepSamplesGadget.setLogarithmic( plug.getValue() )
+		elif plug == self.__autoFrame:
+			self.__deepSamplesGadget.setAutoFrame( plug.getValue() )
 
 	def setImagePlugs( self, imagePlugs ):
 		self.__imagePlugs = imagePlugs
@@ -112,8 +117,6 @@ class DeepPixelInfo( GafferUI.Widget ) :
 
 		allPixelDeepSamples = {}
 		channelMask = self.__channelMask.getValue()
-		print "UPDATE PIXEL DATA, with mask: ", channelMask
-		
 
 		for p in self.__imagePlugs:
 			# TODO - repeated construction of DeepSampler is stupid.  Why does it fail to
@@ -129,8 +132,4 @@ class DeepPixelInfo( GafferUI.Widget ) :
 					maskedPixelData[name] = data 
 			allPixelDeepSamples[p.fullName()] = maskedPixelData
 
-		if len( allPixelDeepSamples ) == 1:
-			allPixelDeepSamples = { "" : allPixelDeepSamples.values()[0] }
-
-		print IECore.CompoundData( allPixelDeepSamples )
 		self.__deepSamplesGadget.setDeepSamples( IECore.CompoundData( allPixelDeepSamples ) )
