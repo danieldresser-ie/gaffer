@@ -40,6 +40,7 @@
 
 #include "GafferImageTest/ContextSanitiser.h"
 #include "GafferImageTest/DeepOversample.h"
+#include "GafferImageTest/DeepAlphaOffset.h"
 
 #include "GafferImage/ImageAlgo.h"
 #include "GafferImage/ImagePlug.h"
@@ -114,4 +115,5 @@ BOOST_PYTHON_MODULE( _GafferImageTest )
 	def( "connectProcessTilesToPlugDirtiedSignal", &connectProcessTilesToPlugDirtiedSignal );
 
 	GafferBindings::DependencyNodeClass<DeepOversample>();
+	GafferBindings::DependencyNodeClass<DeepAlphaOffset>();
 }

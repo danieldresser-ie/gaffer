@@ -129,6 +129,7 @@ enum TypeId
 	DeepHoldoutTypeId = 110833,
 	DeepRecolorTypeId = 110834,
 	DeepOversampleTypeId = 110835, // Used by node in GafferImageTest
+	DeepAlphaOffsetTypeId = 110836, // Used by node in GafferImageTest
 
 	LastTypeId = 110849
 };
