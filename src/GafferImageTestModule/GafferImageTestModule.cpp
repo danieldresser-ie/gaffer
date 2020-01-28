@@ -41,6 +41,7 @@
 
 #include "GafferImageTest/ContextSanitiser.h"
 #include "GafferImageTest/DeepOversample.h"
+#include "GafferImageTest/DeepAlphaOffset.h"
 
 #include "GafferTest/ContextTest.h"
 
@@ -175,4 +176,5 @@ BOOST_PYTHON_MODULE( _GafferImageTest )
 	def( "validateVisitPixels", &validateVisitPixels );
 
 	GafferBindings::DependencyNodeClass<DeepOversample>();
+	GafferBindings::DependencyNodeClass<DeepAlphaOffset>();
 }

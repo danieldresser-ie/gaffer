@@ -130,6 +130,7 @@ enum TypeId
 	SaturationTypeId = 110835,
 	DeepSliceTypeId = 110836,
 	DeepOversampleTypeId = 110837, // Used by node in GafferImageTest
+	DeepAlphaOffsetTypeId = 110838, // Used by node in GafferImageTest
 
 	LastTypeId = 110849
 };
