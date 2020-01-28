@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2019, Image Engine Design Inc. All rights reserved.
+//  Copyright (c) 2020, Image Engine Design Inc. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -293,7 +293,12 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 
 			float increment = a / float( s );
 			float denomMult = 0;
-			if( a < 1.0f - 1e-8f )
+			if( a < 1e-8f )
+			{
+				increment = 1.0f / float( s );
+				denomMult = 1.0f;
+			}
+			else if( a < 1.0f - 1e-6f )
 			{
 				denomMult = 1 / ( -log1p( -a ) );
 			}
@@ -302,7 +307,12 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 			{
 				float targetAlpha = ( k + back ) * increment;
 
-				float lerp = -log1p( -std::min( 1.0f - 1e-8f, targetAlpha ) ) * denomMult;
+				float lerp = -log1p( -std::min( 1.0f - 1e-6f, targetAlpha ) ) * denomMult;
+				if( lerp  > 1.0f )
+				{
+					std::cerr << "BAD LERP:" << lerp << "\n";
+					lerp = 1.0f; // TODO
+				}
 
 				channel[outIndex] = z[j] + ( zBack[j] - z[j] ) * lerp;
 				outIndex++;
