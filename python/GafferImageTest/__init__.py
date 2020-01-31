@@ -35,6 +35,7 @@
 #
 ##########################################################################
 
+import GafferImage
 from _GafferImageTest import *
 
 from ImageTestCase import ImageTestCase
