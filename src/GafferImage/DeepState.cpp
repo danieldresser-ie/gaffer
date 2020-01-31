@@ -762,6 +762,10 @@ void checkState( const std::vector<int> &offsets,
 			float newZBack = zBackChannel[i];
 			if( newZ < zBack )
 			{
+				if( isTidy )
+				{
+					std::cerr << "pixel " << i << " F1 : " << newZ << " !> " << zBack << "\n";	
+				}
 				isTidy = false;
 			}
 
@@ -771,6 +775,7 @@ void checkState( const std::vector<int> &offsets,
 				{
 					isSorted = false;
 					isTidy = false;
+					std::cerr << "pixel " << i << " F2 : " << newZ << " !> " << z << "\n";	
 					return;
 				}
 				else
@@ -781,6 +786,11 @@ void checkState( const std::vector<int> &offsets,
 					}
 					else
 					{
+						if( isTidy )
+						{
+							std::cerr << "pixel " << i << " F3 : " << newZ << " !> " << z << "\n";	
+						}
+
 						if( newZ == z && newZBack > zBack )
 						{
 							isTidy = false;
