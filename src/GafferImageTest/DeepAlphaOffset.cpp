@@ -147,15 +147,16 @@ void DeepAlphaOffset::processChannelData( const Gaffer::Context *context, const 
 			float accumAlpha = 0;
 			for( int j = prev; j < index; j++ )
 			{
-				float newAccum = accumAlpha + out[j] - accumAlpha * out[j];
 				/*newAccum + offset = accumAlpha + offset + out[j]  - ( accumAlpha + offset ) * out[j]
 				newAccum + offset = accumAlpha + offset - ( 1 -  accumAlpha - offset ) * out[j]*/
-				if( j == prev )
+				if( accumAlpha ==  0 )
 				{
-					out[j] += offset;
+					out[j] = std::max( 0.0f, out[j] + offset );
+					accumAlpha = out[j];
 				}
 				else
 				{
+					float newAccum = accumAlpha + out[j] - accumAlpha * out[j];
 					float denom = 1 - accumAlpha - offset;
 					if( denom > 0 )
 					{
@@ -165,8 +166,8 @@ void DeepAlphaOffset::processChannelData( const Gaffer::Context *context, const 
 					{
 						out[j] = 1.0f;
 					}
+					accumAlpha = newAccum;
 				}
-				accumAlpha = newAccum;
 			}
 			prev = index;
 		}
