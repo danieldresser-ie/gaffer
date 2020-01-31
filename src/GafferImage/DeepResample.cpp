@@ -258,6 +258,8 @@ bool updateConstraints( const ToleranceConstraint *constraints, int startIndex, 
 {
 	ConstraintSearchParams p = *masterSearchParams;
 
+	//std::cerr << "CONSTRAINT SEARCH : " << startIndex << " , " << endIndex << " : " << headIndex << " , " << tailIndex << "\n";
+
 	// Use a number of max iterations just in case numerical precision gets us stuck
 	// ( I've never actually seen this happen )
 	for( int iteration = 0; iteration < endIndex - startIndex + 1; ++iteration )
@@ -300,6 +302,7 @@ bool updateConstraints( const ToleranceConstraint *constraints, int startIndex, 
 				}
 				if( p.lowerConstraint.x < p.upperConstraint.x )
 				{
+					//std::cerr << "SET : " << p.lowerConstraint.x << " , " << p.lowerConstraint.y << " : " << p.upperConstraint.x << " , " << p.upperConstraint.y << "\n";
 					p.a = ( p.upperConstraint.y - p.lowerConstraint.y ) / ( p.upperConstraint.x - p.lowerConstraint.x );
 					p.b = p.lowerConstraint.y - p.lowerConstraint.x * p.a;
 
@@ -353,15 +356,19 @@ bool updateConstraints( const ToleranceConstraint *constraints, int startIndex, 
 					{
 						// Replace the upper constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
 						// and trigger a rescan to check our new line against previous constraints
-						double newA = (maxY - p.lowerConstraint.y) / ( upperX - p.lowerConstraint.x );
-						if( newA < p.a )
+						//std::cerr << "REPLACE\n";
+						if( upperX != p.lowerConstraint.x )
 						{
-							p.a = newA;
-							p.b = maxY - upperX * p.a;
-							p.upperConstraint.x = upperX;
-							p.upperConstraint.y = maxY;
-							needRescan = true;
+							double newA = (maxY - p.lowerConstraint.y) / ( upperX - p.lowerConstraint.x );
+							if( newA < p.a )
+							{
+								p.a = newA;
+								p.b = maxY - upperX * p.a;
+							}
 						}
+						p.upperConstraint.x = upperX;
+						p.upperConstraint.y = maxY;
+						needRescan = true;
 					}
 				}
 			}
@@ -372,6 +379,7 @@ bool updateConstraints( const ToleranceConstraint *constraints, int startIndex, 
 		}
 	}
 
+	//std::cerr << "SUCCESS : " << p.a << " , " << p.b << "\n";
 	*masterSearchParams = p;
 	return true;
 }
@@ -1001,7 +1009,6 @@ void DeepResample::hashChannelData( const ImagePlug *output, const Gaffer::Conte
 	ImageProcessor::hashChannelData( output, context, h );
 	const std::string &channelName = context->get<std::string>( GafferImage::ImagePlug::channelNameContextName );
 
-	h.append( channelName );
 
 	inPlug()->channelDataPlug()->hash( h );
 
@@ -1009,6 +1016,20 @@ void DeepResample::hashChannelData( const ImagePlug *output, const Gaffer::Conte
 	channelScope.remove( ImagePlug::channelNameContextName );
 
 	resampledPlug()->hash( h );
+
+	if( channelName == "Z" || channelName ==  "ZBack" || channelName == "A" )
+	{
+		h.append( channelName );
+		return;
+	}
+
+	inPlug()->sampleOffsetsPlug()->hash( h );
+
+	channelScope.setChannelName( "A" );
+	inPlug()->channelDataPlug()->hash( h );
+
+	channelScope.setChannelName( channelName );
+	inPlug()->channelDataPlug()->hash( h );
 }
 
 IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
@@ -1033,10 +1054,65 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 	{
 		return resampled->member<FloatVectorData>("ZBack");
 	}
-	else
+	else if( channelName == "A" )
 	{
 		return resampled->member<FloatVectorData>("A");
 	}
+
+	IECore::ConstFloatVectorDataPtr resampledAlphaData = resampled->member<FloatVectorData>("A");
+	IECore::ConstIntVectorDataPtr resampledOffsetsData = resampled->member<IntVectorData>("sampleOffsets");
+	IECore::ConstIntVectorDataPtr origOffsetsData = inPlug()->sampleOffsetsPlug()->getValue();
+
+	channelScope.setChannelName( "A" );
+	IECore::ConstFloatVectorDataPtr origAlphaData = inPlug()->channelDataPlug()->getValue();
+
+	channelScope.setChannelName( channelName );
+	IECore::ConstFloatVectorDataPtr origChannelData = inPlug()->channelDataPlug()->getValue();
+
+	/*const std::vector<int> &origOffsets = origOffsetsData->readable();
+	const std::vector<int> &resampledOffsets = resampledOffsetsData->readable();
+	const std::vector<float> &origAlpha = origAlphaData->readable();
+	*/
+	const std::vector<float> &resampledAlpha = resampledAlphaData->readable();
+
+	//const std::vector<float> &origChannel = origChannelData->readable();
+
+	IECore::FloatVectorDataPtr resultData = new IECore::FloatVectorData();
+	std::vector<float> &result = resultData->writable();
+	result.resize( resampledAlpha.size() );
+
+	/*int pixel = 0;
+	float resampledAccumAlpha = 0;
+	int origIndex = 0;
+	float origAccumAlpha = 0;
+	for( int i = 0; i < resampledAlpha.size(); i++ )
+	{
+		resampledAccumAlpha += resampledAlpha[i] - resampledAccumAlpha * resampledAlpha[i];
+
+		float 
+		while( true )
+		{
+			float newOrigAccumAlpha = origAccumAlpha + origAlpha[origIndex] - origAccumAlpha * origAlpha[origIndex];
+		
+			if( newOrigAccumAlpha > resampledAccumAlpha )
+			{
+				break;
+			}
+
+			origAccumAlpha = newOrigAccumAlpha;
+			origIndex++;
+		}
+
+		
+		
+		while( pixel < ImagePlug::tilePixels() && i == resampledOffsets[ pixel ] )
+		{
+			pixel++;
+			resampledAccumAlpha = 0;
+		}
+	}*/
+
+	return resultData;
 }
 
 void DeepResample::hashSampleOffsets( const ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
