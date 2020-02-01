@@ -494,6 +494,92 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 	}
 }
 
+void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const float *outAlpha, const float *inChannel, float *outChannel )
+{
+	double totalAccumAlpha = 0;
+
+
+	double alphaRemaining = 0.0;
+
+	float curChannelData = 0;
+	float curChannelAlpha = 0;
+
+	int integrateIndex = 0;
+	float targetAlpha = 0;
+	for( int i = 0; i < outSamples; ++i )
+	{
+		targetAlpha += outAlpha[i] - targetAlpha * outAlpha[i];
+		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
+		{
+			std::cerr << "BAD TARGET: " << targetAlpha << "\n";
+			targetAlpha = 0.0f;
+		}
+
+		float segmentAccumChannel = 0;
+		float segmentAccumAlpha = 0;
+
+		for( ; integrateIndex < inSamples; integrateIndex++  )
+		{
+			if( alphaRemaining == 0.0 )
+			{
+				curChannelData = inChannel[ integrateIndex ];
+				curChannelAlpha = inAlpha[ integrateIndex ];
+				alphaRemaining = inAlpha[ integrateIndex ];
+			}
+
+			if( curChannelAlpha >= 1 )
+			{
+				if( integrateIndex == outSamples - 1 )
+				{
+					curChannelAlpha = 1.;
+				}
+				else
+				{
+					curChannelAlpha = 1. - std::numeric_limits<float>::epsilon();
+				}
+			}
+
+			double alphaNeeded = ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha );
+
+			double alphaToTake;
+			if( alphaNeeded >= alphaRemaining )
+			{
+				alphaToTake = alphaRemaining;
+				alphaRemaining = 0;
+			}
+			else
+			{
+				alphaToTake = alphaNeeded;
+				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
+			}
+
+			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
+			double curChannelMultiplier = curChannelAlpha > 0 ? ( 1 - segmentAccumAlpha ) * alphaToTake / curChannelAlpha : 0.0; // TODO
+
+			segmentAccumChannel += curChannelMultiplier * curChannelData;
+			segmentAccumAlpha += curChannelMultiplier * curChannelAlpha;
+
+			if( alphaRemaining > 0 )
+			{
+				break;
+			}
+		}
+
+		/*if( compressedSamples[i].XBack < compressedSamples[i].X )
+		{
+			std::cerr << "BAD XBACK: " << compressedSamples[i].X << " -> " << compressedSamples[i].XBack << "\n";
+		}
+
+		if( ! ( segmentAccumChannels[2] > -0.1 && segmentAccumChannels[2] < 1.1 ) )
+		{
+			std::cerr << "BAD CALC: " << segmentAccumChannels[2] << "\n";
+			segmentAccumChannels[2] = 0.0f;
+		}*/
+
+		outChannel[i] = segmentAccumChannel;
+	}
+}
+
 /*
  Given a set of constraints in linear space, put togther a set of segments that pass through all of them
  */
@@ -1069,24 +1155,42 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 	channelScope.setChannelName( channelName );
 	IECore::ConstFloatVectorDataPtr origChannelData = inPlug()->channelDataPlug()->getValue();
 
-	/*const std::vector<int> &origOffsets = origOffsetsData->readable();
+	const std::vector<int> &origOffsets = origOffsetsData->readable();
 	const std::vector<int> &resampledOffsets = resampledOffsetsData->readable();
 	const std::vector<float> &origAlpha = origAlphaData->readable();
-	*/
 	const std::vector<float> &resampledAlpha = resampledAlphaData->readable();
 
-	//const std::vector<float> &origChannel = origChannelData->readable();
+	const std::vector<float> &origChannel = origChannelData->readable();
 
 	IECore::FloatVectorDataPtr resultData = new IECore::FloatVectorData();
 	std::vector<float> &result = resultData->writable();
 	result.resize( resampledAlpha.size() );
 
-	/*int pixel = 0;
+	/*
+	int pixel = 0;
 	float resampledAccumAlpha = 0;
 	int origIndex = 0;
 	float origAccumAlpha = 0;
-	for( int i = 0; i < resampledAlpha.size(); i++ )
+	*/
+
+	int prevResampledOffset = 0;
+	int prevOrigOffset = 0;
+	
+	for( unsigned int i = 0; i < resampledOffsets.size(); i++ )
 	{
+		int resampledOffset = resampledOffsets[i];
+		int origOffset = origOffsets[i];
+		
+		conformToAlpha(
+			origOffset - prevOrigOffset, resampledOffset - prevResampledOffset,
+			&origAlpha[prevOrigOffset], &resampledAlpha[prevResampledOffset],
+			&origChannel[prevOrigOffset], &result[prevResampledOffset]
+		);
+	
+		prevResampledOffset = resampledOffset;	
+		prevOrigOffset = origOffset;	
+
+		/*
 		resampledAccumAlpha += resampledAlpha[i] - resampledAccumAlpha * resampledAlpha[i];
 
 		float 
@@ -1110,7 +1214,8 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 			pixel++;
 			resampledAccumAlpha = 0;
 		}
-	}*/
+		*/
+	}
 
 	return resultData;
 }
