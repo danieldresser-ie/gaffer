@@ -81,22 +81,83 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepFlatten = GafferImage.DeepToFlat()
 		deepFlatten["in"].setInput( resample["out"] )
 
-		self.assertImagesEqual( origFlatten["out"], deepFlatten["out"] )
+		# Aside from depth, everything should match extremely closely in the flat image, because we adjust
+		# samples to produce an exactly matching flat image
+		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
+		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
+		self.assertImagesEqual( origFlatten["out"], deepFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
 
+		# If we look at depth on the flat images, there will some error introduced by our alpha and
+		# depths tolerances. We premult before testing because very low alpha pixels are allowed to have
+		# large depth discrepancies ( ie. if the alpha is less than alpha threshold, it's permissible for
+		# the depth to be completely wrong )
+		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.Filtered )
+		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.Filtered )
+		origFlatPremult = GafferImage.Premultiply()
+		origFlatPremult["channels"].setValue( "Z" )
+		origFlatPremult["in"].setInput( origFlatten["out"] )
+		deepFlatPremult = GafferImage.Premultiply()
+		deepFlatPremult["channels"].setValue( "Z" )
+		deepFlatPremult["in"].setInput( deepFlatten["out"] )
+		self.assertImagesEqual( origFlatPremult["out"], deepFlatPremult["out"], maxDifference = 0.04 )
+
+
+		dw = representativeImage["out"].dataWindow()
+	
+		origSampleCounts = GafferImage.DeepSampleCounts()
+		origSampleCounts["in"].setInput( fix["out"] )
+
+		origCountStats = GafferImage.ImageStats()
+		origCountStats["in"].setInput( origSampleCounts["out"] )
+		origCountStats['area'].setValue( dw )
+
+		resampleSampleCounts = GafferImage.DeepSampleCounts()
+		resampleSampleCounts["in"].setInput( resample["out"] )
+
+		resampleCountStats = GafferImage.ImageStats()
+		resampleCountStats["in"].setInput( resampleSampleCounts["out"] )
+		resampleCountStats['area'].setValue( dw )
+
+		origCount = int( origCountStats["average"].getValue()[0] * dw.size()[0] * dw.size()[1] )
+		resampleCount = int( resampleCountStats["average"].getValue()[0] * dw.size()[0] * dw.size()[1] )
+
+		# Make sure we're starting with the expected sample count
+		self.assertEqual( origCount, 191684 )
+
+		# Make sure we substantially reduce the sample count
+		self.assertLess( resampleCount, 53000 )
+		
 		origSampler = GafferImage.DeepSampler()
-		origSampler["in"].setInput( fix["out"] )
+		origSampler["image"].setInput( fix["out"] )
 
 		resampleSampler = GafferImage.DeepSampler()
-		resampleSampler["in"].setInput( resample["out"] )
+		resampleSampler["image"].setInput( resample["out"] )
 
-		dw = representativeImage["out"].dataWindow().size()
 
-		for x in range( dw[0] ):
-			for y in range( dw[1] ):
+		for x in range( dw.size()[0] ):
+			for y in range( dw.size()[1] ):
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
-				resamplerSampler["pixel"].setValue( imath.V2i( x, y ) )
+				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( origSampler['pixelData'].getValue(), resampleSampler['pixelData'].getValue(), 0.001, 0.0031, 0.0031 )
+				GafferImageTest.assertDeepPixelsEvaluateSame( origSampler['pixelData'].getValue(), resampleSampler['pixelData'].getValue(), 0.001, 0.0031, 10.0, "Pixel %i, %i :" % ( x, y )  )
+
+
+		# Now a much more aggressive resample
+		resample["alphaTolerance"].setValue( 0.01 )
+		resample["depthTolerance"].setValue( 0.01 )
+
+		# Make sure we reduce the sample count even further
+		resampleCount = int( resampleCountStats["average"].getValue()[0] * dw.size()[0] * dw.size()[1] )
+		self.assertLess( resampleCount, 25000 )
+
+		for x in range( dw.size()[0] ):
+			for y in range( dw.size()[1] ):
+				origSampler["pixel"].setValue( imath.V2i( x, y ) )
+				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
+	
+				GafferImageTest.assertDeepPixelsEvaluateSame( origSampler['pixelData'].getValue(), resampleSampler['pixelData'].getValue(), 0.011, 0.011, 10.0, "Pixel %i, %i :" % ( x, y )  )
+
+		
 
 """	
 	@staticmethod
