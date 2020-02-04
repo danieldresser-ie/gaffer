@@ -48,7 +48,7 @@ namespace GafferImageTest
 GAFFERIMAGETEST_API IECore::CompoundDataPtr evaluateDeepPixel( const IECore::CompoundData* pixelData, float depth );
 
 /// If the provided deep curves do not match, raise an exception that indicates the depth where tolerance is exceeded
-GAFFERIMAGETEST_API void assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float depthTolerance, float alphaTolerance, float channelTolerance );
+GAFFERIMAGETEST_API void assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float depthTolerance, float alphaTolerance, float channelTolerance, const std::string &message = "" );
 
 } // namespace GafferImageTest
 

@@ -53,12 +53,12 @@ void evaluateDeepPixelInternal( const std::vector<float> &z, const std::vector<f
 
     for( unsigned int i = 0; i < z.size(); i++ )
     {
-        if( z[i] > depth )
+        if( depth < z[i] )
         {
             break;
         }
 
-        if( zBack[i] <= depth )
+        if( depth >= zBack[i] )
         {
             for( unsigned int j = 0; j < channels.size(); j++ )
             {
@@ -68,9 +68,19 @@ void evaluateDeepPixelInternal( const std::vector<float> &z, const std::vector<f
         }
         else
         {
-            float curAlpha = -expm1( ( depth - z[i] ) / ( zBack[i] - z[i] ) * log1p( -a[i] ) );
-
-            float weight = curAlpha / a[i];
+			float fraction = ( depth - z[i] ) / ( zBack[i] - z[i] );
+			float curAlpha;
+			float weight;
+			if( a[i] > 1e-8 )
+			{
+				curAlpha = -expm1( fraction * log1p( -a[i] ) );
+				weight = curAlpha / a[i];
+			}
+			else
+			{
+				curAlpha = 0;
+				weight = fraction;
+			}
 
             for( unsigned int j = 0; j < channels.size(); j++ )
             {
@@ -137,7 +147,7 @@ IECore::CompoundDataPtr GafferImageTest::evaluateDeepPixel( const IECore::Compou
 	return resultData;
 }
 
-void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float depthTolerance, float alphaTolerance, float channelTolerance )
+void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float depthTolerance, float alphaTolerance, float channelTolerance, const std::string &message )
 {
 	std::set<std::string> channelNamesA, channelNamesB;
 	for( const auto &entry : pixelDataA->readable() )
@@ -161,14 +171,14 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 		{
 			if( channelNamesB.find( name ) == channelNamesB.end() )
 			{
-				throw IECore::Exception( "Channel \"" + name + " in pixel A but not B" );
+				throw IECore::Exception( message + "Channel \"" + name + " in pixel A but not B" );
 			}
 		}
 		for( const std::string &name : channelNamesB )
 		{
 			if( channelNamesA.find( name ) == channelNamesA.end() )
 			{
-				throw IECore::Exception( "Channel \"" + name + " in pixel B but not A" );
+				throw IECore::Exception( message + "Channel \"" + name + " in pixel B but not A" );
 			}
 		}
 	}
@@ -178,7 +188,12 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 	const IECore::FloatVectorData *zB = pixelDataB->member<IECore::FloatVectorData>( "Z" );
 	if( !zA || !zB)
 	{
-		throw IECore::Exception( "No Z Channel, cannot evaluate pixels." );
+		if( pixelDataA->readable().size() == 0 && pixelDataB->readable().size() == 0 )
+		{
+			// Pixels with no samples are fine, as long they are both empty
+			return;
+		}
+		throw IECore::Exception( message + "No Z Channel, cannot evaluate pixels." );
 	}
 
 	const IECore::FloatVectorData *zBackA = pixelDataA->member<IECore::FloatVectorData>( "ZBack" );
@@ -210,7 +225,7 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 	std::vector<const float *> channelsA, channelsB;
 	for( const std::string &name : channelNames )
 	{
-		channelsA.push_back( &pixelDataB->member<IECore::FloatVectorData>( name )->readable()[0] );
+		channelsA.push_back( &pixelDataA->member<IECore::FloatVectorData>( name )->readable()[0] );
 		channelsB.push_back( &pixelDataB->member<IECore::FloatVectorData>( name )->readable()[0] );
 	}
 
@@ -222,8 +237,8 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 		for( float depth : depthData->readable() )
 		{
 			evaluateDeepPixelInternal( zA->readable(), zBackA->readable(), alphaA->readable(), channelsA, depth, resultA );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth + depthTolerance, resultBUpper );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth - depthTolerance, resultBLower );
+			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth * ( 1 + depthTolerance ), resultBUpper );
+			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth * ( 1 - depthTolerance ), resultBLower );
 
 			for( unsigned int j = 0; j < resultA.size(); j++ )
 			{
@@ -247,8 +262,8 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 				{
 					std::string channelName = j == 0 ? "A" : channelNames[j - 1];
 					throw IECore::Exception(
-						"Mismatch in channel " + channelName + " at depth " + std::to_string( depth ) +
-						" : " + std::to_string( resultA[0] ) + " vs " + std::to_string( compare ) +
+						message + "Mismatch in channel " + channelName + " at depth " + std::to_string( depth ) +
+						" : " + std::to_string( resultA[j] ) + " vs " + std::to_string( compare ) +
 						" not within " + std::to_string( tol ) + "\n"
 					);
 				}
