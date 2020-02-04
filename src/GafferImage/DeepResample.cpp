@@ -523,26 +523,14 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 			if( alphaRemaining == 0.0 )
 			{
 				curChannelData = inChannel[ integrateIndex ];
-				curChannelAlpha = inAlpha[ integrateIndex ];
+				curChannelAlpha = std::min( 1.0f, inAlpha[ integrateIndex ] );
 				alphaRemaining = inAlpha[ integrateIndex ];
 			}
 
-			if( curChannelAlpha >= 1 )
-			{
-				if( integrateIndex == outSamples - 1 )
-				{
-					curChannelAlpha = 1.;
-				}
-				else
-				{
-					curChannelAlpha = 1. - std::numeric_limits<float>::epsilon();
-				}
-			}
-
-			double alphaNeeded = ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha );
+			double alphaNeeded = totalAccumAlpha < 1.0f ? ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha ) : 0.0f;
 
 			double alphaToTake;
-			if( alphaNeeded >= alphaRemaining )
+			if( alphaNeeded >= alphaRemaining || alphaNeeded >= 1.0f )
 			{
 				alphaToTake = alphaRemaining;
 				alphaRemaining = 0;
