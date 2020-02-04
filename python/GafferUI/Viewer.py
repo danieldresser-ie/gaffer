@@ -180,6 +180,7 @@ class Viewer( GafferUI.NodeSetEditor ) :
 		self.__currentView = None
 
 		node = self._lastAddedNode()
+		print "VIEWER UPDATE : ", list( self.getNodeSet() )
 		if node :
 			for plug in Gaffer.Plug.RecursiveOutputRange( node ) :
 				if not plug.getName().startswith( "__" ) :

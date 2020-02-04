@@ -100,6 +100,7 @@ void View::setNodeSet( Gaffer::ConstStandardSetPtr nodeSet )
 	std::cerr << "setNodeSet\n";
 	if( m_nodeSet == nodeSet )
 	{
+		nodeSetChangedSignal()( this );
 		return;
 	}
 	m_nodeSet = nodeSet;

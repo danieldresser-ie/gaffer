@@ -532,33 +532,49 @@ class _DeepInfoWindow( GafferUI.Window ) :
 				with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None, borderWidth = 4 ) :
 					self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
 
-		self.__plugInputChangedConnection = imageView.inPlug().node().plugInputChangedSignal().connect( Gaffer.WeakMethod( self.__plugInputChanged ) )
+		#self.__plugInputChangedConnection = imageView.inPlug().node().plugInputChangedSignal().connect( Gaffer.WeakMethod( self.__plugInputChanged ) )
 
 		self.__nodeSetChangedConnection = imageView.nodeSetChangedSignal().connect( Gaffer.WeakMethod( self.__nodeSetChanged ) )
 
+		imageView.setNodeSet( Gaffer.StandardSet() )
+
+		"""
+		v = GafferImageUI.ImageView()
+		def foof( blah ):
+			print "FOO"
+		aeuoeua = v.nodeSetChangedSignal().connect( foof )
+		v.setNodeSet( Gaffer.StandardSet() )
+		"""
+		
+
 		self.__imagePlugs = []
 		self.__updateImagePlugs()
-		self.__nodeSetChanged( imageView )
+		self.__nodeSetChanged( imageView ) #TODO
+		print "INITED"
 
 	def __plugInputChanged( self, plug ):
-		if type(plug) != GafferImage.ImagePlug:
-			return
-		print "PLUG: ", plug.fullName()
-		self.__updateImagePlugs()
+		pass
+		#if type(plug) != GafferImage.ImagePlug:
+			#return
+		#print "PLUG: ", plug.fullName()
+		#self.__updateImagePlugs()
 
 	def __nodeSetChanged( self, v ):
+		print "HELLO WORLD"
 		n = v.getNodeSet()
 		print "NODESET: ", n
-		#self.__memberAddedConnection = n.memberAddedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
+		self.__updateImagePlugs()
+		self.__memberAddedConnection = n.memberAddedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
 		self.__memberRemovedConnection = n.memberRemovedSignal().connect( Gaffer.WeakMethod( self.__nodeSetUpdated ) )
 
 	def __nodeSetUpdated( self, n, a ):
-		print "NODESET UPDATE: ", n, a
+		print "NODESET UPDATE: ", list( n ), a
 		self.__updateImagePlugs()
 
 	def __updateImagePlugs( self ):
 		imagePlugs = [ self.__imageView.inPlug().getInput() ]
 		imageNodes = self.__imageView.getNodeSet()
+		print "RAW SET : ", list( imageNodes )
 		for i in imageNodes:
 			for plug in Gaffer.Plug.RecursiveOutputRange( i ) :
 				if not plug.getName().startswith( "__" ) :
