@@ -392,32 +392,23 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int numLower, const V
 	{
 		if( numUpper != 0 )
 		{
-			//std::cerr << "CHECK UP : " << upperConstraints[ numUpper - 1 ] << "\n";
 			p.upperConstraint = upperConstraints[ numUpper - 1 ];
 		}
 
 		if( numLower != 0 )
 		{
-			//std::cerr << "CHECK : " << lowerConstraints[ 0 ] << "\n";
 			p.lowerConstraint = lowerConstraints[ 0 ];
-		}
-		else
-		{
-			// TODO
-			p.lowerConstraint.x = p.upperConstraint.x;
 		}
 
 		// TODO - currently relying on initialization to infinity
-
-			
 		if( p.lowerConstraint.x >= p.upperConstraint.x )
 		{
+			*masterSearchParams = p;
 			return true;
 		}
 
 		p.a = ( p.upperConstraint.y - p.lowerConstraint.y ) / ( p.upperConstraint.x - p.lowerConstraint.x );
 		p.b = p.lowerConstraint.y - p.lowerConstraint.x * p.a;
-		//std::cerr << "INITIAL LINE : " << p.a << " , " << p.b << "\n";
 	}
 
 	// Use a number of max iterations just in case numerical precision gets us stuck
@@ -432,54 +423,30 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int numLower, const V
 			double lowerX = lowerConstraints[i].x;
 			double minY = lowerConstraints[i].y;
 
-			/*if( p.a == std::numeric_limits<double>::infinity() )
+			double yAtLowerX = p.a * lowerX + p.b;
+
+			// Check if we go underneath the minimum constraint at this index
+			if( yAtLowerX < minY )
 			{
-				// We don't have enough constraints to form a slope yet.
-				// We are still in initialization mode.
-
-				if( lowerX < p.lowerConstraint.x )
+				if( lowerX > p.upperConstraint.x )
 				{
-					p.lowerConstraint.x = lowerX;
-					p.lowerConstraint.y = minY;
+					// If the violated constraint is to the right of the previous upper constraint, then we would need to get steeper to fufill it
+					// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
+					// Fail.
+					return false;
 				}
-				if( p.lowerConstraint.x < p.upperConstraint.x )
+				else if( lowerX != p.lowerConstraint.x || minY != p.lowerConstraint.y )
 				{
-					//std::cerr << "SET : " << p.lowerConstraint.x << " , " << p.lowerConstraint.y << " : " << p.upperConstraint.x << " , " << p.upperConstraint.y << "\n";
-					p.a = ( p.upperConstraint.y - p.lowerConstraint.y ) / ( p.upperConstraint.x - p.lowerConstraint.x );
-					p.b = p.lowerConstraint.y - p.lowerConstraint.x * p.a;
-
-					// OK, now we have enough constraints to form a line.
-					// We now need to rescan in case our new line violates any previously considered constraints
-					needRescan = true;
-				}
-			}
-			else*/
-			{
-				double yAtLowerX = p.a * lowerX + p.b;
-
-				// Check if we go underneath the minimum constraint at this index
-				if( yAtLowerX < minY )
-				{
-					if( lowerX > p.upperConstraint.x )
+					// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
+					// and trigger a rescan to check our new line against previous constraints
+					double newA = (p.upperConstraint.y - minY) / ( p.upperConstraint.x - lowerX );
+					if( newA < p.a )
 					{
-						// If the violated constraint is to the right of the previous upper constraint, then we would need to get steeper to fufill it
-						// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
-						// Fail.
-						return false;
-					}
-					else if( lowerX != p.lowerConstraint.x || minY != p.lowerConstraint.y )
-					{
-						// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
-						// and trigger a rescan to check our new line against previous constraints
-						double newA = (p.upperConstraint.y - minY) / ( p.upperConstraint.x - lowerX );
-						if( newA < p.a )
-						{
-							p.a = newA;
-							p.b = minY - lowerX * p.a;
-							p.lowerConstraint.x = lowerX;
-							p.lowerConstraint.y = minY;
-							needRescan = true;
-						}
+						p.a = newA;
+						p.b = minY - lowerX * p.a;
+						p.lowerConstraint.x = lowerX;
+						p.lowerConstraint.y = minY;
+						needRescan = true;
 					}
 				}
 			}
@@ -492,59 +459,35 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int numLower, const V
 			double upperX = upperConstraints[i].x;
 			double maxY = upperConstraints[i].y;
 
-			/*if( p.a == std::numeric_limits<double>::infinity() )
-			{
-				// We don't have enough constraints to form a slope yet.
-				// We are still in initialization mode.
+			double yAtUpperX = p.a * upperX + p.b;
 
-				if( upperX > p.upperConstraint.x && maxY != std::numeric_limits<double>::infinity() )
+			// Check if we go above the maxmimum constraint at this index
+			if( yAtUpperX > maxY )
+			{
+				if( upperX < p.lowerConstraint.x )
 				{
+					// If the violated constraint is to the left of the previous lower constraint, then we would need to get steeper to fufill it
+					// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
+					// Fail.
+					return false;
+				}
+				else if( upperX != p.upperConstraint.x || maxY != p.upperConstraint.y )
+				{
+					// Replace the upper constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
+					// and trigger a rescan to check our new line against previous constraints
+					//std::cerr << "REPLACE\n";
+					if( upperX != p.lowerConstraint.x )
+					{
+						double newA = (maxY - p.lowerConstraint.y) / ( upperX - p.lowerConstraint.x );
+						if( newA < p.a )
+						{
+							p.a = newA;
+							p.b = maxY - upperX * p.a;
+						}
+					}
 					p.upperConstraint.x = upperX;
 					p.upperConstraint.y = maxY;
-				}
-				if( p.lowerConstraint.x < p.upperConstraint.x )
-				{
-					//std::cerr << "SET : " << p.lowerConstraint.x << " , " << p.lowerConstraint.y << " : " << p.upperConstraint.x << " , " << p.upperConstraint.y << "\n";
-					p.a = ( p.upperConstraint.y - p.lowerConstraint.y ) / ( p.upperConstraint.x - p.lowerConstraint.x );
-					p.b = p.lowerConstraint.y - p.lowerConstraint.x * p.a;
-
-					// OK, now we have enough constraints to form a line.
-					// We now need to rescan in case our new line violates any previously considered constraints
 					needRescan = true;
-				}
-			}
-			else*/
-			{
-				double yAtUpperX = p.a * upperX + p.b;
-
-				// Check if we go above the maxmimum constraint at this index
-				if( yAtUpperX > maxY )
-				{
-					if( upperX < p.lowerConstraint.x )
-					{
-						// If the violated constraint is to the left of the previous lower constraint, then we would need to get steeper to fufill it
-						// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
-						// Fail.
-						return false;
-					}
-					else if( upperX != p.upperConstraint.x || maxY != p.upperConstraint.y )
-					{
-						// Replace the upper constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
-						// and trigger a rescan to check our new line against previous constraints
-						//std::cerr << "REPLACE\n";
-						if( upperX != p.lowerConstraint.x )
-						{
-							double newA = (maxY - p.lowerConstraint.y) / ( upperX - p.lowerConstraint.x );
-							if( newA < p.a )
-							{
-								p.a = newA;
-								p.b = maxY - upperX * p.a;
-							}
-						}
-						p.upperConstraint.x = upperX;
-						p.upperConstraint.y = maxY;
-						needRescan = true;
-					}
 				}
 			}
 		}
@@ -850,6 +793,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
+		assert( !std::isnan( xEnd ) );
 
 
 		if( fabs( yFinal ) == std::numeric_limits<double>::infinity() )
@@ -862,8 +806,11 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 		else if( fabs( currentSearchParams.a ) == std::numeric_limits<double>::infinity() )
 		{
 			// The line we have found is a point sample.
-			//xStart = xEnd = currentSearchParams.lowerConstraint.x;
-			xStart = xEnd = constraints.back().lowerX;
+			/*if( currentSearchParams.lowerConstraint.x == std::numeric_limits<double>::infinity() )
+			{
+				currentSearchParams.lowerConstraint.x = constraints.back().lowerX;
+			}*/
+			xStart = xEnd = currentSearchParams.lowerConstraint.x;
 			assert( xStart < 1e10 ); // TODO
 		}
 		else
@@ -911,6 +858,8 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			}
 		}
 
+		//assert( xEnd >= xStart );
+		assert( !std::isnan( yFinal ) );
 
 		LinearSegment compressedSample;
 		compressedSample.X = xStart;
@@ -1006,7 +955,6 @@ void resampleDeepPixel( DeepPixel &out, const DeepPixel &pixel, double alphaTole
 		return;
 	}
 
-	std::cerr << "R";
 	std::vector< ToleranceConstraint > constraints;
 	constraintSamplesForPixel( constraints, pixel, alphaTolerance, zTolerance );
 
@@ -1187,6 +1135,9 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		return;
 	}
 
+	// TODO
+	//const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
+
 	float alphaTolerance = alphaTolerancePlug()->getValue();
 	float depthTolerance = depthTolerancePlug()->getValue();
 
@@ -1249,6 +1200,8 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 					before.addSample( z[j], zBack[j], alpha[j], nullptr );
 				}
 			}
+			//int ly = i / ImagePlug::tileSize();
+			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
 			resampleDeepPixel( outputPixels[i], before, alphaTolerance, depthTolerance );
 			outputCount += outputPixels[i].numSamples();
 			outSampleOffsets[i] = outputCount;
