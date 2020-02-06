@@ -39,6 +39,9 @@
 #include "GafferImage/ImageAlgo.h"
 #include "GafferImage/DeepResample.h"
 
+// TODO
+#include <csignal>
+
 
 using namespace std;
 using namespace Imath;
@@ -571,6 +574,10 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
 			double curChannelMultiplier = curChannelData[2] > 0 ? ( 1 - segmentAccumChannels[ 2 ] ) * alphaToTake / curChannelData[ 2 ] : 0.0; // TODO
+			if( curChannelMultiplier < 0 )
+			{
+				std::cerr << "BAD MULTIPLIER :" << curChannelMultiplier << " : " << alphaToTake << "\n";
+			}
 
 
 			for( unsigned int j = 0; j < numChannels; ++j )
@@ -700,9 +707,30 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 
 	std::vector<V2d> tempConstraintLower;
 	std::vector<V2d> tempConstraintUpper;
-	unsigned int preScanIndex = 0;
-	unsigned int scanIndex = 0;
-	while( scanIndex < constraints.size() )
+
+	std::vector<V2d> constraintsLower;
+	std::vector<V2d> constraintsUpper;
+	constraintsLower.reserve( constraints.size() );
+	constraintsUpper.reserve( constraints.size() );
+
+	for( unsigned int i = 0; i < constraints.size(); i++ )
+	{
+		if( constraints[i].minY != -std::numeric_limits<double>::infinity() )
+		{
+			constraintsLower.push_back( V2d( constraints[i].lowerX, constraints[i].minY ) );
+		}
+		constraintsUpper.push_back( V2d( constraints[i].upperX, constraints[i].maxY ) );
+	}
+
+	unsigned int lowerStartIndex = 0;
+	unsigned int lowerStopIndex = 0;
+	unsigned int upperStartIndex = 0;
+	unsigned int upperStopIndex = 0;
+
+	//unsigned int preScanIndex = 0;
+	//unsigned int scanIndex = 0;
+	while( lowerStopIndex < constraintsLower.size() )
+	//while( scanIndex < constraints.size() )
 	{
 		// Initial constraint search parameters for not yet having found anything
 		ConstraintSearchParams currentSearchParams;
@@ -717,31 +745,33 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 		currentSearchParams.upperConstraint.y = 0.0f;
 
 		double yFinal = 0;
-		unsigned int searchIndex = scanIndex;
-		unsigned int tailIndex = scanIndex;
+		//unsigned int searchIndex = scanIndex;
+		//unsigned int tailIndex = scanIndex;
 
-		for( searchIndex = scanIndex; searchIndex < constraints.size(); ++searchIndex )
+		//for( ;;searchIndex = scanIndex; searchIndex < constraints.size(); ++searchIndex )
+
+		for( ;lowerStopIndex < constraintsLower.size(); lowerStopIndex++ )
 		{
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
 			// constraints up to searchIndex which haven't been previously covered
 
 			// We will create a flat top which just reaches the lower constraint at this index
-			double yFinalTrial = constraints[searchIndex].minY;
+			double yFinalTrial = constraintsLower[lowerStopIndex].y;
 
 			// Any upper constraints greater than yFinalTrial can be ignored, because we are going to cut before reaching them
-			tailIndex = searchIndex;
-			while( tailIndex > scanIndex + 1 && constraints[tailIndex - 1].maxY > yFinalTrial )
+			//tailIndex = searchIndex;
+			while( upperStopIndex < constraintsUpper.size() - 1 && constraintsUpper[ upperStopIndex + 1 ].y < yFinalTrial )
 			{
-				--tailIndex;
+				upperStopIndex++;
 			}
 
-			tempConstraintLower.clear();
-			tempConstraintUpper.clear();
+			//tempConstraintLower.clear();
+			//tempConstraintUpper.clear();
 			/*start = preScanIndex;	
 			end = searchIndex;
 			head = int( scanIndex ) - 1;
 			tail = tailIndex;*/
-			for( unsigned int i = scanIndex; i <= searchIndex; i++ )
+			/*for( unsigned int i = scanIndex; i <= searchIndex; i++ )
 			{
 				if( constraints[i].minY != -std::numeric_limits<double>::infinity() )
 				{
@@ -751,7 +781,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			for( unsigned int i = preScanIndex; i < tailIndex; i++ )
 			{
 				tempConstraintUpper.push_back( V2d( constraints[i].upperX, constraints[i].maxY ) );
-			}
+			}*/
 			/*for( int i = endIndex; i >= startIndex; i-- )
 			{
 
@@ -773,7 +803,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			// Try fitting a line to our new set of constraints
 			//bool success = updateConstraints( &constraints[0], preScanIndex, searchIndex, int( scanIndex ) - 1, tailIndex, &currentSearchParams );
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = updateConstraintsSimple( &tempConstraintLower[0], tempConstraintLower.size(), &tempConstraintUpper[0], tempConstraintUpper.size(), &currentSearchParams );
+			bool success = updateConstraintsSimple( &constraintsLower[lowerStartIndex], lowerStopIndex - lowerStartIndex + 1, &constraintsUpper[upperStartIndex], upperStopIndex - upperStartIndex, &currentSearchParams );
 
 			if( !success )
 			{
@@ -799,8 +829,8 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 		if( fabs( yFinal ) == std::numeric_limits<double>::infinity() )
 		{
 			// We should never get here but if we do, do something fairly sensible.
-			yFinal = constraints[ tailIndex - 1 ].minY;
-			xStart = xEnd = constraints[ tailIndex-1 ].lowerX;
+			yFinal = constraintsLower.back().y;
+			xStart = xEnd = constraintsLower.back().x;
 			currentSearchParams.a = std::numeric_limits<double>::infinity();
 		}
 		else if( fabs( currentSearchParams.a ) == std::numeric_limits<double>::infinity() )
@@ -869,7 +899,11 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 
 		yPrev = yFinal;
 
-		scanIndex = searchIndex;
+		//scanIndex = searchIndex;
+		upperStartIndex = upperStopIndex + 1;
+		lowerStartIndex = lowerStopIndex + 1;
+		upperStopIndex++;
+		lowerStopIndex++;
 
 		prevSearchParams = currentSearchParams;
 
@@ -877,10 +911,11 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 		// If the previous line goes over the current constraint, then we are going to be underneath it
 		// This means that we don't need to worry about upper constraints that it passed under,
 		// because if we are heading towards them, we will intersect it
-		if( scanIndex < constraints.size() && constraints[scanIndex].upperX * prevSearchParams.a + prevSearchParams.b > constraints[scanIndex].maxY )
+		// TODO TODO TODO
+		/*if( scanIndex < constraints.size() && constraints[scanIndex].upperX * prevSearchParams.a + prevSearchParams.b > constraints[scanIndex].maxY )
 		{
 			while( preScanIndex + 1 < constraints.size() && constraints[preScanIndex + 1].maxY < yFinal ) preScanIndex++;
-		}
+		}*/
 	}
 
 	//assert( compressedSamples.back().YBack == constraints.back().minY );
@@ -947,13 +982,14 @@ void constraintSamplesForPixel(
 	constraints.back().minY = exponentialToLinear( deepSamples.back().alpha );
 }
 
-void resampleDeepPixel( DeepPixel &out, const DeepPixel &pixel, double alphaTolerance, double zTolerance )
+void resampleDeepPixel( DeepPixel &out, const DeepPixel &pixel, double alphaTolerance, double zTolerance, bool debug )
 {
 	if( pixel.numSamples() < 2 )
 	{
 		out = pixel;
 		return;
 	}
+	//if( debug ) raise( SIGABRT );
 
 	std::vector< ToleranceConstraint > constraints;
 	constraintSamplesForPixel( constraints, pixel, alphaTolerance, zTolerance );
@@ -1136,7 +1172,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 	}
 
 	// TODO
-	//const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
+	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
 
 	float alphaTolerance = alphaTolerancePlug()->getValue();
 	float depthTolerance = depthTolerancePlug()->getValue();
@@ -1200,9 +1236,10 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 					before.addSample( z[j], zBack[j], alpha[j], nullptr );
 				}
 			}
-			//int ly = i / ImagePlug::tileSize();
+			int ly = i / ImagePlug::tileSize();
+			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			resampleDeepPixel( outputPixels[i], before, alphaTolerance, depthTolerance );
+			resampleDeepPixel( outputPixels[i], before, alphaTolerance, depthTolerance, pixelLocation == V2i( 112, 32 ) );
 			outputCount += outputPixels[i].numSamples();
 			outSampleOffsets[i] = outputCount;
 
