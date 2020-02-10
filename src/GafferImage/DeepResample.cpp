@@ -563,11 +563,13 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 			double alphaToTake;
 			if( alphaNeeded >= alphaRemaining )
 			{
+				assert( alphaRemaining >= 0 );
 				alphaToTake = alphaRemaining;
 				alphaRemaining = 0;
 			}
 			else
 			{
+				assert( alphaNeeded >= 0 );
 				alphaToTake = alphaNeeded;
 				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
 			}
@@ -803,7 +805,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			// Try fitting a line to our new set of constraints
 			//bool success = updateConstraints( &constraints[0], preScanIndex, searchIndex, int( scanIndex ) - 1, tailIndex, &currentSearchParams );
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = updateConstraintsSimple( &constraintsLower[lowerStartIndex], lowerStopIndex - lowerStartIndex + 1, &constraintsUpper[upperStartIndex], upperStopIndex - upperStartIndex, &currentSearchParams );
+			bool success = updateConstraintsSimple( &constraintsLower[lowerStartIndex], lowerStopIndex - lowerStartIndex + 1, &constraintsUpper[upperStartIndex], upperStopIndex - upperStartIndex + 1, &currentSearchParams );
 
 			if( !success )
 			{
@@ -816,6 +818,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
+		
 		//assert( searchIndex > scanIndex );
 		//std::cerr << "Segment " << compressedSamples.size() << " : " << currentSearchParams.lowerConstraint.x << "," << currentSearchParams.lowerConstraint.y << "->" << currentSearchParams.upperConstraint.x << "," << currentSearchParams.upperConstraint.y << "\n";
 
@@ -825,13 +828,16 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
 		assert( !std::isnan( xEnd ) );
 
+		assert( currentSearchParams.lowerConstraint.x != std::numeric_limits<double>::infinity() );
 
-		if( fabs( yFinal ) == std::numeric_limits<double>::infinity() )
+		// TODO
+		if( currentSearchParams.lowerConstraint.x == std::numeric_limits<double>::infinity() || fabs( yFinal ) == std::numeric_limits<double>::infinity() )
 		{
 			// We should never get here but if we do, do something fairly sensible.
 			yFinal = constraintsLower.back().y;
 			xStart = xEnd = constraintsLower.back().x;
 			currentSearchParams.a = std::numeric_limits<double>::infinity();
+			lowerStopIndex = constraintsLower.size();
 		}
 		else if( fabs( currentSearchParams.a ) == std::numeric_limits<double>::infinity() )
 		{
@@ -881,6 +887,10 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 							// The start of the new segment falls between the start and end of the previous segment.
 							// As a result, intersect the two line segments.
 							prevSegment.XBack = xStart;
+							if( prevSegment.X > prevSegment.XBack )
+							{
+								std::cerr << "MESSING THINGS UP\n";
+							}
 							prevSegment.YBack = xStart * prevSearchParams.a + prevSearchParams.b;
 						}
 					}
@@ -888,7 +898,7 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			}
 		}
 
-		//assert( xEnd >= xStart );
+		assert( xEnd >= xStart );
 		assert( !std::isnan( yFinal ) );
 
 		LinearSegment compressedSample;
@@ -899,13 +909,44 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 
 		yPrev = yFinal;
 
+		/*if( scanIndex < constraints.size() && constraints[scanIndex].upperX * prevSearchParams.a + prevSearchParams.b > constraints[scanIndex].maxY )
+		{
+			while( preScanIndex + 1 < constraints.size() && constraints[preScanIndex + 1].maxY < yFinal ) preScanIndex++;
+		}*/
 		//scanIndex = searchIndex;
-		upperStartIndex = upperStopIndex + 1;
-		lowerStartIndex = lowerStopIndex + 1;
-		upperStopIndex++;
-		lowerStopIndex++;
+		
+		//lowerStopIndex++; // TODO TODO TODO
+
+		//lowerStartIndex = lowerStopIndex;
+		//lowerStartIndex++;
+		/*if( currentSearchParams.lowerConstraint.x != std::numeric_limits<double>::infinity() )
+		{
+			while( lowerStartIndex < constraintsLower.size() && constraintsLower[lowerStartIndex].x < currentSearchParams.lowerConstraint.x )
+			{
+				lowerStartIndex++;
+			}
+		}*/
+		lowerStartIndex = lowerStopIndex;
+		//upperStartIndex = upperStopIndex + 1;
+		if( currentSearchParams.upperConstraint.x != -std::numeric_limits<double>::infinity() )
+		{
+			while( upperStartIndex < constraintsUpper.size() && constraintsUpper[upperStartIndex].x < currentSearchParams.upperConstraint.x )
+			{
+				upperStartIndex++;
+			}
+		}
+		//upperStopIndex++;
+		
 
 		prevSearchParams = currentSearchParams;
+
+		if( upperStopIndex < constraintsUpper.size() && constraintsUpper[upperStopIndex].x * prevSearchParams.a + prevSearchParams.b > constraintsUpper[upperStopIndex].y )
+		{
+			while( upperStartIndex + 1 < constraints.size() && constraintsUpper[upperStartIndex + 1].y < yFinal )
+			{
+				upperStartIndex++;
+			}
+		}
 
 
 		// If the previous line goes over the current constraint, then we are going to be underneath it
@@ -917,6 +958,14 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
 			while( preScanIndex + 1 < constraints.size() && constraints[preScanIndex + 1].maxY < yFinal ) preScanIndex++;
 		}*/
 	}
+
+	// TODO - adjust XBack too
+	/*if( compressedSamples.size() > 1 ) 
+	{
+		float prevY = compressedSamples[ compressedSamples.size() - 2 ].YBack;
+		compressedSamples.back().XBack = ( constraintsUpper.back().y - prevY ) / ( compressedSamples.back().YBack - prevY ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
+	}
+	compressedSamples.back().YBack = constraintsUpper.back().y;*/
 
 	//assert( compressedSamples.back().YBack == constraints.back().minY );
 

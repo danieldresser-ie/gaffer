@@ -295,6 +295,7 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 			float denomMult = 0;
 			if( a < 1e-8f )
 			{
+				a = 0;
 				increment = 1.0f / float( s );
 				denomMult = 1.0f;
 			}
@@ -305,13 +306,23 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 			
 			for( int k = 0; k < s; k++ )
 			{
-				float targetAlpha = ( k + back ) * increment;
-
-				float lerp = -log1p( -std::min( 1.0f - 1e-6f, targetAlpha ) ) * denomMult;
-				if( lerp  > 1.0f )
+				float lerp;
+				if( a == 0 )
 				{
-					std::cerr << "BAD LERP:" << lerp << "\n";
+					lerp = ( k + back ) * increment;
+				}
+				else
+				{
+					float targetAlpha = ( k + back ) * increment;
+					lerp = -log1p( -std::min( 1.0f - 1e-6f, targetAlpha ) ) * denomMult;
+				}
+				if( lerp > 1.0f )
+				{
 					lerp = 1.0f; // TODO
+					if( lerp > 1.000001f )
+					{
+						std::cerr << "BAD LERP:" << lerp << "\n";
+					}
 				}
 
 				channel[outIndex] = z[j] + ( zBack[j] - z[j] ) * lerp;
