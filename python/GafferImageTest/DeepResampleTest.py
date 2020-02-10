@@ -139,7 +139,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( origSampler['pixelData'].getValue(), resampleSampler['pixelData'].getValue(), 0.001, 0.0031, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001, 0.0031, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 
 		# Now a much more aggressive resample
@@ -155,7 +155,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( origSampler['pixelData'].getValue(), resampleSampler['pixelData'].getValue(), 0.011, 0.011, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.011, 0.011, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 		
 

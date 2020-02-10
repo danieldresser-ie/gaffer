@@ -237,8 +237,8 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 		for( float depth : depthData->readable() )
 		{
 			evaluateDeepPixelInternal( zA->readable(), zBackA->readable(), alphaA->readable(), channelsA, depth, resultA );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth * ( 1 + depthTolerance ), resultBUpper );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth * ( 1 - depthTolerance ), resultBLower );
+			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 - depthTolerance ), resultBUpper );
+			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 + depthTolerance ), resultBLower );
 
 			for( unsigned int j = 0; j < resultA.size(); j++ )
 			{
@@ -246,16 +246,19 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 			
 				bool fail = false;
 				float compare;
+				float compareDepth;
 
 				if( resultA[j] - resultBUpper[j] > tol )
 				{
 					fail = true;
 					compare = resultBUpper[j];
+					compareDepth = depth / ( 1 - depthTolerance );
 				}
 				if( resultA[j] - resultBLower[j] < -tol )
 				{
 					fail = true;
 					compare = resultBLower[j];
+					compareDepth = depth / ( 1 + depthTolerance );
 				}
 
 				if( fail )
@@ -263,7 +266,7 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 					std::string channelName = j == 0 ? "A" : channelNames[j - 1];
 					throw IECore::Exception(
 						message + "Mismatch in channel " + channelName + " at depth " + std::to_string( depth ) +
-						" : " + std::to_string( resultA[j] ) + " vs " + std::to_string( compare ) +
+						" : " + std::to_string( resultA[j] ) + " vs " + std::to_string( compare ) + " ( at depth " + std::to_string( compareDepth ) + " )" +
 						" not within " + std::to_string( tol ) + "\n"
 					);
 				}
