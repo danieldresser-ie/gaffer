@@ -52,74 +52,6 @@ using namespace GafferImage;
 namespace
 {
 
-/// A DeepPixel represents arbitrary channel data stored at varying depths in space.
-/// By convention, depth is measured as distance from the eye plane
-/// \ingroup deepCompositingGroup
-class DeepPixel
-{
-
-    public :
-        /// Constructs a new DeepPixel, with a given number of extra channels
-        //  ( in addition to the standard Z, ZBack, and alpha ).
-        /// numSamples is only used to reserve the appropriate amount of space.
-        /// It does not actually initialize data or add default samples.
-		DeepPixel( unsigned numUserChannels = 0, unsigned numSamples = 0 )
-			: m_numChannels( 3 + numUserChannels ), m_numUserChannels( numUserChannels)
-		{
-			m_samples.reserve( numSamples * m_numChannels );
-		}
-
-        /// The number of depth samples
-        unsigned numSamples() const
-		{
-			return m_samples.size() / m_numChannels;
-		}
-
-        /// Adds a new depth sample
-        void addSample( float z, float zback, float alpha, const float *userChannelData )
-		{
-			m_samples.reserve( m_samples.size() + m_numChannels );
-
-			m_samples.push_back( z );
-			m_samples.push_back( zback );
-			m_samples.push_back( alpha );
-			for ( unsigned i=0; i < m_numUserChannels; ++i )
-			{
-				m_samples.push_back( userChannelData[i] );
-			}
-		}
-
-        /// The standard channels
-        float getZ( unsigned index ) const
-		{
-			return m_samples[ index * m_numChannels + 0 ];
-		}
-        float getZBack( unsigned index ) const
-		{
-			return m_samples[ index * m_numChannels + 1 ];
-		}
-        float getAlpha( unsigned index ) const
-		{
-			return m_samples[ index * m_numChannels + 2 ];
-		}
-
-        const float *getUserChannelData( unsigned index ) const
-		{
-			return &m_samples[ index * m_numChannels + 3 ];
-		}
-
-        unsigned numUserChannels() const
-		{
-			return m_numUserChannels;
-		}
-
-    private :
-        std::vector<float> m_samples;
-        unsigned m_numChannels;
-        unsigned m_numUserChannels;
-
-};
-
 struct ToleranceConstraint
 {
 	double lowerX;
@@ -136,18 +68,12 @@ struct DepthPointSample
 	double alpha;
 };
 
-/// Compresses a DeepPixel given an alpha and a depth tolerance.
-void resampleDeepPixel( DeepPixel &out, const DeepPixel &p, double alphaTolerance, double zTolerance );
-
 /// Defines how many samples the compression algorithm takes along the length of a volume sample.
 int numberOfSplitsPerSample();
-
-void constraintSamplesForPixel( std::vector< ToleranceConstraint > &constraints, const DeepPixel &pixel, double alphaTolerance, double zTolerance );
 
 /// Creates a set of point samples across the range of the pixel's depth for the alpha channel.
 /// The deepSamples that are returned are stored in the deepSamples vector, with values for depth and accumulated alpha from front to back
 /// The splits parameter defines how many point samples each volume sample is split into.
-void integratedPointSamplesForPixel( std::vector<DepthPointSample> &deepSamples, const DeepPixel &pixel, int splits = numberOfSplitsPerSample() );
 
 /// Given a value in exponential space, make it linear.
 double exponentialToLinear( double value );
@@ -180,30 +106,31 @@ int numberOfSplitsPerSample()
  Note that currently volume samples are just split into a fixed number of point samples.  A better approach would be
  to split enough times that the alpha increment for each sample is less than the alpha threshold.
 */
-void integratedPointSamplesForPixel( std::vector<DepthPointSample> &deepSamples, const DeepPixel &pixel, int splits )
+void integratedPointSamplesForPixel(
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	std::vector<DepthPointSample> &deepSamples
+)
 {
 	const unsigned int split = numberOfSplitsPerSample();
 
-	unsigned int numSamples = pixel.numSamples();
-
 	// Create an additional sample just before the first to force
-	// the algorithm to start from the first sample.
-	double depthOfFirstPoint = pixel.getZ( 0 ) * 0.99999;
+	// the algorithm to start from the first sample.  // TODO - why is this necessary?
+	double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
 	deepSamples.push_back( DepthPointSample( depthOfFirstPoint, 0 ) );
 
 	// Now add the remaining samples.
-	for ( unsigned int i = 0; i < numSamples; ++i )
+	for ( int i = 0; i < inSamples; ++i )
 	{
-		double Z = pixel.getZ( i );
-		double ZBack = pixel.getZBack( i );
+		double Z = inZ[ i ];
+		double ZBack = inZBack[ i ];
 
 		if( Z == ZBack ) // If this is a point sample.
 		{
-			deepSamples.push_back( DepthPointSample( Z, pixel.getAlpha( i ) ) );
+			deepSamples.push_back( DepthPointSample( Z, inA[ i ] ) );
 		}
 		else
 		{
-			double alpha = std::min( 1.0f - 1e-6f, pixel.getAlpha( i ) ); // TODO
+			double alpha = std::min( 1.0f - 1e-6f, inA[ i ] ); // TODO
 			double splitAlpha = -expm1( 1.0 / double( split ) * log1p( -alpha ) );
 
 			for( unsigned int k = 0; k < split; ++k )
@@ -509,19 +436,22 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int lowerStart, int l
  Given a set of segments that define an optimal resampling which fufills all constraints in the linear remapped space,
  remap all the color and alpha channels of a deep pixel to match
 */
-void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const std::vector< LinearSegment >& compressedSamples )
+void conformToSegments( 
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	const std::vector< LinearSegment >& compressedSamples,
+	int &outSamples, float *outA, float *outZ, float *outZBack
+)
 {
-	resampledPixel = DeepPixel( pixel.numUserChannels(), compressedSamples.size() );
+	outSamples = compressedSamples.size();
 
 	double totalAccumAlpha = 0;
-	unsigned numChannels = 3 + resampledPixel.numUserChannels();
 
-	std::vector<double> segmentAccumChannels( numChannels, 0 );
-	std::vector<double> curChannelData( numChannels );
+	double curA = 0;
+	double accumA = 0;
 
 	double alphaRemaining = 0.0;
 
-	unsigned int integrateIndex = 0;
+	int integrateIndex = 0;
 	for( unsigned int i = 0; i < compressedSamples.size(); ++i )
 	{
 		double targetAlpha = -expm1( -compressedSamples[i].YBack );
@@ -531,29 +461,23 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 			targetAlpha = 0.0f;
 		}
 
-		for( ; integrateIndex < pixel.numSamples(); ++integrateIndex  )
+		for( ; integrateIndex < inSamples; ++integrateIndex  )
 		{
 			if( alphaRemaining == 0.0 )
 			{
-				curChannelData[0] = pixel.getZ( integrateIndex );
-				curChannelData[1] = pixel.getZBack( integrateIndex );
-				curChannelData[2] = pixel.getAlpha( integrateIndex );
-				for( unsigned j = 0; j < resampledPixel.numUserChannels(); j++ )
-				{
-					curChannelData[3 + j] = pixel.getUserChannelData( integrateIndex )[j];
-				}
-				alphaRemaining = curChannelData[ 2 ];
+				curA = inA[ integrateIndex ];
+				alphaRemaining = curA;
 			}
 
-			if( curChannelData[ 2 ] >= 1 )
+			if( curA >= 1 )
 			{
-				if( integrateIndex == pixel.numSamples()-1 )
+				if( integrateIndex == inSamples - 1 )
 				{
-					curChannelData[ 2 ] = 1.;
+					curA = 1.;
 				}
 				else
 				{
-					curChannelData[ 2 ] = 1. - std::numeric_limits<float>::epsilon();
+					curA = 1. - std::numeric_limits<float>::epsilon(); // TODO - why?
 				}
 			}
 
@@ -574,17 +498,13 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 			}
 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
-			double curChannelMultiplier = curChannelData[2] > 0 ? ( 1 - segmentAccumChannels[ 2 ] ) * alphaToTake / curChannelData[ 2 ] : 0.0; // TODO
+			double curChannelMultiplier = curA > 0 ? ( 1 - accumA ) * alphaToTake / curA : 0.0; // TODO
 			if( curChannelMultiplier < 0 )
 			{
 				std::cerr << "BAD MULTIPLIER :" << curChannelMultiplier << " : " << alphaToTake << "\n";
 			}
 
-
-			for( unsigned int j = 0; j < numChannels; ++j )
-			{
-				segmentAccumChannels[j] += curChannelMultiplier * curChannelData[j];
-			}
+			accumA += curChannelMultiplier * curA;
 
 			if( alphaRemaining > 0 )
 			{
@@ -592,32 +512,23 @@ void conformToSegments( DeepPixel &resampledPixel, const DeepPixel& pixel, const
 			}
 		}
 
-		segmentAccumChannels[ 1 ] = compressedSamples[i].XBack;
-
-		float userChannels[ resampledPixel.numUserChannels() ];
-		for( unsigned int j = 0; j < resampledPixel.numUserChannels(); ++j )
-		{
-			userChannels[j] = segmentAccumChannels[3+j];
-		}
-
 		if( compressedSamples[i].XBack < compressedSamples[i].X )
 		{
 			std::cerr << "BAD XBACK: " << compressedSamples[i].X << " -> " << compressedSamples[i].XBack << "\n";
 		}
 
-		if( ! ( segmentAccumChannels[2] > -0.1 && segmentAccumChannels[2] < 1.1 ) )
+		if( ! ( accumA > -0.1 && accumA < 1.1 ) )
 		{
-			std::cerr << "BAD CALC: " << segmentAccumChannels[2] << "\n";
-			segmentAccumChannels[2] = 0.0f;
+			std::cerr << "BAD CALC: " << accumA << "\n";
+			accumA = 0.0f;
 		}
 
-		resampledPixel.addSample( compressedSamples[i].X, compressedSamples[i].XBack, segmentAccumChannels[2], userChannels );
 
-		for( unsigned int j = 0; j < numChannels; ++j )
-		{
-			segmentAccumChannels[j] = 0.0;
-		}
+		outZ[i] = compressedSamples[i].X;
+		outZBack[i] = compressedSamples[i].XBack;
+		outA[i] = accumA;
 
+		accumA = 0.0f;
 	}
 }
 
@@ -985,14 +896,14 @@ void minimalSegmentsForConstraints( std::vector< LinearSegment > &compressedSamp
  the given alpha and z tolerance
 */
 void constraintSamplesForPixel(
-	std::vector< ToleranceConstraint > &constraints,
-	const DeepPixel &pixel,
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
 	double alphaTolerance,
-	double zTolerance
+	double zTolerance,
+	std::vector< ToleranceConstraint > &constraints
 	)
 {
 	std::vector< DepthPointSample > deepSamples;
-	integratedPointSamplesForPixel( deepSamples, pixel );
+	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
 
 	constraints.resize( deepSamples.size() );
 	double lastValidMinY = 0;
@@ -1026,21 +937,42 @@ void constraintSamplesForPixel(
 	constraints.back().minY = exponentialToLinear( deepSamples.back().alpha );
 }
 
-void resampleDeepPixel( DeepPixel &out, const DeepPixel &pixel, double alphaTolerance, double zTolerance, bool debug )
+// TODO - some way to specify tolerances in other channels
+// TODO : Shouldn't really be any need for anything to be in double precision here?
+void resampleDeepPixel(
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	double alphaTolerance, double zTolerance,
+	int &outSamples, float *outA, float *outZ, float *outZBack,
+	bool debug
+)
 {
-	if( pixel.numSamples() < 2 )
+	if( inSamples <= 1 )
 	{
-		out = pixel;
+		outSamples = inSamples;
+		if( inSamples == 1 )
+		{
+			outA[0] = inA[0];
+			outZ[0] = inZ[0];
+			outZBack[0] = inZBack[0];
+		}
 		return;
 	}
-	//if( debug ) raise( SIGABRT );
+	//if( debug ) raise( SIGABRT ); // TODO
 
 	std::vector< ToleranceConstraint > constraints;
-	constraintSamplesForPixel( constraints, pixel, alphaTolerance, zTolerance );
+	constraintSamplesForPixel(
+		inSamples, inA, inZ, inZBack,
+		alphaTolerance, zTolerance,
+		constraints
+	);
 
 	std::vector< LinearSegment > compressedSamples;
 	minimalSegmentsForConstraints( compressedSamples, constraints );
-	conformToSegments( out, pixel, compressedSamples );
+	conformToSegments(
+		inSamples, inA, inZ, inZBack,
+		compressedSamples,
+		outSamples, outA, outZ, outZBack
+	);
 	return;
 }
 
@@ -1259,15 +1191,32 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		std::vector<int> &outSampleOffsets = outSampleOffsetsData->writable();
 		outSampleOffsets.resize( sampleOffsets.size() );
 
-		std::vector<DeepPixel> outputPixels;
-		outputPixels.resize( sampleOffsets.size() );
+
+		FloatVectorDataPtr outAlphaData = new FloatVectorData();
+		std::vector<float> &outAlpha = outAlphaData->writable();
+		FloatVectorDataPtr outZData = new FloatVectorData();
+		std::vector<float> &outZ = outZData->writable();
+		FloatVectorDataPtr outZBackData = new FloatVectorData();
+		std::vector<float> &outZBack = outZBackData->writable();
+
+		// Start with the input size, resize to fit afterwards
+		// TODO - this would cause a crash if resampling increased the sample count
+		// Mathematically, I'm reasonably confident this is impossible, but I should
+		// have a proper think about whether this could ever happen with floating point
+		// error and such
+		outAlpha.resize( alpha.size() );
+		outZ.resize( alpha.size() );
+		outZBack.resize( alpha.size() );
+
+		//std::vector<DeepPixel> outputPixels;
+		//outputPixels.resize( sampleOffsets.size() );
 		int prev = 0;
 		int outputCount = 0;
 		for( unsigned int i = 0; i < sampleOffsets.size(); i++ )
 		{
 			int index = sampleOffsets[i];
 
-			DeepPixel before( 0, index - prev );
+			/*DeepPixel before( 0, index - prev );
 			for( int j = prev; j < index; j++ )
 			{
 				if( !( alpha[j] >= -0.1 && alpha[j] <= 1.1  ) )
@@ -1279,47 +1228,35 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 				{
 					before.addSample( z[j], zBack[j], alpha[j], nullptr );
 				}
-			}
+			}*/
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			resampleDeepPixel( outputPixels[i], before, alphaTolerance, depthTolerance, pixelLocation == V2i( 112, 32 ) );
-			outputCount += outputPixels[i].numSamples();
+			int resampledCount;
+			resampleDeepPixel(
+				index - prev, &alpha[prev], &z[prev], &zBack[prev],
+				alphaTolerance, depthTolerance,
+				resampledCount, &outAlpha[outputCount], &outZ[outputCount], &outZBack[outputCount],
+				pixelLocation == V2i( 112, 32 )
+			);
+			outputCount += resampledCount;
 			outSampleOffsets[i] = outputCount;
 
 			prev = index;
 		}
 
-		FloatVectorDataPtr outAlphaData = new FloatVectorData();
-		std::vector<float> &outAlpha = outAlphaData->writable();
-		outAlpha.resize( outputCount );
-		FloatVectorDataPtr outZData = new FloatVectorData();
-		std::vector<float> &outZ = outZData->writable();
-		outZ.resize( outputCount );
-		FloatVectorDataPtr outZBackData = new FloatVectorData();
-		std::vector<float> &outZBack = outZBackData->writable();
-		outZBack.resize( outputCount );
-
-		int outIndex = 0;
-		for( unsigned int i = 0; i < sampleOffsets.size(); i++ )
+		// TODO	- this is too late to reliably avoid crash
+		if( outSampleOffsets.back() > ((int)alpha.size()) )
 		{
-			int j = 0;
-			while( outIndex < outSampleOffsets[i] )
-			{
-				outAlpha[outIndex] = outputPixels[i].getAlpha( j );
-				if( !( outAlpha[outIndex] >= -0.1 && outAlpha[outIndex] <= 1.1  ) )
-				{
-					std::cerr << "BAD A : " << outAlpha[outIndex] << "\n";
-					outAlpha[outIndex] = 1.0f;
-				}
-				outZ[outIndex] = outputPixels[i].getZ( j );
-				outZBack[outIndex] = outputPixels[i].getZBack( j );
-				outIndex++;
-				j++;
-			}
+			throw IECore::Exception( "Sample count increased during resampling" );
 		}
 
-		//std::cerr << "TEST : " << outAlpha.size() << " : " << outSampleOffsets.back() << "\n";
+		outAlpha.resize( outSampleOffsets.back() );
+		outZ.resize( outSampleOffsets.back() );
+		outZBack.resize( outSampleOffsets.back() );
+		outAlpha.shrink_to_fit();
+		outZ.shrink_to_fit();
+		outZBack.shrink_to_fit();
 
 		resampledData->members()["sampleOffsets"] = outSampleOffsetsData;
 		resampledData->members()["A"] = outAlphaData;
