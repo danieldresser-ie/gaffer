@@ -70,54 +70,6 @@ double exponentialToLinear( double value )
 	return value <= 0 ? 0 : value >= 1 ? maximumLinearY : -log1p( -value );
 }
 
-/*
- Given a deep pixel which may contain a mixture of point and volume samples, produce a set of samples which represent the
- alpha falloff curve, where each sample stores a depth and the integrated alpha up to that point.
-
- Note that currently volume samples are just split into a fixed number of point samples.  A better approach would be
- to split enough times that the alpha increment for each sample is less than the alpha threshold.
-*/
-void integratedPointSamplesForPixel(
-	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	std::vector<V2d> &deepSamples
-)
-{
-	const unsigned int split = 1;
-
-	// Create an additional sample just before the first to force
-	// the algorithm to start from the first sample.  // TODO - why is this necessary?
-	double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
-	deepSamples.push_back( V2d( depthOfFirstPoint, 0 ) );
-
-	// Now add the remaining samples.
-	for ( int i = 0; i < inSamples; ++i )
-	{
-		double Z = inZ[ i ];
-		double ZBack = inZBack[ i ];
-
-		if( Z == ZBack ) // If this is a point sample.
-		{
-			deepSamples.push_back( V2d( Z, inA[ i ] ) );
-		}
-		else
-		{
-			double alpha = std::min( 1.0f - 1e-6f, inA[ i ] ); // TODO
-			double splitAlpha = -expm1( 1.0 / double( split ) * log1p( -alpha ) );
-
-			for( unsigned int k = 0; k < split; ++k )
-			{
-				deepSamples.push_back( V2d( Z + ( ZBack - Z ) * ( double( k + 1. ) / double( split ) ), splitAlpha ) );
-			}
-		}
-	}
-
-	double accumAlpha = 0;
-	for ( unsigned int i = 0; i < deepSamples.size(); ++i )
-	{
-		accumAlpha += ( 1 - accumAlpha ) * deepSamples[i].y;
-		deepSamples[i].y = accumAlpha >= 1 ? 1. : accumAlpha;
-	}
-}
 
 struct LinearSegment
 {
@@ -644,6 +596,47 @@ void minimalSegmentsForConstraints(
 }
 
 /*
+ Given a deep pixel which may contain a mixture of point and volume samples, produce a set of samples which represent the
+ alpha falloff curve, where each sample stores a depth and the integrated alpha up to that point.
+
+ Note that currently volume samples are just split into a fixed number of point samples.  A better approach would be
+ to split enough times that the alpha increment for each sample is less than the alpha threshold.
+*/
+void integratedPointSamplesForPixel(
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	std::vector<V2d> &deepSamples
+)
+{
+	// Create an additional sample just before the first to force
+	// the algorithm to start from the first sample.  // TODO - why is this necessary?
+	double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
+	deepSamples.push_back( V2d( depthOfFirstPoint, 0 ) );
+
+	float ZBackPrev = -1;
+	double accumAlpha = 0;
+	// Now add the remaining samples.
+	for ( int i = 0; i < inSamples; ++i )
+	{
+		double Z = inZ[ i ];
+		double ZBack = inZBack[ i ];
+
+		if( Z != ZBackPrev )
+		{
+			deepSamples.push_back( V2d( Z, accumAlpha ) );
+		}
+
+		accumAlpha += inA[i] - accumAlpha * inA[i];
+		if( accumAlpha >= 1.0f )
+		{
+			accumAlpha = 1.0f;
+		}
+		deepSamples.push_back( V2d( ZBack, accumAlpha ) );
+	
+		ZBackPrev = ZBack;	
+	}
+}
+
+/*
  From a deep pixel, create a list of constraints in linear space that define the path the alpha curve must take to stay within
  the given alpha and z tolerance
 */
@@ -655,6 +648,7 @@ void constraintSamplesForPixel(
 	std::vector< V2d > &upperConstraints
 )
 {
+	// TODO - get rid of this alloc by combining with function above
 	std::vector< V2d > deepSamples;
 	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
 
@@ -711,6 +705,7 @@ void resampleDeepPixel(
 		return;
 	}
 
+	// TODO - move these allocations outside loop?
 	std::vector<V2d> constraintsLower;
 	std::vector<V2d> constraintsUpper;
 	constraintSamplesForPixel(
