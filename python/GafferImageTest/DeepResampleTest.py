@@ -125,7 +125,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertEqual( origCount, 191684 )
 
 		# Make sure we substantially reduce the sample count
-		self.assertLess( resampleCount, 53200 )
+		self.assertLess( resampleCount, 53250 )
 		
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( fix["out"] )
