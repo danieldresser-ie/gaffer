@@ -609,11 +609,12 @@ void integratedPointSamplesForPixel(
 {
 	// Create an additional sample just before the first to force
 	// the algorithm to start from the first sample.  // TODO - why is this necessary?
-	double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
-	deepSamples.push_back( V2d( depthOfFirstPoint, 0 ) );
+	//double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
+	//deepSamples.push_back( V2d( depthOfFirstPoint, 0 ) );
 
 	float ZBackPrev = -1;
 	double accumAlpha = 0;
+	//double accumAlphaLinear = 0;
 	// Now add the remaining samples.
 	for ( int i = 0; i < inSamples; ++i )
 	{
@@ -657,31 +658,47 @@ void constraintSamplesForPixel(
 	double lastValidMinY = 0;
 	for( unsigned int j = 0; j < deepSamples.size(); ++j )
 	{
-		double minAlpha = deepSamples[j].y - ( ( j == deepSamples.size() - 1 ) ? 0 : alphaTolerance );
-		double maxAlpha = deepSamples[j].y + ( j == 0 ? 0 : alphaTolerance );
-
-		double max = maxAlpha < 1 ? -log1p( -maxAlpha ) : maximumLinearY;
-		double min = -std::numeric_limits<double>::infinity();
-		if( minAlpha > 0 )
+		if( j == deepSamples.size() - 1 )
 		{
-			if( minAlpha < 1 )
+			// Ensure that we always reach the exact final value
+			lowerConstraints.push_back( V2d( deepSamples[j].x * ( 1 + zTolerance ), exponentialToLinear( deepSamples[j].y ) ) );
+		}
+		else
+		{
+			double minAlpha = deepSamples[j].y - alphaTolerance;
+			if( minAlpha >= 0 )
 			{
-				min = -log1p( -minAlpha );
-				lastValidMinY = min;
+				double min = 0.0f;
+				if( minAlpha < 1 )
+				{
+					min = -log1p( -minAlpha );
+					lastValidMinY = min;
+				}
+				else
+				{
+					min = lastValidMinY;
+				}
+				lowerConstraints.push_back( V2d( deepSamples[j].x * ( 1 + zTolerance ), min ) );
 			}
 			else
 			{
-				min = lastValidMinY;
+				float nextMinAlpha = deepSamples[j+1].y - alphaTolerance;
+				if( nextMinAlpha > 0 )
+				{
+					float min = -log1p( -minAlpha );
+					float nextMin = -log1p( -nextMinAlpha );
+					float lerp = -min / ( nextMin - min );
+					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
+					lowerConstraints.push_back( V2d( xIntercept * ( 1 + zTolerance ), 0 ) );
+				}
 			}
-			lowerConstraints.push_back( V2d( deepSamples[j].x * ( 1 + zTolerance ), min ) );
-			
 		}
 
+		double maxAlpha = deepSamples[j].y + ( j == 0 ? 0 : alphaTolerance );
+		double max = maxAlpha < 1 ? -log1p( -maxAlpha ) : maximumLinearY;
 		upperConstraints.push_back( V2d( deepSamples[j].x * ( 1 - zTolerance ), max ) );
 	}
 
-	// Ensure that we always reach the exact final value
-	lowerConstraints.back().y = exponentialToLinear( deepSamples.back().y );
 }
 
 // TODO - some way to specify tolerances in other channels
