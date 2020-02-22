@@ -70,6 +70,31 @@ double exponentialToLinear( double value )
 	return value <= 0 ? 0 : value >= 1 ? maximumLinearY : -log1p( -value );
 }
 
+V2d segmentIntersect( V2d a1, V2d b1, V2d a2, V2d b2 )
+{
+	V2d disp = a2 - a1;
+	V2d dir1 = b1 - a1;
+	V2d dir2 = b2 - a2;
+
+	double denom = dir1.x * dir2.y - dir1.y * dir2.x;
+	if( fabs( denom ) < 1e-10 )
+	{
+		// TODO what if lines not coincident
+		if( b1.x < b2.x )
+		{
+			return b1;
+		}
+		else
+		{
+			return b2;
+		}
+	}
+
+	double t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
+
+	return a1 + dir1 * t;
+}
+
 
 struct LinearSegment
 {
@@ -402,8 +427,9 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 /*
  Given a set of constraints in linear space, put togther a set of segments that pass through all of them
  */
+// TODO - note that this overwrites the constraints
 void minimalSegmentsForConstraints( 
-	const std::vector<V2d> &constraintsLower, const std::vector<V2d> &constraintsUpper,
+	std::vector<V2d> &constraintsLower, std::vector<V2d> &constraintsUpper,
 	std::vector< LinearSegment > &compressedSamples
 )
 {
@@ -460,17 +486,85 @@ void minimalSegmentsForConstraints(
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
+
+		
 		
 		//assert( searchIndex > scanIndex );
 		//std::cerr << "Segment " << compressedSamples.size() << " : " << currentSearchParams.lowerConstraint.x << "," << currentSearchParams.lowerConstraint.y << "->" << currentSearchParams.upperConstraint.x << "," << currentSearchParams.upperConstraint.y << "\n";
 
 		double xStart;
 
+
+		assert( currentSearchParams.lowerConstraintIndex != -1 );
+
+		lowerStartIndex = lowerStopIndex;
+		// TODO - max?
+		if( currentSearchParams.upperConstraintIndex != -1 )
+		{
+			upperStartIndex = currentSearchParams.upperConstraintIndex;
+		}
+
+
+		if(
+			lowerStopIndex < constraintsLower.size() &&
+			currentSearchParams.a * constraintsLower[lowerStopIndex].x + currentSearchParams.b
+			< constraintsLower[lowerStopIndex].y
+		)
+		{
+			// The line we found passes under the next lower constraint,
+			// so we can find a point where it intersects the lower constraint line
+		
+			if( lowerStopIndex > 1 )
+			{	
+				V2d curConstraint = constraintsLower[lowerStopIndex];
+				V2d prevConstraint = constraintsLower[lowerStopIndex - 1];
+				V2d constraintDirection = curConstraint - prevConstraint;
+				if( constraintDirection.x != 0 ) // TODO - vertical constraints
+				{
+					double ca = constraintDirection.y / constraintDirection.x;
+					double cb = prevConstraint.y - ca * prevConstraint.x;
+					double denom = currentSearchParams.a - ca;
+					if( denom != 0.0 )
+					{
+						double intersectionX = -( currentSearchParams.b - cb ) / denom;
+						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;
+
+						if( intersectionX >= prevConstraint.x && intersectionX <= curConstraint.x )
+						{
+							lowerStartIndex = lowerStopIndex - 1;
+							constraintsLower[lowerStartIndex].x = intersectionX;
+							constraintsLower[lowerStartIndex].y = intersectionY;
+							
+							yFinal = intersectionY;
+						}
+						else
+						{
+							std::cerr << "BAD CONSTRAINT : " << intersectionX << " : " << prevConstraint.x << " -> " << curConstraint.x << "\n";
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			// We didn't violate a lower constraint, but the search stopped for some reason
+			// before reaching the end, so we can conclude we hit an upper constraint
+
+
+			
+			// If the previous line goes over the current constraint, then we are going to be underneath it
+			// This means that we don't need to worry about upper constraints that it passed under,
+			// because if we are heading towards them, we will intersect it
+			// TODO TODO TODO
+			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y < yFinal )
+			{
+				upperStartIndex++;
+			}
+		}
+
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
 		assert( !std::isnan( xEnd ) );
-
-		assert( currentSearchParams.lowerConstraint.x != std::numeric_limits<double>::infinity() );
 
 		// TODO
 		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<double>::infinity() )
@@ -485,52 +579,51 @@ void minimalSegmentsForConstraints(
 		{
 			// The line we have found is a point sample.
 			xStart = xEnd = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
-			assert( xStart < 1e10 ); // TODO
+			// TODO - intersect and update constraints
 		}
 		else
 		{
+			
+
 			// Calculate where our new line hits the previous flat top
 			xStart = ( yPrev - currentSearchParams.b ) / currentSearchParams.a;
 
 			// If there is a previous segment, we need to cover the possibility that we are overlapping with it
-			if( compressedSamples.size() > 0 )
+			if( compressedSamples.size() > 0 && xStart < compressedSamples.back().XBack )
 			{
 				LinearSegment &prevSegment = compressedSamples.back();
-				if( xStart < prevSegment.XBack )
+				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
+				if( fabs( prevSearchParams.a ) == std::numeric_limits<double>::infinity() )
 				{
-					// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
-					if( fabs( prevSearchParams.a ) == std::numeric_limits<double>::infinity() || xStart < prevSegment.X )
+					xStart = compressedSamples.back().XBack;
+					prevSegment.YBack = prevSegment.XBack * currentSearchParams.a + currentSearchParams.b;
+				}
+				else
+				{
+					// Calculate the intersection of our new line with the previous line
+					xStart = ( currentSearchParams.b - prevSearchParams.b ) / ( prevSearchParams.a - currentSearchParams.a );
+					if( xStart < prevSegment.X )
 					{
-						xStart = compressedSamples.back().XBack;
-						compressedSamples.back().YBack = prevSegment.XBack * currentSearchParams.a + currentSearchParams.b;
+						// This case may occur due to precision issues.
+						xStart = prevSegment.XBack;
+					}
+					else if( xStart > xEnd )
+					{
+						// This case may occur due to precision issues.
+						xStart = xEnd;
 					}
 					else
 					{
-						// Calculate the intersection of our new line with the previous line
-						xStart = ( currentSearchParams.b - prevSearchParams.b ) / ( prevSearchParams.a - currentSearchParams.a );
-						if( xStart < prevSegment.X )
+						//std::cerr << "BEFORE : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
+						// The start of the new segment falls between the start and end of the previous segment.
+						// As a result, intersect the two line segments.
+						prevSegment.XBack = xStart;
+						if( prevSegment.X > prevSegment.XBack )
 						{
-							// This case may occur due to precision issues.
-							xStart = prevSegment.XBack;
+							std::cerr << "MESSING THINGS UP\n";
 						}
-						else if( xStart > xEnd )
-						{
-							// This case may occur due to precision issues.
-							xStart = xEnd;
-						}
-						else
-						{
-							//std::cerr << "BEFORE : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
-							// The start of the new segment falls between the start and end of the previous segment.
-							// As a result, intersect the two line segments.
-							prevSegment.XBack = xStart;
-							if( prevSegment.X > prevSegment.XBack )
-							{
-								std::cerr << "MESSING THINGS UP\n";
-							}
-							prevSegment.YBack = xStart * prevSearchParams.a + prevSearchParams.b;
-							//std::cerr << "AFTER : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
-						}
+						prevSegment.YBack = xStart * prevSearchParams.a + prevSearchParams.b;
+						//std::cerr << "AFTER : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
 					}
 				}
 			}
@@ -547,26 +640,8 @@ void minimalSegmentsForConstraints(
 
 		yPrev = yFinal;
 
-		lowerStartIndex = lowerStopIndex;
-		// TODO - max?
-		if( currentSearchParams.upperConstraintIndex != -1 )
-		{
-			upperStartIndex = currentSearchParams.upperConstraintIndex;
-		}
 
 		prevSearchParams = currentSearchParams;
-
-		// If the previous line goes over the current constraint, then we are going to be underneath it
-		// This means that we don't need to worry about upper constraints that it passed under,
-		// because if we are heading towards them, we will intersect it
-		// TODO TODO TODO
-		if( upperStopIndex < constraintsUpper.size() && constraintsUpper[upperStopIndex].x * prevSearchParams.a + prevSearchParams.b > constraintsUpper[upperStopIndex].y )
-		{
-			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y < yFinal )
-			{
-				upperStartIndex++;
-			}
-		}
 	}
 
 	// TODO - adjust XBack too
