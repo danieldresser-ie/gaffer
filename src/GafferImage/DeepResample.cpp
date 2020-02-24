@@ -514,9 +514,15 @@ void minimalSegmentsForConstraints(
 			// The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 		
-			if( lowerStopIndex > 1 )
-			{	
-				V2d curConstraint = constraintsLower[lowerStopIndex];
+			if( lowerStopIndex > 1 && currentSearchParams.upperConstraintIndex != -1 )
+			{
+				V2d intersection = segmentIntersect(
+					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
+					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
+					constraintsLower[lowerStopIndex],
+					constraintsLower[lowerStopIndex - 1]
+				);
+				/*V2d curConstraint = constraintsLower[lowerStopIndex];
 				V2d prevConstraint = constraintsLower[lowerStopIndex - 1];
 				V2d constraintDirection = curConstraint - prevConstraint;
 				if( constraintDirection.x != 0 ) // TODO - vertical constraints
@@ -527,21 +533,24 @@ void minimalSegmentsForConstraints(
 					if( denom != 0.0 )
 					{
 						double intersectionX = -( currentSearchParams.b - cb ) / denom;
-						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;
+						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
 
-						if( intersectionX >= prevConstraint.x && intersectionX <= curConstraint.x )
-						{
-							lowerStartIndex = lowerStopIndex - 1;
-							constraintsLower[lowerStartIndex].x = intersectionX;
-							constraintsLower[lowerStartIndex].y = intersectionY;
-							
-							yFinal = intersectionY;
-						}
-						else
-						{
-							std::cerr << "BAD CONSTRAINT : " << intersectionX << " : " << prevConstraint.x << " -> " << curConstraint.x << "\n";
-						}
-					}
+				if(
+					intersection.x >= constraintsLower[lowerStopIndex - 1].x &&
+					intersection.x <= constraintsLower[lowerStopIndex].x &&
+					intersection.y >= constraintsLower[lowerStopIndex - 1].y && // BLEH
+					intersection.y <= constraintsLower[lowerStopIndex].y
+				)
+				{
+					lowerStartIndex = lowerStopIndex - 1;
+					constraintsLower[lowerStartIndex].x = intersection.x;
+					constraintsLower[lowerStartIndex].y = intersection.y;
+					
+					yFinal = intersection.y;
+				}
+				else
+				{
+					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
 				}
 			}
 		}
