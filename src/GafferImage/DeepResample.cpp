@@ -157,6 +157,12 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int lowerStart, int l
 		}
 
 		p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
+		if( p.a == 0 )
+		{
+			std::cerr << "X: " << upperConstraints[p.upperConstraintIndex].x << " : " << lowerConstraints[p.lowerConstraintIndex].x << "\n";
+			std::cerr << "Y: " << upperConstraints[p.upperConstraintIndex].y << " : " << lowerConstraints[p.lowerConstraintIndex].y << "\n";
+			assert( p.a != 0.0f );
+		}
 		p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
 	}
 
@@ -192,6 +198,7 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int lowerStart, int l
 					if( newA < p.a )
 					{
 						p.a = newA;
+						assert( p.a != 0.0f );
 						p.b = minY - lowerX * p.a;
 						p.lowerConstraintIndex = i;
 						needRescan = true;
@@ -230,6 +237,7 @@ bool updateConstraintsSimple( const V2d *lowerConstraints, int lowerStart, int l
 						if( newA < p.a )
 						{
 							p.a = newA;
+							assert( p.a != 0.0f );
 							p.b = maxY - upperX * p.a;
 						}
 					}
@@ -459,27 +467,40 @@ void minimalSegmentsForConstraints(
 
 		double yFinal = 0;
 
-		//while( lowerStopIndex < constraintsLower.size() )
-		for( ;lowerStopIndex < constraintsLower.size(); lowerStopIndex++ )
+		bool advanceUpper = false;
+		// Note that the next loop must run at least once, since we wouldn't get in here unless
+		// lowerStopIndex starts out valid.  The only reason to initialize advanceUpper is because
+		// the compiler isn't smart enough to realize that it reliably gets initialized in the loop
+		while( lowerStopIndex < constraintsLower.size() )
 		{
-			//if( upperStopIndex < constraintsUpper.size() - 1 && constraintsUpper[ upperStopIndex + 1 ].y < constraintsLower[lowerStopIndex].y )
+			advanceUpper = upperStopIndex < constraintsUpper.size() &&
+				constraintsUpper[ upperStopIndex ].y < constraintsLower[lowerStopIndex].y;
+	
+			if( advanceUpper )
+			{
+				upperStopIndex++;
+			}
+			else
+			{
+				lowerStopIndex++;
+			}
 			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
 			// constraints up to searchIndex which haven't been previously covered
 
 			// We will create a flat top which just reaches the lower constraint at this index
-			double yFinalTrial = constraintsLower[lowerStopIndex].y;
+			//double yFinalTrial = constraintsLower[lowerStopIndex].y;
 
 			// Any upper constraints greater than yFinalTrial can be ignored, because we are going to cut before reaching them
 			//tailIndex = searchIndex;
-			while( upperStopIndex < constraintsUpper.size() - 1 && constraintsUpper[ upperStopIndex + 1 ].y < yFinalTrial )
+			/*while( upperStopIndex < constraintsUpper.size() - 1 && constraintsUpper[ upperStopIndex + 1 ].y < yFinalTrial )
 			{
 				upperStopIndex++;
-			}
+			}*/
 
 			// Try fitting a line to our new set of constraints
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, lowerStopIndex + 1, &constraintsUpper[0], upperStartIndex, upperStopIndex + 1, &currentSearchParams );
+			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
 
 			if( !success )
 			{
@@ -488,7 +509,10 @@ void minimalSegmentsForConstraints(
 			}
 
 			// It worked, we've got a new segment
-			yFinal = yFinalTrial;
+			if( lowerStopIndex > 0 )
+			{
+				yFinal = constraintsLower[lowerStopIndex - 1].y;
+			}
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
@@ -503,7 +527,7 @@ void minimalSegmentsForConstraints(
 
 		assert( currentSearchParams.lowerConstraintIndex != -1 );
 
-		lowerStartIndex = lowerStopIndex;
+		lowerStartIndex = lowerStopIndex - 1;
 		// TODO - max?
 		if( currentSearchParams.upperConstraintIndex != -1 )
 		{
@@ -511,25 +535,26 @@ void minimalSegmentsForConstraints(
 		}
 
 
-		if(
-			lowerStopIndex < constraintsLower.size() &&
-			currentSearchParams.a * constraintsLower[lowerStopIndex].x + currentSearchParams.b
-			< constraintsLower[lowerStopIndex].y
-		)
+		if( lowerStopIndex == constraintsLower.size() )
 		{
+			// All constraints fulfilled
+		}
+		else if( !advanceUpper )
+		{
+	
 			// The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 		
-			if( lowerStopIndex > 1 && currentSearchParams.upperConstraintIndex != -1
-				&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
+			if( lowerStopIndex > 2 && currentSearchParams.upperConstraintIndex != -1
+				//&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
 			 )
 			{ 
-				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 1].x << " " << constraintsLower[ lowerStopIndex ].x << "\n";
-				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex ].y ) << "\n";
+				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 2].x << " " << constraintsLower[ lowerStopIndex - 1 ].x << "\n";
+				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 2 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << "\n";
 				V2d intersection = segmentIntersect(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
-					constraintsLower[ lowerStopIndex ],
+					constraintsLower[ lowerStopIndex - 2 ],
 					constraintsLower[ lowerStopIndex - 1 ]
 				);
 				/*V2d curConstraint = constraintsLower[lowerStopIndex];
@@ -546,15 +571,15 @@ void minimalSegmentsForConstraints(
 						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
 
 				if(
-					intersection.x >= constraintsLower[lowerStopIndex - 1].x &&
-					intersection.x <= constraintsLower[lowerStopIndex].x &&
-					intersection.y >= constraintsLower[lowerStopIndex - 1].y && // BLEH
-					intersection.y <= constraintsLower[lowerStopIndex].y
+					intersection.x >= constraintsLower[lowerStopIndex - 2].x &&
+					intersection.x <= constraintsLower[lowerStopIndex - 1].x &&
+					intersection.y >= constraintsLower[lowerStopIndex - 2].y && // BLEH
+					intersection.y <= constraintsLower[lowerStopIndex - 1].y
 				)
 				{
 					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
 					
-					lowerStartIndex = lowerStopIndex - 1;
+					lowerStartIndex = lowerStopIndex - 2;
 					constraintsLower[lowerStartIndex].x = intersection.x;
 					constraintsLower[lowerStartIndex].y = intersection.y;
 					
@@ -562,7 +587,7 @@ void minimalSegmentsForConstraints(
 				}
 				else
 				{
-					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
+					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 2].x << " -> " << constraintsLower[lowerStopIndex - 1].x << "\n";
 				}
 			}
 		}
@@ -583,6 +608,7 @@ void minimalSegmentsForConstraints(
 			}
 		}
 
+		std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
 		assert( !std::isnan( xEnd ) );
