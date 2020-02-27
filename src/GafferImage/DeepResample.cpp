@@ -430,7 +430,8 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 // TODO - note that this overwrites the constraints
 void minimalSegmentsForConstraints( 
 	std::vector<V2d> &constraintsLower, std::vector<V2d> &constraintsUpper,
-	std::vector< LinearSegment > &compressedSamples
+	std::vector< LinearSegment > &compressedSamples,
+	bool debug
 )
 {
 	compressedSamples.clear();
@@ -444,6 +445,8 @@ void minimalSegmentsForConstraints(
 	unsigned int upperStartIndex = 0;
 	unsigned int upperStopIndex = 0;
 
+	if( debug ) std::cerr << "SEGMENT SEARCH START\n";
+
 	while( lowerStopIndex < constraintsLower.size() )
 	{
 		// Initial constraint search parameters for not yet having found anything
@@ -456,8 +459,11 @@ void minimalSegmentsForConstraints(
 
 		double yFinal = 0;
 
+		//while( lowerStopIndex < constraintsLower.size() )
 		for( ;lowerStopIndex < constraintsLower.size(); lowerStopIndex++ )
 		{
+			//if( upperStopIndex < constraintsUpper.size() - 1 && constraintsUpper[ upperStopIndex + 1 ].y < constraintsLower[lowerStopIndex].y )
+			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
 			// constraints up to searchIndex which haven't been previously covered
 
@@ -514,13 +520,17 @@ void minimalSegmentsForConstraints(
 			// The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 		
-			if( lowerStopIndex > 1 && currentSearchParams.upperConstraintIndex != -1 )
-			{
+			if( lowerStopIndex > 1 && currentSearchParams.upperConstraintIndex != -1
+				&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
+			 )
+			{ 
+				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 1].x << " " << constraintsLower[ lowerStopIndex ].x << "\n";
+				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex ].y ) << "\n";
 				V2d intersection = segmentIntersect(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
-					constraintsLower[lowerStopIndex],
-					constraintsLower[lowerStopIndex - 1]
+					constraintsLower[ lowerStopIndex ],
+					constraintsLower[ lowerStopIndex - 1 ]
 				);
 				/*V2d curConstraint = constraintsLower[lowerStopIndex];
 				V2d prevConstraint = constraintsLower[lowerStopIndex - 1];
@@ -542,6 +552,8 @@ void minimalSegmentsForConstraints(
 					intersection.y <= constraintsLower[lowerStopIndex].y
 				)
 				{
+					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					
 					lowerStartIndex = lowerStopIndex - 1;
 					constraintsLower[lowerStartIndex].x = intersection.x;
 					constraintsLower[lowerStartIndex].y = intersection.y;
@@ -646,6 +658,11 @@ void minimalSegmentsForConstraints(
 		compressedSample.XBack = xEnd;
 		compressedSample.YBack = yFinal;
 		compressedSamples.push_back( compressedSample );
+
+		if( debug )
+		{
+			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n";
+		}
 
 		yPrev = yFinal;
 
@@ -816,7 +833,7 @@ void resampleDeepPixel(
 	);
 
 	std::vector< LinearSegment > compressedSamples;
-	minimalSegmentsForConstraints( constraintsLower, constraintsUpper, compressedSamples );
+	minimalSegmentsForConstraints( constraintsLower, constraintsUpper, compressedSamples, debug );
 	conformToSegments(
 		inSamples, inA, inZ, inZBack,
 		compressedSamples,
@@ -1042,12 +1059,13 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
+			bool debug = pixelLocation == V2i( 93, 65 );
 			int resampledCount;
 			resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
 				alphaTolerance, depthTolerance,
 				resampledCount, &outAlpha[outputCount], &outZ[outputCount], &outZBack[outputCount],
-				pixelLocation == V2i( 112, 32 )
+				debug
 			);
 			outputCount += resampledCount;
 			outSampleOffsets[i] = outputCount;
