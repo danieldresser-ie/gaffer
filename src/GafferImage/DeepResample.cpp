@@ -475,14 +475,23 @@ void minimalSegmentsForConstraints(
 		{
 			advanceUpper = upperStopIndex < constraintsUpper.size() &&
 				constraintsUpper[ upperStopIndex ].y < constraintsLower[lowerStopIndex].y;
-	
+
+			unsigned int testUpperStopIndex = upperStopIndex;
+			unsigned int testLowerStopIndex = lowerStopIndex;
 			if( advanceUpper )
 			{
-				upperStopIndex++;
+				testUpperStopIndex++;
 			}
 			else
 			{
-				lowerStopIndex++;
+				testLowerStopIndex++;
+			}
+
+			if( !( testUpperStopIndex > upperStartIndex && testLowerStopIndex > lowerStartIndex ) )
+			{
+				upperStopIndex = testUpperStopIndex;
+				lowerStopIndex = testLowerStopIndex;
+				continue;
 			}
 			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
@@ -500,13 +509,16 @@ void minimalSegmentsForConstraints(
 
 			// Try fitting a line to our new set of constraints
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
+			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams );
 
 			if( !success )
 			{
 				// It didn't work, so we'll use the previous value left in currentSearchParams
 				break;
 			}
+
+			upperStopIndex = testUpperStopIndex;
+			lowerStopIndex = testLowerStopIndex;
 
 			// It worked, we've got a new segment
 			if( lowerStopIndex > 0 )
@@ -525,9 +537,42 @@ void minimalSegmentsForConstraints(
 		double xStart;
 
 
+		if( currentSearchParams.lowerConstraintIndex == -1 )
+		{
+			std::cerr << "BEFORE"; 
+			std::cerr << "UPPER : "; 
+			for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+			{
+				std::cerr << constraintsUpper[i] << " "; 
+			}
+			std::cerr << "\n"; 
+			std::cerr << "LOWER : "; 
+			for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+			{
+				std::cerr << constraintsLower[i] << " "; 
+			}
+
+			if( advanceUpper ) upperStopIndex--;
+			else lowerStopIndex--;
+
+			std::cerr << "NOW"; 
+			std::cerr << "UPPER : "; 
+			for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+			{
+				std::cerr << constraintsUpper[i] << " "; 
+			}
+			std::cerr << "\n"; 
+			std::cerr << "LOWER : "; 
+			for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+			{
+				std::cerr << constraintsLower[i] << " "; 
+			}
+			std::cerr << "\n"; 
+		}
 		assert( currentSearchParams.lowerConstraintIndex != -1 );
 
-		lowerStartIndex = lowerStopIndex - 1;
+		lowerStartIndex = lowerStopIndex;
+
 		// TODO - max?
 		if( currentSearchParams.upperConstraintIndex != -1 )
 		{
@@ -545,17 +590,17 @@ void minimalSegmentsForConstraints(
 			// The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 		
-			if( lowerStopIndex > 2 && currentSearchParams.upperConstraintIndex != -1
+			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1
 				//&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
 			 )
 			{ 
-				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 2].x << " " << constraintsLower[ lowerStopIndex - 1 ].x << "\n";
-				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 2 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << "\n";
+				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 1].x << " " << constraintsLower[ lowerStopIndex ].x << "\n";
+				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex ].y ) << "\n";
 				V2d intersection = segmentIntersect(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
-					constraintsLower[ lowerStopIndex - 2 ],
-					constraintsLower[ lowerStopIndex - 1 ]
+					constraintsLower[ lowerStopIndex - 1 ],
+					constraintsLower[ lowerStopIndex ]
 				);
 				/*V2d curConstraint = constraintsLower[lowerStopIndex];
 				V2d prevConstraint = constraintsLower[lowerStopIndex - 1];
@@ -571,15 +616,15 @@ void minimalSegmentsForConstraints(
 						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
 
 				if(
-					intersection.x >= constraintsLower[lowerStopIndex - 2].x &&
-					intersection.x <= constraintsLower[lowerStopIndex - 1].x &&
-					intersection.y >= constraintsLower[lowerStopIndex - 2].y && // BLEH
-					intersection.y <= constraintsLower[lowerStopIndex - 1].y
+					intersection.x >= constraintsLower[lowerStopIndex - 1].x &&
+					intersection.x <= constraintsLower[lowerStopIndex ].x &&
+					intersection.y >= constraintsLower[lowerStopIndex - 1].y && // BLEH
+					intersection.y <= constraintsLower[lowerStopIndex ].y
 				)
 				{
 					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
 					
-					lowerStartIndex = lowerStopIndex - 2;
+					lowerStartIndex = lowerStopIndex - 1;
 					constraintsLower[lowerStartIndex].x = intersection.x;
 					constraintsLower[lowerStartIndex].y = intersection.y;
 					
@@ -587,7 +632,7 @@ void minimalSegmentsForConstraints(
 				}
 				else
 				{
-					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 2].x << " -> " << constraintsLower[lowerStopIndex - 1].x << "\n";
+					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
 				}
 			}
 		}
@@ -608,7 +653,7 @@ void minimalSegmentsForConstraints(
 			}
 		}
 
-		std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
+		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
 		assert( !std::isnan( xEnd ) );
