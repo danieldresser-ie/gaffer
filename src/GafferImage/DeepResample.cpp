@@ -437,7 +437,7 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
  */
 // TODO - note that this overwrites the constraints
 void minimalSegmentsForConstraints( 
-	std::vector<V2d> &constraintsLower, std::vector<V2d> &constraintsUpper,
+	std::vector<V2d> &constraintsLower, std::vector<V2d> &constraintsUpper,  // TODO - these names are stupid
 	std::vector< LinearSegment > &compressedSamples,
 	bool debug
 )
@@ -584,10 +584,59 @@ void minimalSegmentsForConstraints(
 		{
 			// All constraints fulfilled
 		}
-		else if( !advanceUpper )
+		else if( advanceUpper )
+		{
+			// Hit an upper constraint
+
+			// If the previous line goes over the current constraint, then we are going to be underneath it
+			// This means that we don't need to worry about upper constraints that it passed under,
+			// because if we are heading towards them, we will intersect it
+			upperStartIndex = upperStopIndex;
+
+			if( upperStopIndex != constraintsUpper.size() && upperStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1 )
+			{ 
+				if( debug ) std::cerr << "CHECKING UPPER:" << constraintsUpper[ upperStopIndex - 1].x << " " << constraintsUpper[ upperStopIndex ].x << "\n";
+				if( debug ) std::cerr << "CHECKING UPPER Y:" << linearToExponential( constraintsUpper[ upperStopIndex - 1 ].y ) << " " << linearToExponential( constraintsUpper[ upperStopIndex ].y ) << "\n";
+				V2d intersection = segmentIntersect(
+					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
+					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
+					constraintsUpper[ upperStopIndex - 1 ],
+					constraintsUpper[ upperStopIndex ]
+				);
+
+
+				double intersectionEpsilon = 1e-10;
+				if(
+					intersection.x >= constraintsUpper[upperStopIndex - 1].x - intersectionEpsilon &&
+					intersection.x <= constraintsUpper[upperStopIndex ].x + intersectionEpsilon &&
+					intersection.y >= constraintsUpper[upperStopIndex - 1].y - intersectionEpsilon && // BLEH
+					intersection.y <= constraintsUpper[upperStopIndex ].y + intersectionEpsilon
+				)
+				{
+					if(debug) std::cerr << "UPPER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					
+					upperStartIndex--;
+					constraintsUpper[upperStartIndex].x = intersection.x;
+					constraintsUpper[upperStartIndex].y = intersection.y;
+					
+					yFinal = intersection.y;
+				}
+				else
+				{
+					cerr.precision( 20 );
+					std::cerr << "UPPER: BAD CONSTRAINT X : " << intersection.x << " : " << constraintsUpper[upperStopIndex - 1].x << " -> " << constraintsUpper[upperStopIndex].x << "\n";
+					std::cerr << "UPPER: BAD CONSTRAINT Y : " << intersection.y << " : " << constraintsUpper[upperStopIndex - 1].y << " -> " << constraintsUpper[upperStopIndex].y << "\n";
+					std::cerr << "A : " << ( intersection.x >= constraintsUpper[upperStopIndex - 1].x ) << "\n";
+					std::cerr << "B : " << ( intersection.x <= constraintsUpper[upperStopIndex ].x ) << "\n";
+					std::cerr << "C : " << ( intersection.y >= constraintsUpper[upperStopIndex - 1].y ) << "\n";
+					std::cerr << "D : " << ( intersection.y <= constraintsUpper[upperStopIndex ].y ) << "\n";
+				}
+			}
+		}
+		else
 		{
 	
-			// The line we found passes under the next lower constraint,
+			// TODO The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 		
 			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1
@@ -624,7 +673,7 @@ void minimalSegmentsForConstraints(
 				{
 					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
 					
-					lowerStartIndex = lowerStopIndex - 1;
+					lowerStartIndex--;
 					constraintsLower[lowerStartIndex].x = intersection.x;
 					constraintsLower[lowerStartIndex].y = intersection.y;
 					
@@ -634,22 +683,6 @@ void minimalSegmentsForConstraints(
 				{
 					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
 				}
-			}
-		}
-		else
-		{
-			// We didn't violate a lower constraint, but the search stopped for some reason
-			// before reaching the end, so we can conclude we hit an upper constraint
-
-
-			
-			// If the previous line goes over the current constraint, then we are going to be underneath it
-			// This means that we don't need to worry about upper constraints that it passed under,
-			// because if we are heading towards them, we will intersect it
-			// TODO TODO TODO
-			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y < yFinal )
-			{
-				upperStartIndex++;
 			}
 		}
 
@@ -869,6 +902,8 @@ void constraintSamplesForPixel(
 		double maxAlpha = deepSamples[j].y + ( j == 0 ? 0 : alphaTolerance );
 		double max = maxAlpha < 1 ? -log1p( -maxAlpha ) : maximumLinearY;
 		upperConstraints.push_back( V2d( deepSamples[j].x * ( 1 - zTolerance ), max ) );
+
+		// TODO - omit constraints higher than final value?
 	}
 
 }
@@ -1130,7 +1165,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 93, 65 );
+			bool debug = pixelLocation == V2i( 1, 86 );
 			int resampledCount;
 			resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
