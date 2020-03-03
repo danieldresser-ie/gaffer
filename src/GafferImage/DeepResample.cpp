@@ -465,7 +465,6 @@ void minimalSegmentsForConstraints(
 		currentSearchParams.lowerConstraintIndex = -1;
 		currentSearchParams.upperConstraintIndex = -1;
 
-		double yFinal = 0;
 
 		bool advanceUpper = false;
 		// Note that the next loop must run at least once, since we wouldn't get in here unless
@@ -520,14 +519,9 @@ void minimalSegmentsForConstraints(
 			upperStopIndex = testUpperStopIndex;
 			lowerStopIndex = testLowerStopIndex;
 
-			// It worked, we've got a new segment
-			if( lowerStopIndex > 0 )
-			{
-				yFinal = constraintsLower[lowerStopIndex - 1].y;
-			}
-
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
+
 
 		
 		
@@ -579,6 +573,8 @@ void minimalSegmentsForConstraints(
 			upperStartIndex = currentSearchParams.upperConstraintIndex;
 		}
 
+
+		double yFinal = constraintsLower[lowerStopIndex - 1].y;
 
 		if( lowerStopIndex == constraintsLower.size() )
 		{
@@ -632,6 +628,23 @@ void minimalSegmentsForConstraints(
 					std::cerr << "D : " << ( intersection.y <= constraintsUpper[upperStopIndex ].y ) << "\n";
 				}
 			}
+
+			
+			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1 )
+			{
+				if( yFinal < constraintsLower[ lowerStopIndex - 1].y || yFinal > constraintsLower[ lowerStopIndex ].y )
+				{
+					std::cerr << "BAD HORIZ-to-LOWER TEST: " << linearToExponential( yFinal ) << " : " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << linearToExponential( constraintsLower[ lowerStopIndex].y ) << "\n";
+				}
+				else
+				{
+					lowerStartIndex--;
+					constraintsLower[lowerStartIndex].x = ( yFinal - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
+					constraintsLower[lowerStartIndex].y = yFinal;
+				}
+			}
+
+			
 		}
 		else
 		{
@@ -1165,7 +1178,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 1, 86 );
+			bool debug = pixelLocation == V2i( 0, 90 );
 			int resampledCount;
 			resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
