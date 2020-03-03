@@ -471,8 +471,12 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 		style->renderSolidRectangle( Box2f( V2f( 0 ) , V2f( m_xMargin, resolution.y - m_yMargin ) ) );
 		style->renderSolidRectangle( Box2f( V2f( 0, resolution.y - m_yMargin ) , V2f( resolution.x, resolution.y ) ) );
 
-		boost::format formatX( "%.3f" );
-		boost::format formatY( "%.3f" );
+		int xPrecision = 3;
+		if( xAxis.main.size() >= 2 )
+		{
+			xPrecision = std::max( 3, int( log10f( xAxis.main.size() / ( xAxis.main.back().second - xAxis.main[0].second ) ) ) );
+		}
+		boost::format formatX( "%." + std::to_string( xPrecision ) + "f" );
 
 		// \todo: pull matrix stack operations out of the loops.
 		for( const auto &x : xAxis.main )
@@ -495,6 +499,12 @@ void DeepSampleGadget::doRenderLayer( Layer layer, const Style *style ) const
 			glPopMatrix();
 		}
 
+		int yPrecision = 3;
+		if( yAxis.main.size() >= 2 )
+		{
+			yPrecision = std::max( 3, int( log10f( yAxis.main.size() / ( yAxis.main.back().second - yAxis.main[0].second ) ) ) );
+		}
+		boost::format formatY( "%." + std::to_string( yPrecision ) + "f" );
 		for( const auto &y : yAxis.main )
 		{
 			if( y.first > resolution.y - m_yMargin )
