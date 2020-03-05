@@ -473,7 +473,7 @@ void minimalSegmentsForConstraints(
 		while( lowerStopIndex < constraintsLower.size() )
 		{
 			advanceUpper = upperStopIndex < constraintsUpper.size() &&
-				constraintsUpper[ upperStopIndex ].y < constraintsLower[lowerStopIndex].y;
+				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y;
 
 			unsigned int testUpperStopIndex = upperStopIndex;
 			unsigned int testLowerStopIndex = lowerStopIndex;
@@ -894,7 +894,7 @@ void constraintSamplesForPixel(
 				}
 				else
 				{
-					min = lastValidMinY;
+					min = lastValidMinY; // TODO - why?
 				}
 				lowerConstraints.push_back( V2d( deepSamples[j].x * ( 1 + zTolerance ), min ) );
 			}
@@ -911,11 +911,33 @@ void constraintSamplesForPixel(
 				}
 			}
 		}
+	}
 
+	unsigned int matchingLowerIndex = 0;
+
+	V2d prevUpper;	
+	for( unsigned int j = 0; j < deepSamples.size(); ++j )
+	{
 		double maxAlpha = deepSamples[j].y + ( j == 0 ? 0 : alphaTolerance );
 		double max = maxAlpha < 1 ? -log1p( -maxAlpha ) : maximumLinearY;
-		upperConstraints.push_back( V2d( deepSamples[j].x * ( 1 - zTolerance ), max ) );
 
+		// TODO - comment
+		V2d nextUpper = V2d( deepSamples[j].x * ( 1 - zTolerance ), max );
+		while( matchingLowerIndex < lowerConstraints.size() && lowerConstraints[matchingLowerIndex].y <= nextUpper.y )
+		{
+			if( j > 0 && lowerConstraints[matchingLowerIndex].y != nextUpper.y && nextUpper.x != prevUpper.x )
+			{
+				upperConstraints.push_back( V2d(
+					( lowerConstraints[matchingLowerIndex].y - prevUpper.y ) / ( nextUpper.y - prevUpper.y ) *
+					( nextUpper.x - prevUpper.x ) + prevUpper.x,
+					lowerConstraints[matchingLowerIndex].y
+				) );
+			}
+			matchingLowerIndex++;
+		}
+		upperConstraints.push_back( nextUpper );
+
+		prevUpper = nextUpper;
 		// TODO - omit constraints higher than final value?
 	}
 
@@ -1178,7 +1200,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 0, 90 );
+			bool debug = pixelLocation == V2i( 1, 86 );
 			int resampledCount;
 			resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
