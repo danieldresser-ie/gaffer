@@ -87,4 +87,4 @@ IE_CORE_DECLAREPTR( DeepResample )
 
 } // namespace GafferImage
 
-#endif // GAFFERIMAGE_DEEPOVERSAMPLE_H
+#endif // GAFFERIMAGE_DEEPRESAMPLE_H
