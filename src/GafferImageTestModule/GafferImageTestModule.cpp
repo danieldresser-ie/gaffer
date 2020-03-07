@@ -42,6 +42,7 @@
 #include "GafferImageTest/DeepOversample.h"
 #include "GafferImageTest/DeepAlphaOffset.h"
 #include "GafferImageTest/DeepAlgo.h"
+#include "GafferImageTest/DeepResampleConstraints.h"
 
 #include "GafferImage/ImageAlgo.h"
 #include "GafferImage/ImagePlug.h"
@@ -117,6 +118,7 @@ BOOST_PYTHON_MODULE( _GafferImageTest )
 
 	GafferBindings::DependencyNodeClass<DeepOversample>();
 	GafferBindings::DependencyNodeClass<DeepAlphaOffset>();
+	GafferBindings::DependencyNodeClass<DeepResampleConstraints>();
 
 	def( "evaluateDeepPixel", &GafferImageTest::evaluateDeepPixel );
 	def( "assertDeepPixelsEvaluateSame", &GafferImageTest::assertDeepPixelsEvaluateSame );

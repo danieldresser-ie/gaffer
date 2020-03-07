@@ -131,6 +131,7 @@ enum TypeId
 	DeepOversampleTypeId = 110835, // Used by node in GafferImageTest
 	DeepAlphaOffsetTypeId = 110836, // Used by node in GafferImageTest
 	DeepResampleTypeId = 110837,
+	DeepResampleConstraintsTypeId = 110838, // Used by node in GafferImageTest
 
 	LastTypeId = 110849
 };
