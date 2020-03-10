@@ -71,8 +71,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
 		resample = GafferImage.DeepResample()
-		#resample["in"].setInput( oversample["out"] ) #TODO
-		resample["in"].setInput( fix["out"] )
+		resample["in"].setInput( oversample["out"] ) #TODO
+		#resample["in"].setInput( fix["out"] )
 		resample["alphaTolerance"].setValue( 0.001 )
 		resample["depthTolerance"].setValue( 0.001 )
 
