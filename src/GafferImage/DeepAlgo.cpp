@@ -398,6 +398,12 @@ void minimalSegmentsForConstraints(
 		{
 			advanceUpper = upperStopIndex < constraintsUpper.size() &&
 				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y;
+			/*if( debug && upperStopIndex < constraintsUpper.size() )
+			{
+				std::cerr.precision( 20 );
+				std::cerr << "TEST UPPER: " << constraintsUpper[ upperStopIndex ].y << " : " << constraintsLower[lowerStopIndex].y << "\n";
+				std::cerr << "ADV UPPER: " << advanceUpper << "\n";
+			}*/
 
 			unsigned int testUpperStopIndex = upperStopIndex;
 			unsigned int testLowerStopIndex = lowerStopIndex;
@@ -556,8 +562,18 @@ void minimalSegmentsForConstraints(
 			
 			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1 )
 			{
-				if( yFinal < constraintsLower[ lowerStopIndex - 1].y || yFinal > constraintsLower[ lowerStopIndex ].y )
+				if( yFinal < constraintsLower[ lowerStopIndex - 1].y )
 				{
+					if( constraintsLower[ lowerStopIndex - 1].y - yFinal > 1e-15 )
+					{
+						std::cerr << "TERRIBLE: " << constraintsLower[ lowerStopIndex - 1].y - yFinal << "\n"; // TODO
+					}
+					lowerStartIndex--;
+				}
+				else if( yFinal < constraintsLower[ lowerStopIndex - 1].y || yFinal > constraintsLower[ lowerStopIndex ].y )
+				{
+					std::cerr.precision( 20 );
+					std::cerr << "LINEAR: " << ( yFinal ) << " : " << ( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << ( constraintsLower[ lowerStopIndex].y ) << "\n";
 					std::cerr << "BAD HORIZ-to-LOWER TEST: " << linearToExponential( yFinal ) << " : " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << linearToExponential( constraintsLower[ lowerStopIndex].y ) << "\n";
 				}
 				else
@@ -575,7 +591,7 @@ void minimalSegmentsForConstraints(
 	
 			// TODO The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
-		
+
 			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1
 				//&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
 			 )
@@ -609,11 +625,11 @@ void minimalSegmentsForConstraints(
 				)
 				{
 					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
-					
+
 					lowerStartIndex--;
 					constraintsLower[lowerStartIndex].x = intersection.x;
 					constraintsLower[lowerStartIndex].y = intersection.y;
-					
+
 					yFinal = intersection.y;
 				}
 				else
@@ -816,8 +832,11 @@ void linearConstraintsForPixel(
 	//
 	// In log space, the above constraint becomes a constraint that the difference between adjacent samples
 	// can never exceed ln( 0.76 )
-	const float stepToNextCurveSample = -log( 0.76 );
-	const float maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
+	const double stepToNextCurveSample = -log( 0.76 );
+	const double maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
+
+	// The alpha tolerance that we actually use is padded to take account of the curve error
+	double aTol = 0.99 * alphaTolerance;
 	
 	// TODO - get rid of this alloc by combining with function above
 	std::vector< SimplePoint > deepSamples;
@@ -825,20 +844,25 @@ void linearConstraintsForPixel(
 
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
-	double lastValidMinY = 0;
+	//double lastValidMinY = 0;
+	SimplePoint prevLower = { 0, 0 };
 	for( unsigned int j = 0; j < deepSamples.size(); ++j )
 	{
+		double nextX;
+		double nextAlpha;
+
 		if( j == deepSamples.size() - 1 )
 		{
 			// Ensure that we always reach the exact final value
-			lowerConstraints.push_back( { deepSamples[j].x * ( 1 + zTolerance ), exponentialToLinear( deepSamples[j].y ) } );
+			nextX = deepSamples[j].x * ( 1 + zTolerance );
+			nextAlpha = deepSamples[j].y;
 		}
 		else
 		{
-			double minAlpha = deepSamples[j].y - alphaTolerance;
+			double minAlpha = deepSamples[j].y - aTol;
 			if( minAlpha >= 0 )
 			{
-				double min = 0.0f;
+				/*double min = 0.0f;
 				if( minAlpha < 1 )
 				{
 					min = -log1p( -minAlpha );
@@ -847,47 +871,52 @@ void linearConstraintsForPixel(
 				else
 				{
 					min = lastValidMinY; // TODO - why?
-				}
-
-				/*float nextCurveSample = prevUpper.y < maxCurveSample ? prevUpper.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
-				while( nextCurveSample < nextUpper.y )
-				)
-				{
-					float yValueToInsert;
-					if( lowerConstraints[matchingLowerIndex].y < nextCurveSample )
-					{
-						yValueToInsert = lowerConstraints[matchingLowerIndex].y;
-						matchingLowerIndex++;
-					}
-					else
-					{
-						yValueToInsert = nextCurveSample;
-						nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
-					}
-
-
-					upperConstraints.push_back( {
-						( exponentialToLinear( linearToExponential( yValueToInsert ) - alphaTolerance ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
-						( nextUpper.x - prevUpper.x ) + prevUpper.x,
-						yValueToInsert
-					} );
 				}*/
 
-				lowerConstraints.push_back( { deepSamples[j].x * ( 1 + zTolerance ), min } );
+				nextX = deepSamples[j].x * ( 1 + zTolerance );
+				nextAlpha = std::min( minAlpha, maximumLinearY );
 			}
 			else
 			{
-				float nextMinAlpha = deepSamples[j+1].y - alphaTolerance;
+				double nextMinAlpha = deepSamples[j+1].y - aTol;
 				if( nextMinAlpha > 0 )
 				{
-					float min = -log1p( -minAlpha );
-					float nextMin = -log1p( -nextMinAlpha );
-					float lerp = -min / ( nextMin - min );
-					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
-					lowerConstraints.push_back( { xIntercept * ( 1 + zTolerance ), 0.0 } );
+					double min = -log1p( -minAlpha );
+					double nextMin = -log1p( -nextMinAlpha );
+					double lerp = -min / ( nextMin - min );
+					double xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
+					nextX = xIntercept * ( 1 + zTolerance );
+					nextAlpha = 0.0;
+				}
+				else
+				{
+					continue;
 				}
 			}
 		}
+
+		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
+
+		double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x)
+		{
+			double intersectionX =
+				( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) /
+				( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
+                ( deepSamples[j].x - deepSamples[j - 1].x ) * ( 1 + zTolerance ) + deepSamples[j - 1].x * ( 1 + zTolerance );
+		
+			if( intersectionX > nextLower.x )
+			{
+				break;
+			}
+
+			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
+
+			nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+		}
+
+		lowerConstraints.push_back( nextLower );
+		prevLower = nextLower;
 	}
 
 	unsigned int matchingLowerIndex = 0;
@@ -900,7 +929,7 @@ void linearConstraintsForPixel(
 	
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
 	{
-		double nextAlpha = deepSamples[j].y + alphaTolerance;
+		double nextAlpha = deepSamples[j].y + aTol;
 
 		// TODO - comment
 		SimplePoint nextUpper = {
@@ -919,13 +948,13 @@ void linearConstraintsForPixel(
 		}
 		else
 		{
-			float nextCurveSample = prevUpper.y < maxCurveSample ? prevUpper.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+			double nextCurveSample = prevUpper.y < maxCurveSample ? prevUpper.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
 			while(
 				matchingLowerIndex < lowerConstraints.size() &&
 				( lowerConstraints[matchingLowerIndex].y < nextUpper.y || nextCurveSample < nextUpper.y )
 			)
 			{
-				float yValueToInsert;
+				double yValueToInsert;
 				if( lowerConstraints[matchingLowerIndex].y < nextCurveSample )
 				{
 					yValueToInsert = lowerConstraints[matchingLowerIndex].y;
@@ -939,7 +968,7 @@ void linearConstraintsForPixel(
 
 
 				upperConstraints.push_back( {
-					( exponentialToLinear( linearToExponential( yValueToInsert ) - alphaTolerance ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
+					( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
 					( nextUpper.x - prevUpper.x ) + prevUpper.x,
 					yValueToInsert
 				} );
