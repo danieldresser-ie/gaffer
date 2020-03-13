@@ -51,7 +51,7 @@ namespace
 /// Creates a set of point samples across the range of the pixel's depth for the alpha channel.
 /// The deepSamples that are returned are stored in the deepSamples vector, with values for depth and accumulated alpha from front to back
 
-const double maximumLinearY = -log1p( - ( 1. - std::numeric_limits<double>::epsilon() ) );
+const double maximumLinearY = -log1p( - ( 1. - std::numeric_limits<float>::epsilon() ) );
 const double linearOpacityThreshold = -log1p( - 0.9999 );
 
 /// Given a value in linear space, make it exponential.
@@ -647,6 +647,7 @@ void minimalSegmentsForConstraints(
 		// TODO
 		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<double>::infinity() )
 		{
+			std::cerr << "????????NEVER?????????" << "\n";
 			// We should never get here but if we do, do something fairly sensible.
 			yFinal = constraintsLower.back().y;
 			xStart = xEnd = constraintsLower.back().x;
@@ -718,6 +719,7 @@ void minimalSegmentsForConstraints(
 
 		if( debug )
 		{
+			std::cerr << "yFinal: " << yFinal << "\n";
 			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n";
 		}
 

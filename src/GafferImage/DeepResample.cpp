@@ -264,7 +264,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 47, 69 );
+			bool debug = pixelLocation == V2i( 118, 51 );
 			int resampledCount;
 			DeepAlgo::resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
