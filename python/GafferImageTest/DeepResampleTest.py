@@ -126,8 +126,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertEqual( origCount, 191684 )
 
 		# Make sure we substantially reduce the sample count
-		#self.assertLess( resampleCount, 53250 ) # TODO
-		#self.assertLess( resampleCount, 55721 ) # TODO
+		self.assertLess( resampleCount, 53250 ) # TODO
 	
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( fix["out"] )
@@ -140,7 +139,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001001, 0.001001, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001001, 0.0010000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 		# Now a much more aggressive resample
 		resample["alphaTolerance"].setValue( 0.01 )
@@ -155,7 +154,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.01001, 0.0101, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.010000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 		
 
