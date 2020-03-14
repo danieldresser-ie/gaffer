@@ -227,19 +227,15 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 				{
 					// Replace the upper constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
 					// and trigger a rescan to check our new line against previous constraints
-					//std::cerr << "REPLACE\n";
-					if( upperX != lowerConstraints[p.lowerConstraintIndex].x )
+					double newA = (maxY - lowerConstraints[p.lowerConstraintIndex].y) / ( upperX - lowerConstraints[p.lowerConstraintIndex].x );
+					if( newA < p.a )
 					{
-						double newA = (maxY - lowerConstraints[p.lowerConstraintIndex].y) / ( upperX - lowerConstraints[p.lowerConstraintIndex].x );
-						if( newA < p.a )
-						{
-							p.a = newA;
-							assert( p.a != 0.0f );
-							p.b = maxY - upperX * p.a;
-						}
+						p.a = newA;
+						assert( p.a != 0.0f );
+						p.b = maxY - upperX * p.a;
+						p.upperConstraintIndex = i;
+						needRescan = true;
 					}
-					p.upperConstraintIndex = i;
-					needRescan = true;
 				}
 			}
 		}
