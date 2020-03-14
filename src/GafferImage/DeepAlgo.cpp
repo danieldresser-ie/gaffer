@@ -834,8 +834,10 @@ void linearConstraintsForPixel(
 	//
 	// In log space, the above constraint becomes a constraint that the difference between adjacent samples
 	// can never exceed ln( 0.76 )
-	const double stepToNextCurveSample = -log( 0.76 );
-	const double maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
+	const double curveSampleRatio = 0.76;
+	const double minimumCurveSample = 0.01 * alphaTolerance;
+	//const double stepToNextCurveSample = -log( 0.76 );
+	//const double maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
 
 	// The alpha tolerance that we actually use is padded to take account of the curve error
 	double aTol = 0.99 * alphaTolerance;
@@ -847,6 +849,7 @@ void linearConstraintsForPixel(
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
 	//double lastValidMinY = 0;
+	double prevAlpha = 0;
 	SimplePoint prevLower = { 0, 0 };
 	for( unsigned int j = 0; j < deepSamples.size(); ++j )
 	{
@@ -899,7 +902,10 @@ void linearConstraintsForPixel(
 
 		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
 
-		double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+		double nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
+		double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
+
+		//double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x)
 		{
 			double intersectionX =
@@ -914,11 +920,15 @@ void linearConstraintsForPixel(
 
 			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
-			nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
+			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 		}
 
 		lowerConstraints.push_back( nextLower );
 		prevLower = nextLower;
+		prevAlpha = nextAlpha;
+		
 	}
 
 	unsigned int matchingLowerIndex = 0;
@@ -927,6 +937,7 @@ void linearConstraintsForPixel(
 	assert( deepSamples[0].y == 0  );
 
 	SimplePoint prevUpper = { deepSamples[0].x * ( 1 - zTolerance ), 0 };
+	prevAlpha = 0;
 	upperConstraints.push_back( prevUpper );
 	
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
@@ -950,7 +961,8 @@ void linearConstraintsForPixel(
 		}
 		else
 		{
-			double nextCurveSample = prevUpper.y < maxCurveSample ? prevUpper.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+			double nextCurveSampleAlpha = ( prevAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - prevAlpha ) : 1.0;
+			double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 			while(
 				matchingLowerIndex < lowerConstraints.size() &&
 				( lowerConstraints[matchingLowerIndex].y < nextUpper.y || nextCurveSample < nextUpper.y )
@@ -965,7 +977,9 @@ void linearConstraintsForPixel(
 				else
 				{
 					yValueToInsert = nextCurveSample;
-					nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+					//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+					nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - nextCurveSampleAlpha ) : 1.0;
+					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 				}
 
 
@@ -992,6 +1006,7 @@ void linearConstraintsForPixel(
 		}
 
 		prevUpper = nextUpper;
+		prevAlpha = nextAlpha;
 	}
 
 }
