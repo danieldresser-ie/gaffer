@@ -119,6 +119,56 @@ struct ConstraintSearchParams
 	ConstraintSearchParams() : a( 0. ), b( 0. ) {};
 };
 
+
+inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, double scanDirection, double constraintDirection )
+{
+	int anchor = startAnchor;
+
+	double a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
+	double b = points[anchor].y - a * points[anchor].x;
+
+
+	// Test all constraints to make sure that the current line fufills all of them
+	for( int i = startIndex; i < endIndex; i++ )
+	{
+		if( i == anchor )
+		{
+			continue;
+		}
+
+		double lowerX = points[i].x;
+		double minY = points[i].y;
+
+		double yAtLowerX = a * lowerX + b;
+
+		// Check if we go underneath the minimum constraint at this index
+		if( yAtLowerX * constraintDirection < minY * constraintDirection )
+		{
+			SimplePoint delta = { comparePoint.x - lowerX, comparePoint.y - minY };
+			if( delta.x * constraintDirection < 0 )
+			{
+				// If the violated constraint is to the right of the previous upper constraint, then we would need to get steeper to fufill it
+				// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
+				// Fail.
+				return -1;
+			}
+			else
+			{
+				// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
+				// and trigger a rescan to check our new line against previous constraints
+				double newA = delta.y / delta.x;
+				if( newA < a )
+				{
+					a = newA;
+					b = minY - lowerX * a;
+					anchor = i;
+				}
+			}
+		}
+	}
+	return anchor;
+}
+
 /*
  Update a set of constraint search parameters with a new set of constraints
  ( must be a superset of the previous constraints used to set up the search parameters )
@@ -167,85 +217,31 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 	// ( I've never actually seen this happen ) TODO
 	for( int iteration = 0; iteration < lowerStop - lowerStart + upperStop - upperStart; ++iteration )
 	{
-		bool needRescan = false;
-
-		// Test all constraints to make sure that the current line fufills all of them
-		for( int i = lowerStop - 1; i >= lowerStart; i-- )
+		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0 );
+		if( newLower == -1 )
 		{
-			double lowerX = lowerConstraints[i].x;
-			double minY = lowerConstraints[i].y;
-
-			double yAtLowerX = p.a * lowerX + p.b;
-
-			// Check if we go underneath the minimum constraint at this index
-			if( yAtLowerX < minY )
-			{
-				if( lowerX > upperConstraints[p.upperConstraintIndex].x )
-				{
-					// If the violated constraint is to the right of the previous upper constraint, then we would need to get steeper to fufill it
-					// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
-					// Fail.
-					return false;
-				}
-				else if( i != p.lowerConstraintIndex )
-				{
-					// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
-					// and trigger a rescan to check our new line against previous constraints
-					double newA = (upperConstraints[p.upperConstraintIndex].y - minY) / ( upperConstraints[p.upperConstraintIndex].x - lowerX );
-					if( newA < p.a )
-					{
-						p.a = newA;
-						assert( p.a != 0.0f );
-						p.b = minY - lowerX * p.a;
-						p.lowerConstraintIndex = i;
-						needRescan = true;
-					}
-				}
-			}
+			return false;
 		}
 
-		// Test all constraints to make sure that the current line fufills all of them
-		for( int i = upperStop - 1; i >= upperStart; i-- )
+		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], -1.0, -1.0 );
+		if( newUpper == -1 )
 		{
-
-			double upperX = upperConstraints[i].x;
-			double maxY = upperConstraints[i].y;
-
-			double yAtUpperX = p.a * upperX + p.b;
-
-			// Check if we go above the maxmimum constraint at this index
-			if( yAtUpperX > maxY )
-			{
-				if( upperX < lowerConstraints[p.lowerConstraintIndex].x )
-				{
-					// If the violated constraint is to the left of the previous lower constraint, then we would need to get steeper to fufill it
-					// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
-					// Fail.
-					return false;
-				}
-				else if( i != p.upperConstraintIndex )
-				{
-					// Replace the upper constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
-					// and trigger a rescan to check our new line against previous constraints
-					double newA = (maxY - lowerConstraints[p.lowerConstraintIndex].y) / ( upperX - lowerConstraints[p.lowerConstraintIndex].x );
-					if( newA < p.a )
-					{
-						p.a = newA;
-						assert( p.a != 0.0f );
-						p.b = maxY - upperX * p.a;
-						p.upperConstraintIndex = i;
-						needRescan = true;
-					}
-				}
-			}
+			return false;
 		}
 
-		if( !needRescan )
+		if( p.lowerConstraintIndex == newLower && p.upperConstraintIndex == newUpper )
 		{
+			// No changes made
 			break;
 		}
+		p.lowerConstraintIndex = newLower;
+		p.upperConstraintIndex = newUpper;
 	}
 
+	SimplePoint delta = { upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x, upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y };
+	p.a = delta.y / delta.x;
+	p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
+	assert( p.a != 0.0f ); // TODO
 	//std::cerr << "SUCCESS : " << p.a << " , " << p.b << "\n";
 	*masterSearchParams = p;
 	return true;
