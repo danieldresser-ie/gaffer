@@ -184,8 +184,10 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 {
 	ConstraintSearchParams p = *masterSearchParams;
 
-	if( p.a == std::numeric_limits<double>::infinity() )
+	//if( p.a == std::numeric_limits<double>::infinity() )
+	if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 ) // TODO
 	{
+		assert ( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 );
 		if( upperStop > upperStart )
 		{
 			p.upperConstraintIndex = upperStop - 1;
@@ -197,11 +199,12 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 		}
 
 		// TODO - currently relying on initialization to infinity
-		if( p.upperConstraintIndex != -1 && p.lowerConstraintIndex != -1 && lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
+		if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 || lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
 		{
-			*masterSearchParams = p;
+			//*masterSearchParams = p;
 			return true;
 		}
+		// HUH WHAT
 
 		p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
 		if( p.a == 0 )
@@ -213,6 +216,7 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 		p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
 	}
 
+	assert ( p.upperConstraintIndex != -1 && p.lowerConstraintIndex != -1 );
 	// Use a number of max iterations just in case numerical precision gets us stuck
 	// ( I've never actually seen this happen ) TODO
 	for( int iteration = 0; iteration < lowerStop - lowerStart + upperStop - upperStart; ++iteration )
@@ -238,10 +242,11 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 		p.upperConstraintIndex = newUpper;
 	}
 
-	SimplePoint delta = { upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x, upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y };
+	/*SimplePoint delta = { upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x, upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y };
 	p.a = delta.y / delta.x;
 	p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
 	assert( p.a != 0.0f ); // TODO
+	*/
 	//std::cerr << "SUCCESS : " << p.a << " , " << p.b << "\n";
 	*masterSearchParams = p;
 	return true;
@@ -485,7 +490,29 @@ void minimalSegmentsForConstraints(
 			}
 			std::cerr << "\n"; 
 		}*/
-		assert( currentSearchParams.lowerConstraintIndex != -1 );
+		//assert( currentSearchParams.lowerConstraintIndex != -1 );
+		
+		assert( upperStopIndex > upperStartIndex );
+		assert( lowerStopIndex > lowerStartIndex );
+
+		//currentSearchParams.a = std::numeric_limits<double>::infinity();
+		//currentSearchParams.b = 0;
+		if(
+			currentSearchParams.upperConstraintIndex != -1 &&
+			currentSearchParams.lowerConstraintIndex != -1 &&
+			constraintsLower[ currentSearchParams.lowerConstraintIndex ].x < constraintsUpper[ currentSearchParams.upperConstraintIndex ].x
+		)
+		{		
+			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
+			currentSearchParams.a = delta.y / delta.x;
+			currentSearchParams.b = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * currentSearchParams.a;
+		}
+
+		if( currentSearchParams.upperConstraintIndex == -1 || currentSearchParams.lowerConstraintIndex == -1 )
+		{
+			currentSearchParams.upperConstraintIndex = upperStopIndex - 1;
+			currentSearchParams.lowerConstraintIndex = lowerStartIndex;
+		}
 
 		lowerStartIndex = lowerStopIndex;
 
@@ -630,6 +657,19 @@ void minimalSegmentsForConstraints(
 				}
 			}
 		}
+
+/*
+HUH WHAT
+        p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
+        if( p.a == 0 )
+        {
+            std::cerr << "X: " << upperConstraints[p.upperConstraintIndex].x << " : " << lowerConstraints[p.lowerConstraintIndex].x << "\n";
+            std::cerr << "Y: " << upperConstraints[p.upperConstraintIndex].y << " : " << lowerConstraints[p.lowerConstraintIndex].y << "\n";
+            assert( p.a != 0.0f );
+        }
+        p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
+
+*/
 
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
