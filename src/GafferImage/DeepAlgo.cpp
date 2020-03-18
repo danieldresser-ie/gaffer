@@ -437,6 +437,12 @@ void minimalSegmentsForConstraints(
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
 			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams );
 
+			/*if( debug )
+			{
+				std::cerr << "UP TO LOWER " << constraintsLower[testLowerStopIndex].x << "\n";
+				std::cerr << "UP TO UPPER " << constraintsUpper[testUpperStopIndex].x << "\n";
+				std::cerr << "SUCCESS: " << success << "\n";
+			}*/
 			if( !success )
 			{
 				// It didn't work, so we'll use the previous value left in currentSearchParams
@@ -495,8 +501,8 @@ void minimalSegmentsForConstraints(
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
 
-		//currentSearchParams.a = std::numeric_limits<double>::infinity();
-		//currentSearchParams.b = 0;
+		currentSearchParams.a = std::numeric_limits<double>::infinity();
+		currentSearchParams.b = 0;
 		if(
 			currentSearchParams.upperConstraintIndex != -1 &&
 			currentSearchParams.lowerConstraintIndex != -1 &&
@@ -531,6 +537,7 @@ void minimalSegmentsForConstraints(
 		}
 		else if( advanceUpper )
 		{
+			if( debug ) std::cerr << "ADVANCE UPPER\n";
 			// Hit an upper constraint
 
 			// If the previous line goes over the current constraint, then we are going to be underneath it
@@ -810,6 +817,12 @@ void integratedPointSamplesForPixel(
 	// Now add the remaining samples.
 	for ( int i = 0; i < inSamples; ++i )
 	{
+		// TODO - should I investigate why this causes weirdness?
+		if( inA[i] <= 0.0 )
+		{
+			continue;
+		}
+
 		double Z = inZ[ i ];
 		double ZBack = inZBack[ i ];
 
@@ -967,10 +980,13 @@ void linearConstraintsForPixel(
 
 	assert( deepSamples.size() >= 1 );
 	assert( deepSamples[0].y == 0  );
+	assert( !isinf( deepSamples[0].x ) );
 
 	SimplePoint prevUpper = { deepSamples[0].x * ( 1 - zTolerance ), 0 };
 	prevAlpha = 0;
 	upperConstraints.push_back( prevUpper );
+	assert( !isinf( prevUpper.x ) );
+	assert( prevUpper.x > std::numeric_limits<float>::lowest() );
 	
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
 	{
@@ -1030,6 +1046,7 @@ void linearConstraintsForPixel(
 			break;
 		}
 
+		assert( !isinf( nextUpper.x ) );
 		upperConstraints.push_back( nextUpper );
 
 		if( lowerConstraints[matchingLowerIndex].y == nextUpper.y )
