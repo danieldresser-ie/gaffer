@@ -108,15 +108,15 @@ struct LinearSegment
 struct ConstraintSearchParams
 {
 	// Parameters of the most steeply up line which fits constraints
-	double a;
-	double b;
+	//double a;
+	//double b;
 
     // The points which impose the shallowest constraints
     // ie:  if the current line was any steeper, it could not pass over lowerConstraint and under upperConstraint
 	//SimplePoint lowerConstraint, upperConstraint;
 	int lowerConstraintIndex, upperConstraintIndex;
 
-	ConstraintSearchParams() : a( 0. ), b( 0. ) {};
+	//ConstraintSearchParams() : a( 0. ), b( 0. ) {};
 };
 
 
@@ -206,14 +206,14 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 		}
 		// HUH WHAT
 
-		p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
+		/*p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
 		if( p.a == 0 )
 		{
 			std::cerr << "X: " << upperConstraints[p.upperConstraintIndex].x << " : " << lowerConstraints[p.lowerConstraintIndex].x << "\n";
 			std::cerr << "Y: " << upperConstraints[p.upperConstraintIndex].y << " : " << lowerConstraints[p.lowerConstraintIndex].y << "\n";
 			assert( p.a != 0.0f );
 		}
-		p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
+		p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;*/
 	}
 
 	assert ( p.upperConstraintIndex != -1 && p.lowerConstraintIndex != -1 );
@@ -367,7 +367,9 @@ void minimalSegmentsForConstraints(
 
 	double yPrev = 0; // exponentialToLinear( 0 ) == 0
 
-	ConstraintSearchParams prevSearchParams;
+	//ConstraintSearchParams prevSearchParams;
+	double prevLineA = 0;
+	double prevLineB = 0;
 
 	unsigned int lowerStartIndex = 0;
 	unsigned int lowerStopIndex = 0;
@@ -380,8 +382,8 @@ void minimalSegmentsForConstraints(
 	{
 		// Initial constraint search parameters for not yet having found anything
 		ConstraintSearchParams currentSearchParams;
-		currentSearchParams.a = std::numeric_limits<double>::infinity();
-		currentSearchParams.b = 0;
+		//currentSearchParams.a = std::numeric_limits<double>::infinity();
+		//currentSearchParams.b = 0;
 
 		currentSearchParams.lowerConstraintIndex = -1;
 		currentSearchParams.upperConstraintIndex = -1;
@@ -501,8 +503,8 @@ void minimalSegmentsForConstraints(
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
 
-		currentSearchParams.a = std::numeric_limits<double>::infinity();
-		currentSearchParams.b = 0;
+		double lineA = std::numeric_limits<double>::infinity();
+		double lineB = 0;
 		if(
 			currentSearchParams.upperConstraintIndex != -1 &&
 			currentSearchParams.lowerConstraintIndex != -1 &&
@@ -510,8 +512,8 @@ void minimalSegmentsForConstraints(
 		)
 		{		
 			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
-			currentSearchParams.a = delta.y / delta.x;
-			currentSearchParams.b = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * currentSearchParams.a;
+			lineA = delta.y / delta.x;
+			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
 		}
 
 		if( currentSearchParams.upperConstraintIndex == -1 || currentSearchParams.lowerConstraintIndex == -1 )
@@ -680,7 +682,7 @@ HUH WHAT
 
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
-		double xEnd = ( yFinal - currentSearchParams.b ) / currentSearchParams.a;
+		double xEnd = ( yFinal - lineB ) / lineA;
 		assert( !std::isnan( xEnd ) );
 
 		// TODO
@@ -690,10 +692,10 @@ HUH WHAT
 			// We should never get here but if we do, do something fairly sensible.
 			yFinal = constraintsLower.back().y;
 			xStart = xEnd = constraintsLower.back().x;
-			currentSearchParams.a = std::numeric_limits<double>::infinity();
+			lineA = std::numeric_limits<double>::infinity();
 			lowerStopIndex = constraintsLower.size();
 		}
-		else if( fabs( currentSearchParams.a ) == std::numeric_limits<double>::infinity() )
+		else if( fabs( lineA ) == std::numeric_limits<double>::infinity() )
 		{
 			// The line we have found is a point sample.
 			xStart = xEnd = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
@@ -704,22 +706,22 @@ HUH WHAT
 			
 
 			// Calculate where our new line hits the previous flat top
-			xStart = ( yPrev - currentSearchParams.b ) / currentSearchParams.a;
+			xStart = ( yPrev - lineB ) / lineA;
 
 			// If there is a previous segment, we need to cover the possibility that we are overlapping with it
 			if( compressedSamples.size() > 0 && xStart < compressedSamples.back().XBack )
 			{
 				LinearSegment &prevSegment = compressedSamples.back();
 				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
-				if( fabs( prevSearchParams.a ) == std::numeric_limits<double>::infinity() )
+				if( fabs( prevLineA ) == std::numeric_limits<double>::infinity() )
 				{
 					xStart = compressedSamples.back().XBack;
-					prevSegment.YBack = prevSegment.XBack * currentSearchParams.a + currentSearchParams.b;
+					prevSegment.YBack = prevSegment.XBack * lineA + lineB;
 				}
 				else
 				{
 					// Calculate the intersection of our new line with the previous line
-					xStart = ( currentSearchParams.b - prevSearchParams.b ) / ( prevSearchParams.a - currentSearchParams.a );
+					xStart = ( lineB - prevLineB ) / ( prevLineA - lineA );
 					if( xStart < prevSegment.X )
 					{
 						// This case may occur due to precision issues.
@@ -740,7 +742,7 @@ HUH WHAT
 						{
 							std::cerr << "MESSING THINGS UP\n";
 						}
-						prevSegment.YBack = xStart * prevSearchParams.a + prevSearchParams.b;
+						prevSegment.YBack = xStart * prevLineA + prevLineB;
 						//std::cerr << "AFTER : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
 					}
 				}
@@ -765,7 +767,9 @@ HUH WHAT
 		yPrev = yFinal;
 
 
-		prevSearchParams = currentSearchParams;
+		//prevSearchParams = currentSearchParams;
+		prevLineA = lineA;
+		prevLineB = lineB;
 	}
 
 	// TODO - adjust XBack too
