@@ -248,13 +248,13 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 				float compare;
 				float compareDepth;
 
-				if( resultA[j] - resultBUpper[j] > tol )
+				if( !( resultA[j] - resultBUpper[j] <= tol ) )
 				{
 					fail = true;
 					compare = resultBUpper[j];
 					compareDepth = depth / ( 1 - depthTolerance );
 				}
-				if( resultA[j] - resultBLower[j] < -tol )
+				if( !( resultA[j] - resultBLower[j] >= -tol ) )
 				{
 					fail = true;
 					compare = resultBLower[j];
