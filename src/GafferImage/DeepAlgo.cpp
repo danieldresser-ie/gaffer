@@ -107,20 +107,14 @@ struct LinearSegment
 
 struct ConstraintSearchParams
 {
-	// Parameters of the most steeply up line which fits constraints
-	//double a;
-	//double b;
-
     // The points which impose the shallowest constraints
     // ie:  if the current line was any steeper, it could not pass over lowerConstraint and under upperConstraint
 	//SimplePoint lowerConstraint, upperConstraint;
 	int lowerConstraintIndex, upperConstraintIndex;
-
-	//ConstraintSearchParams() : a( 0. ), b( 0. ) {};
 };
 
 
-inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, double scanDirection, double constraintDirection )
+inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, double scanDirection, double constraintDirection, double steeperDirection )
 {
 	int anchor = startAnchor;
 
@@ -154,10 +148,10 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 			}
 			else
 			{
-				// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints,
+				// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints, TODO "steepest"
 				// and trigger a rescan to check our new line against previous constraints
 				double newA = delta.y / delta.x;
-				if( newA < a )
+				if( newA * steeperDirection < a * steeperDirection )
 				{
 					a = newA;
 					b = minY - lowerX * a;
@@ -180,54 +174,30 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 
  This function either updates masterSearchParams with a line that fufills all constraints and returns true, or returns false and does not alter masterSearchParams.
 */
-bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, ConstraintSearchParams *masterSearchParams )
+bool steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, ConstraintSearchParams *masterSearchParams )
 {
 	ConstraintSearchParams p = *masterSearchParams;
 
-	//if( p.a == std::numeric_limits<double>::infinity() )
 	if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 ) // TODO
 	{
-		assert ( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 );
-		if( upperStop > upperStart )
-		{
-			p.upperConstraintIndex = upperStop - 1;
-		}
+		p.upperConstraintIndex = upperStop - 1;
+		p.lowerConstraintIndex = lowerStart;
 
-		if( lowerStop > lowerStart )
+		if( lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
 		{
-			p.lowerConstraintIndex = lowerStart;
-		}
-
-		// TODO - currently relying on initialization to infinity
-		if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 || lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
-		{
-			//*masterSearchParams = p;
 			return true;
 		}
-		// HUH WHAT
-
-		/*p.a = ( upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y ) / ( upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x );
-		if( p.a == 0 )
-		{
-			std::cerr << "X: " << upperConstraints[p.upperConstraintIndex].x << " : " << lowerConstraints[p.lowerConstraintIndex].x << "\n";
-			std::cerr << "Y: " << upperConstraints[p.upperConstraintIndex].y << " : " << lowerConstraints[p.lowerConstraintIndex].y << "\n";
-			assert( p.a != 0.0f );
-		}
-		p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;*/
 	}
 
-	assert ( p.upperConstraintIndex != -1 && p.lowerConstraintIndex != -1 );
-	// Use a number of max iterations just in case numerical precision gets us stuck
-	// ( I've never actually seen this happen ) TODO
-	for( int iteration = 0; iteration < lowerStop - lowerStart + upperStop - upperStart; ++iteration )
+	while( true )
 	{
-		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0 );
+		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0 );
 		if( newLower == -1 )
 		{
 			return false;
 		}
 
-		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], -1.0, -1.0 );
+		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], -1.0, -1.0, 1.0 );
 		if( newUpper == -1 )
 		{
 			return false;
@@ -242,12 +212,48 @@ bool updateConstraintsSimple( const SimplePoint *lowerConstraints, int lowerStar
 		p.upperConstraintIndex = newUpper;
 	}
 
-	/*SimplePoint delta = { upperConstraints[p.upperConstraintIndex].x - lowerConstraints[p.lowerConstraintIndex].x, upperConstraints[p.upperConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].y };
-	p.a = delta.y / delta.x;
-	p.b = lowerConstraints[p.lowerConstraintIndex].y - lowerConstraints[p.lowerConstraintIndex].x * p.a;
-	assert( p.a != 0.0f ); // TODO
-	*/
-	//std::cerr << "SUCCESS : " << p.a << " , " << p.b << "\n";
+	*masterSearchParams = p;
+	return true;
+}
+
+bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, ConstraintSearchParams *masterSearchParams )
+{
+	ConstraintSearchParams p = *masterSearchParams;
+
+	if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 ) // TODO
+	{
+		p.upperConstraintIndex = upperStart;
+		p.lowerConstraintIndex = lowerStop - 1;
+
+		/*if( lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
+		{
+			return true;
+		}*/
+	}
+
+	while( true )
+	{
+		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], -1.0, 1.0, -1.0 );
+		if( newLower == -1 )
+		{
+			return false;
+		}
+
+		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], 1.0, -1.0, -1.0 );
+		if( newUpper == -1 )
+		{
+			return false;
+		}
+
+		if( p.lowerConstraintIndex == newLower && p.upperConstraintIndex == newUpper )
+		{
+			// No changes made
+			break;
+		}
+		p.lowerConstraintIndex = newLower;
+		p.upperConstraintIndex = newUpper;
+	}
+
 	*masterSearchParams = p;
 	return true;
 }
@@ -437,7 +443,7 @@ void minimalSegmentsForConstraints(
 
 			// Try fitting a line to our new set of constraints
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = updateConstraintsSimple( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams );
+			bool success = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams );
 
 			/*if( debug )
 			{
@@ -499,6 +505,14 @@ void minimalSegmentsForConstraints(
 			std::cerr << "\n"; 
 		}*/
 		//assert( currentSearchParams.lowerConstraintIndex != -1 );
+		if( advanceUpper && currentSearchParams.lowerConstraintIndex != -1 && currentSearchParams.upperConstraintIndex != -1 )
+		{
+			currentSearchParams = { -1, -1 };
+			// Hit upper, sneak a bit farther by taking shallowest line
+			bool refindShallowSuccess =
+			shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
+			assert( refindShallowSuccess );
+		}
 		
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
@@ -541,6 +555,7 @@ void minimalSegmentsForConstraints(
 		{
 			if( debug ) std::cerr << "ADVANCE UPPER\n";
 			// Hit an upper constraint
+			
 
 			// If the previous line goes over the current constraint, then we are going to be underneath it
 			// This means that we don't need to worry about upper constraints that it passed under,
