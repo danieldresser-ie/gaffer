@@ -71,8 +71,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
 		resample = GafferImage.DeepResample()
-		#resample["in"].setInput( oversample["out"] ) #TODO
-		resample["in"].setInput( fix["out"] )
+		resample["in"].setInput( oversample["out"] ) #TODO
+		#resample["in"].setInput( fix["out"] )
 		resample["alphaTolerance"].setValue( 0.001 )
 		resample["depthTolerance"].setValue( 0.001 )
 
@@ -150,6 +150,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# Make sure we reduce the sample count even further
 		resampleCount = int( resampleCountStats["average"].getValue()[0] * dw.size()[0] * dw.size()[1] )
 		self.assertLess( resampleCount, 25000 )
+		print "AGGRESSIVE RESAMPLE COUNT: ", resampleCount
 
 		for x in range( dw.size()[0] ):
 			for y in range( dw.size()[1] ):
@@ -157,6 +158,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
 				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y )  )
+
+		# TODO - does 0 tolerance result in crash?
 
 		
 

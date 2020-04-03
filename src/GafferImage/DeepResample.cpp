@@ -236,9 +236,9 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		// Mathematically, I'm reasonably confident this is impossible, but I should
 		// have a proper think about whether this could ever happen with floating point
 		// error and such
-		outAlpha.resize( alpha.size() );
-		outZ.resize( alpha.size() );
-		outZBack.resize( alpha.size() );
+		outAlpha.resize( alpha.size() + sampleOffsets.size() ); // TODO
+		outZ.resize( alpha.size() + sampleOffsets.size() );
+		outZBack.resize( alpha.size() + sampleOffsets.size() );
 
 		//std::vector<DeepPixel> outputPixels;
 		//outputPixels.resize( sampleOffsets.size() );
@@ -264,7 +264,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 44, 51 );
+			bool debug = pixelLocation == V2i( 44000, 51 );
 			int resampledCount;
 			DeepAlgo::resampleDeepPixel(
 				index - prev, &alpha[prev], &z[prev], &zBack[prev],
@@ -279,9 +279,9 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		}
 
 		// TODO	- this is too late to reliably avoid crash
-		if( outSampleOffsets.back() > ((int)alpha.size()) )
+		if( outSampleOffsets.back() > (int)(alpha.size() + sampleOffsets.size()) )
 		{
-			throw IECore::Exception( "Sample count increased during resampling" );
+			throw IECore::Exception( "Sample count increased <TODO> TOO MUCH during resampling" );
 		}
 
 		outAlpha.resize( outSampleOffsets.back() );

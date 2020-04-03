@@ -138,9 +138,11 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 		// Check if we go underneath the minimum constraint at this index
 		if( yAtLowerX * constraintDirection < minY * constraintDirection )
 		{
+			//if( steeperDirection < 0 ) std::cerr << "VIOLATE : " << i << "\n";
 			SimplePoint delta = { comparePoint.x - lowerX, comparePoint.y - minY };
-			if( delta.x * constraintDirection < 0 )
+			if( delta.x * scanDirection < 0 )
 			{
+				//if( steeperDirection < 0 ) std::cerr << "REVERSED : " << comparePoint.x << " : " << lowerX << "\n";
 				// If the violated constraint is to the right of the previous upper constraint, then we would need to get steeper to fufill it
 				// But the current line is already the steepest that fufills previous constraints, so there can be no line which fufills all constraints.
 				// Fail.
@@ -220,6 +222,21 @@ bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, i
 {
 	ConstraintSearchParams p = *masterSearchParams;
 
+	/*std::cerr << "LOWER\n";
+	for( int i = lowerStart; i < lowerStop; i++ )
+	{
+		std::cerr << lowerConstraints[i].x << "," << lowerConstraints[i].y << "\t";
+	}
+	std::cerr << "\n";
+	std::cerr << "UPPER\n";
+	for( int i = upperStart; i < upperStop; i++ )
+	{
+		std::cerr << upperConstraints[i].x << "," << upperConstraints[i].y << "\t";
+	}
+	std::cerr << "\n";
+	std::cerr << "\n";
+	*/
+
 	if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 ) // TODO
 	{
 		p.upperConstraintIndex = upperStart;
@@ -230,16 +247,20 @@ bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, i
 			return true;
 		}*/
 	}
-
+	
+	//std::cerr << "SI: " << p.lowerConstraintIndex << " " << p.upperConstraintIndex << "\n";
 	while( true )
 	{
 		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], -1.0, 1.0, -1.0 );
+		
+		//std::cerr << "LI: " << newLower << " " << p.upperConstraintIndex << "\n";
 		if( newLower == -1 )
 		{
 			return false;
 		}
 
 		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], 1.0, -1.0, -1.0 );
+		//std::cerr << "UI: " << newLower << " " << newUpper << "\n";
 		if( newUpper == -1 )
 		{
 			return false;
@@ -472,47 +493,7 @@ void minimalSegmentsForConstraints(
 		double xStart;
 
 
-		/*if( currentSearchParams.lowerConstraintIndex == -1 )
-		{
-			std::cerr << "BEFORE"; 
-			std::cerr << "UPPER : "; 
-			for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
-			{
-				std::cerr << constraintsUpper[i] << " "; 
-			}
-			std::cerr << "\n"; 
-			std::cerr << "LOWER : "; 
-			for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
-			{
-				std::cerr << constraintsLower[i] << " "; 
-			}
-
-			if( advanceUpper ) upperStopIndex--;
-			else lowerStopIndex--;
-
-			std::cerr << "NOW"; 
-			std::cerr << "UPPER : "; 
-			for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
-			{
-				std::cerr << constraintsUpper[i] << " "; 
-			}
-			std::cerr << "\n"; 
-			std::cerr << "LOWER : "; 
-			for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
-			{
-				std::cerr << constraintsLower[i] << " "; 
-			}
-			std::cerr << "\n"; 
-		}*/
 		//assert( currentSearchParams.lowerConstraintIndex != -1 );
-		if( advanceUpper && currentSearchParams.lowerConstraintIndex != -1 && currentSearchParams.upperConstraintIndex != -1 )
-		{
-			currentSearchParams = { -1, -1 };
-			// Hit upper, sneak a bit farther by taking shallowest line
-			//bool refindShallowSuccess =
-			shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
-			assert( refindShallowSuccess );
-		}
 		
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
@@ -525,6 +506,35 @@ void minimalSegmentsForConstraints(
 			constraintsLower[ currentSearchParams.lowerConstraintIndex ].x < constraintsUpper[ currentSearchParams.upperConstraintIndex ].x
 		)
 		{		
+			if( advanceUpper )
+			{
+				/*{
+					std::cerr << "BEFORE"; 
+					std::cerr << "LOWER : "; 
+					for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+					{
+						std::cerr << constraintsLower[i].x << " " << constraintsLower[i].y << " "; 
+					}
+					std::cerr << "\n"; 
+					std::cerr << "UPPER : "; 
+					for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+					{
+						std::cerr << constraintsUpper[i].x << " " << constraintsUpper[i].y << " "; 
+					}
+					std::cerr << "\n"; 
+				}
+
+				std::cerr << "INDICES BEFORE " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
+				*/
+				currentSearchParams = { -1, -1 };
+				// Hit upper, sneak a bit farther by taking shallowest line
+				//bool refindShallowSuccess =
+				shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
+				//std::cerr << "INDICES AFTER " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
+				//currentSearchParams = { -1, -1 };
+				assert( refindShallowSuccess );
+			}
+
 			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
 			lineA = delta.y / delta.x;
 			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
@@ -909,6 +919,11 @@ void linearConstraintsForPixel(
 	// TODO - get rid of this alloc by combining with function above
 	std::vector< SimplePoint > deepSamples;
 	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
+	if( deepSamples.size() == 0 )
+	{
+		// TODO : Currently, as per other TODO, we skip 0 alpha samples, so this could trigger
+		return;
+	}
 
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
@@ -1151,8 +1166,13 @@ void resampleDeepPixel(
 		constraintsLower, constraintsUpper
 	);
 
+
 	std::vector< LinearSegment > compressedSamples;
 	minimalSegmentsForConstraints( constraintsLower, constraintsUpper, compressedSamples, debug );
+
+	// TODO - runtime check? Plus one?
+	assert( compressedSamples.size() <= (size_t)inSamples + 1 );
+
 	conformToSegments(
 		inSamples, inA, inZ, inZBack,
 		compressedSamples,
