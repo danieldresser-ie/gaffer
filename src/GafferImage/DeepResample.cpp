@@ -61,18 +61,26 @@ DeepResample::DeepResample( const std::string &name )
 	addChild( new FloatPlug( "alphaTolerance", Gaffer::Plug::In, 0.01 ) );
 	addChild( new FloatPlug( "depthTolerance", Gaffer::Plug::In, 0.01 ) );
 
+	addChild( new ImagePlug( "__tidyIn", Plug::In, Plug::Default & ~Plug::Serialisable ) );
+
+	DeepStatePtr deepStateNode = new DeepState( "__deepState" );
+	addChild( deepStateNode );
+
 	addChild( new CompoundObjectPlug( "__resampled", Gaffer::Plug::Out, new IECore::CompoundObject() ) );
+
+	deepStateNode->inPlug()->setInput( inPlug() );
+	deepStateNode->deepStatePlug()->setValue( int( DeepState::TargetState::Tidy ) );
+	tidyInPlug()->setInput( deepStateNode->outPlug() );
 
 	// We don't ever want to change these, so we make pass-through connections.
 
-
 	// TODO - we should force ZBack into the channelNames if only Z is present
-	outPlug()->channelNamesPlug()->setInput( inPlug()->channelNamesPlug() );
+	outPlug()->channelNamesPlug()->setInput( tidyInPlug()->channelNamesPlug() );
 
-	outPlug()->dataWindowPlug()->setInput( inPlug()->dataWindowPlug() );
-	outPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
-	outPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );
-	outPlug()->deepPlug()->setInput( inPlug()->deepPlug() );
+	outPlug()->dataWindowPlug()->setInput( tidyInPlug()->dataWindowPlug() );
+	outPlug()->formatPlug()->setInput( tidyInPlug()->formatPlug() );
+	outPlug()->metadataPlug()->setInput( tidyInPlug()->metadataPlug() );
+	outPlug()->deepPlug()->setInput( tidyInPlug()->deepPlug() );
 }
 
 DeepResample::~DeepResample()
@@ -99,14 +107,34 @@ const Gaffer::FloatPlug *DeepResample::depthTolerancePlug() const
 	return getChild<FloatPlug>( g_firstPlugIndex + 1 );
 }
 
+ImagePlug *DeepResample::tidyInPlug()
+{
+    return getChild<ImagePlug>( g_firstPlugIndex + 2 );
+}
+
+const ImagePlug *DeepResample::tidyInPlug() const
+{
+    return getChild<ImagePlug>( g_firstPlugIndex + 2 );
+}
+
+DeepState *DeepResample::deepState()
+{
+    return getChild<DeepState>( g_firstPlugIndex + 3 );
+}
+
+const DeepState *DeepResample::deepState() const
+{
+    return getChild<DeepState>( g_firstPlugIndex + 3 );
+}
+
 Gaffer::CompoundObjectPlug *DeepResample::resampledPlug()
 {
-	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 2 );
+	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 4 );
 }
 
 const Gaffer::CompoundObjectPlug *DeepResample::resampledPlug() const
 {
-	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 2 );
+	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 4 );
 }
 
 void DeepResample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
@@ -114,20 +142,20 @@ void DeepResample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &o
 	ImageProcessor::affects( input, outputs );
 
 	if(
-		input == inPlug()->sampleOffsetsPlug() || input == inPlug()->channelNamesPlug() ||
-		input == inPlug()->channelDataPlug() ||
+		input == tidyInPlug()->sampleOffsetsPlug() || input == tidyInPlug()->channelNamesPlug() ||
+		input == tidyInPlug()->channelDataPlug() ||
 		input == alphaTolerancePlug() || input == depthTolerancePlug()
 	)
 	{
 		outputs.push_back( resampledPlug() );
 	}
 
-	if( input == resampledPlug() || input == inPlug()->channelDataPlug() )
+	if( input == resampledPlug() || input == tidyInPlug()->channelDataPlug() )
 	{
 		outputs.push_back( outPlug()->channelDataPlug() );
 	}
 
-	if( input == resampledPlug() || input == inPlug()->sampleOffsetsPlug() )
+	if( input == resampledPlug() || input == tidyInPlug()->sampleOffsetsPlug() )
 	{
 		outputs.push_back( outPlug()->sampleOffsetsPlug() );
 	}
@@ -146,10 +174,10 @@ void DeepResample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context 
 	alphaTolerancePlug()->hash( h );
 	depthTolerancePlug()->hash( h );
 
-	ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
+	ConstStringVectorDataPtr channelNamesData = tidyInPlug()->channelNames();
 	std::vector<string> channelNames = channelNamesData->readable();
 
-	inPlug()->sampleOffsetsPlug()->hash( h );
+	tidyInPlug()->sampleOffsetsPlug()->hash( h );
 
 	if(
 		ImageAlgo::channelExists( channelNames, "A" ) &&
@@ -158,14 +186,14 @@ void DeepResample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context 
 	{
 		ImagePlug::ChannelDataScope channelScope( context );
 		channelScope.setChannelName( "A" );
-		inPlug()->channelDataPlug()->hash( h );
+		tidyInPlug()->channelDataPlug()->hash( h );
 
 		channelScope.setChannelName( "Z" );
-		inPlug()->channelDataPlug()->hash( h );
+		tidyInPlug()->channelDataPlug()->hash( h );
 
 		if( ImageAlgo::channelExists( channelNames, "ZBack" ) )
 		{
-			inPlug()->channelDataPlug()->hash( h );
+			tidyInPlug()->channelDataPlug()->hash( h );
 		}
 	}
 }
@@ -185,12 +213,12 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 	float alphaTolerance = alphaTolerancePlug()->getValue();
 	float depthTolerance = depthTolerancePlug()->getValue();
 
-	ConstIntVectorDataPtr sampleOffsetsData = inPlug()->sampleOffsetsPlug()->getValue();
+	ConstIntVectorDataPtr sampleOffsetsData = tidyInPlug()->sampleOffsetsPlug()->getValue();
 	const std::vector<int> &sampleOffsets = sampleOffsetsData->readable();
 
 	CompoundObjectPtr resampledData = new CompoundObject();
 
-	ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
+	ConstStringVectorDataPtr channelNamesData = tidyInPlug()->channelNames();
 	std::vector<string> channelNames = channelNamesData->readable();
 
 	if(
@@ -200,18 +228,18 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 	{
 		ImagePlug::ChannelDataScope channelScope( context );
 		channelScope.setChannelName( "A" );
-		ConstFloatVectorDataPtr alphaData = inPlug()->channelDataPlug()->getValue();
+		ConstFloatVectorDataPtr alphaData = tidyInPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &alpha = alphaData->readable();
 
 		channelScope.setChannelName( "Z" );
-		ConstFloatVectorDataPtr zData = inPlug()->channelDataPlug()->getValue();
+		ConstFloatVectorDataPtr zData = tidyInPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &z = zData->readable();
 
 		ConstFloatVectorDataPtr zBackData;
 		if( ImageAlgo::channelExists( channelNames, "ZBack" ) )
 		{
 			channelScope.setChannelName( "ZBack" );
-			zBackData = inPlug()->channelDataPlug()->getValue();
+			zBackData = tidyInPlug()->channelDataPlug()->getValue();
 		}
 		else
 		{
@@ -266,13 +294,21 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
 			bool debug = pixelLocation == V2i( 44000, 51 );
 			int resampledCount;
-			DeepAlgo::resampleDeepPixel(
-				index - prev, &alpha[prev], &z[prev], &zBack[prev],
-				alphaTolerance, depthTolerance,
-				resampledCount, &outAlpha[outputCount], &outZ[outputCount], &outZBack[outputCount],
-				debug
-			);
-			outputCount += resampledCount;
+			try
+			{
+				DeepAlgo::resampleDeepPixel(
+					index - prev, &alpha[prev], &z[prev], &zBack[prev],
+					alphaTolerance, depthTolerance,
+					resampledCount, &outAlpha[outputCount], &outZ[outputCount], &outZBack[outputCount],
+					debug
+				);
+				outputCount += resampledCount;
+			}
+			catch( const std::exception &e )
+			{
+				std::cerr << "Caught : " << e.what() << "\n";
+				std::cerr << "On pixel : " << pixelLocation << "\n";
+			}
 			outSampleOffsets[i] = outputCount;
 
 			prev = index;
@@ -305,7 +341,7 @@ void DeepResample::hashChannelData( const ImagePlug *output, const Gaffer::Conte
 	ImageProcessor::hashChannelData( output, context, h );
 	const std::string &channelName = context->get<std::string>( GafferImage::ImagePlug::channelNameContextName );
 
-	inPlug()->channelDataPlug()->hash( h );
+	tidyInPlug()->channelDataPlug()->hash( h );
 
 	ImagePlug::ChannelDataScope channelScope( context );
 	channelScope.remove( ImagePlug::channelNameContextName );
@@ -318,10 +354,10 @@ void DeepResample::hashChannelData( const ImagePlug *output, const Gaffer::Conte
 		return;
 	}
 
-	inPlug()->sampleOffsetsPlug()->hash( h );
+	tidyInPlug()->sampleOffsetsPlug()->hash( h );
 
 	channelScope.setChannelName( "A" );
-	inPlug()->channelDataPlug()->hash( h );
+	tidyInPlug()->channelDataPlug()->hash( h );
 }
 
 IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::string &channelName, const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
@@ -334,7 +370,7 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 	if( !resampled->members().size() )
 	{
 		channelScope.setChannelName( channelName );
-		return inPlug()->channelDataPlug()->getValue();
+		return tidyInPlug()->channelDataPlug()->getValue();
 	}
 
 	if( channelName == "Z" )
@@ -352,13 +388,13 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 
 	IECore::ConstFloatVectorDataPtr resampledAlphaData = resampled->member<FloatVectorData>("A");
 	IECore::ConstIntVectorDataPtr resampledOffsetsData = resampled->member<IntVectorData>("sampleOffsets");
-	IECore::ConstIntVectorDataPtr origOffsetsData = inPlug()->sampleOffsetsPlug()->getValue();
+	IECore::ConstIntVectorDataPtr origOffsetsData = tidyInPlug()->sampleOffsetsPlug()->getValue();
 
 	channelScope.setChannelName( "A" );
-	IECore::ConstFloatVectorDataPtr origAlphaData = inPlug()->channelDataPlug()->getValue();
+	IECore::ConstFloatVectorDataPtr origAlphaData = tidyInPlug()->channelDataPlug()->getValue();
 
 	channelScope.setChannelName( channelName );
-	IECore::ConstFloatVectorDataPtr origChannelData = inPlug()->channelDataPlug()->getValue();
+	IECore::ConstFloatVectorDataPtr origChannelData = tidyInPlug()->channelDataPlug()->getValue();
 
 	const std::vector<int> &origOffsets = origOffsetsData->readable();
 	const std::vector<int> &resampledOffsets = resampledOffsetsData->readable();
@@ -430,7 +466,7 @@ void DeepResample::hashSampleOffsets( const ImagePlug *parent, const Gaffer::Con
 	ImageProcessor::hashSampleOffsets( parent, context, h );
 
 	resampledPlug()->hash( h );
-	inPlug()->sampleOffsetsPlug()->hash( h );
+	tidyInPlug()->sampleOffsetsPlug()->hash( h );
 }
 
 IECore::ConstIntVectorDataPtr DeepResample::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
@@ -439,7 +475,7 @@ IECore::ConstIntVectorDataPtr DeepResample::computeSampleOffsets( const Imath::V
 
 	if( !resampled->members().size() )
 	{
-		return inPlug()->sampleOffsetsPlug()->getValue();
+		return tidyInPlug()->sampleOffsetsPlug()->getValue();
 	}
 
 	return resampled->member<IntVectorData>("sampleOffsets");

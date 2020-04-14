@@ -41,6 +41,7 @@
 #include "Gaffer/NumericPlug.h"
 
 #include "GafferImage/ImageProcessor.h"
+#include "GafferImage/DeepState.h"
 
 namespace GafferImage
 {
@@ -75,6 +76,14 @@ class GAFFERIMAGE_API DeepResample : public ImageProcessor
 		IECore::ConstIntVectorDataPtr computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
 
 	private :
+
+		// Input plug to receive the tidy image from the internal deepState node.
+		ImagePlug *tidyInPlug();
+		const ImagePlug *tidyInPlug() const;
+
+		// The internal DeepState node for tidying before resampling
+		GafferImage::DeepState *deepState();
+		const GafferImage::DeepState *deepState() const;
 
 		Gaffer::CompoundObjectPlug *resampledPlug();
 		const Gaffer::CompoundObjectPlug *resampledPlug() const;
