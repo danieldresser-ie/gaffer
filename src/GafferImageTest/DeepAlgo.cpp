@@ -38,6 +38,7 @@
 
 #include "IECore/VectorTypedData.h"
 #include "IECore/SimpleTypedData.h"
+#include "tbb/parallel_for.h"
 
 using namespace GafferImageTest;
 
@@ -229,49 +230,67 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 		channelsB.push_back( &pixelDataB->member<IECore::FloatVectorData>( name )->readable()[0] );
 	}
 
-	std::vector<float> resultA;
-	std::vector<float> resultBUpper;
-	std::vector<float> resultBLower;
-	for( const IECore::FloatVectorData *depthData : { zA, zB, zBackA, zBackB } )
-	{
-		for( float depth : depthData->readable() )
-		{
-			evaluateDeepPixelInternal( zA->readable(), zBackA->readable(), alphaA->readable(), channelsA, depth, resultA );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 - depthTolerance ), resultBUpper );
-			evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 + depthTolerance ), resultBLower );
+	std::vector<float> testDepths;
+	testDepths.reserve(
+		zA->readable().size() + zB->readable().size() + zBackA->readable().size() + zBackB->readable().size()
+	);
+	testDepths.insert( testDepths.end(), zA->readable().begin(), zA->readable().end() );
+	testDepths.insert( testDepths.end(), zB->readable().begin(), zB->readable().end() );
+	testDepths.insert( testDepths.end(), zBackA->readable().begin(), zBackA->readable().end() );
+	testDepths.insert( testDepths.end(), zBackB->readable().begin(), zBackB->readable().end() );
 
-			for( unsigned int j = 0; j < resultA.size(); j++ )
+	// Using a parallel_for here feels overly complicated, but if run on a test with too many samples,
+	// the expense of this balloons quadratically to the point where it can be a major slowdown.
+	//
+	// Using parallel_for makes this overhead less ridiculous, but the overhead is bad for the common case of
+	// a more reasonable number of samples.  A grainsize of 100 appears to give a reasonable compromise for
+	// both cases.
+	tbb::parallel_for( 
+		tbb::blocked_range<size_t>( 0, testDepths.size(), 100 ),
+		[&]( const tbb::blocked_range<size_t> &r ) {
+			std::vector<float> resultA( channelsA.size() );
+			std::vector<float> resultBUpper( channelsA.size() );
+			std::vector<float> resultBLower( channelsA.size() );
+			for( size_t i=r.begin(); i!=r.end(); ++i )
 			{
-				float tol = j == 0 ? alphaTolerance : channelTolerance;
-			
-				bool fail = false;
-				float compare;
-				float compareDepth;
+				float depth = testDepths[i];
+				evaluateDeepPixelInternal( zA->readable(), zBackA->readable(), alphaA->readable(), channelsA, depth, resultA );
+				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 - depthTolerance ), resultBUpper );
+				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 + depthTolerance ), resultBLower );
 
-				if( !( resultA[j] - resultBUpper[j] <= tol ) )
+				for( unsigned int j = 0; j < resultA.size(); j++ )
 				{
-					fail = true;
-					compare = resultBUpper[j];
-					compareDepth = depth / ( 1 - depthTolerance );
-				}
-				if( !( resultA[j] - resultBLower[j] >= -tol ) )
-				{
-					fail = true;
-					compare = resultBLower[j];
-					compareDepth = depth / ( 1 + depthTolerance );
-				}
+					float tol = j == 0 ? alphaTolerance : channelTolerance;
+				
+					bool fail = false;
+					float compare;
+					float compareDepth;
 
-				if( fail )
-				{
-					std::string channelName = j == 0 ? "A" : channelNames[j - 1];
-					throw IECore::Exception(
-						message + "Mismatch in channel " + channelName + " at depth " + std::to_string( depth ) +
-						" : " + std::to_string( resultA[j] ) + " vs " + std::to_string( compare ) + " ( at depth " + std::to_string( compareDepth ) + " )" +
-						" not within " + std::to_string( tol ) + "\n"
-					);
+					if( !( resultA[j] - resultBUpper[j] <= tol ) )
+					{
+						fail = true;
+						compare = resultBUpper[j];
+						compareDepth = depth / ( 1 - depthTolerance );
+					}
+					if( !( resultA[j] - resultBLower[j] >= -tol ) )
+					{
+						fail = true;
+						compare = resultBLower[j];
+						compareDepth = depth / ( 1 + depthTolerance );
+					}
+
+					if( fail )
+					{
+						std::string channelName = j == 0 ? "A" : channelNames[j - 1];
+						throw IECore::Exception(
+							message + "Mismatch in channel " + channelName + " at depth " + std::to_string( depth ) +
+							" : " + std::to_string( resultA[j] ) + " vs " + std::to_string( compare ) + " ( at depth " + std::to_string( compareDepth ) + " )" +
+							" not within " + std::to_string( tol ) + "\n"
+						);
+					}
 				}
 			}
 		}
-	}
+	);
 }
 
