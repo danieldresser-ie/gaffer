@@ -205,6 +205,9 @@ void DeepToFlat::compute( Gaffer::ValuePlug *output, const Gaffer::Context *cont
 		std::vector<float> &result = resultData->writable();
 
 		ConstStringVectorDataPtr channelNames = inPlug()->channelNames();
+
+		/*
+        TODO - we might actually need to do something like this swap?
 		if( ImageAlgo::channelExists( channelNames->readable(), ImageAlgo::channelNameZBack ) )
 		{
 			// If we have a ZBack channel, find the average depth of each sample
@@ -216,14 +219,44 @@ void DeepToFlat::compute( Gaffer::ValuePlug *output, const Gaffer::Context *cont
 				result[i] = result[i] * 0.5f + zBack[i] * 0.5f;
 			}
 		}
+		*/
+
 		if( ImageAlgo::channelExists( channelNames->readable(), "A" ) )
 		{
 			channelScope.setChannelName( &ImageAlgo::channelNameA );
 			ConstFloatVectorDataPtr alphaData = inPlug()->channelDataPlug()->getValue();
 			const std::vector<float> &alpha = alphaData->readable();
-			for( unsigned int i = 0; i < result.size(); i++ )
+
+			if( ImageAlgo::channelExists( channelNames->readable(), "ZBack" ) )
 			{
-				result[i] *= alpha[i];
+				// If we have a ZBack channel, find the average depth of each sample
+				channelScope.setChannelName( "ZBack" );
+				ConstFloatVectorDataPtr zBackData = inPlug()->channelDataPlug()->getValue();
+				const std::vector<float> &zBack = zBackData->readable();
+
+				for( unsigned int i = 0; i < result.size(); i++ )
+				{
+					float a = alpha[i];
+					float lerp = 0;
+
+					// When we compute the depth for this segment, we blend between the front
+					// and back depth based on integral of depth across the alpha curve.  This
+					// correctly produces a depth based on the shape of the curve, which is
+					// not affected by adding/removing samples if the shape is preserved.
+					if( a > 1e-6f && a < 1.0 - 1e-6f )
+					{
+						lerp = 1 - 1/a - 1 / log1p( -a );
+					}
+
+					result[i] = ( result[i] * ( 1.0f - lerp ) + zBack[i] * lerp ) * a;
+				}
+			}
+			else
+			{
+				for( unsigned int i = 0; i < result.size(); i++ )
+				{
+					result[i] *= alpha[i];
+				}
 			}
 		}
 		static_cast<FloatVectorDataPlug *>( output )->setValue( resultData );
