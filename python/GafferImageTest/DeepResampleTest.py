@@ -67,53 +67,28 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		resample["alphaTolerance"].setValue( alphaTolerance )
 		resample["depthTolerance"].setValue( depthTolerance )
 
-		deepFlatten = GafferImage.DeepToFlat()
-		deepFlatten["in"].setInput( resample["out"] )
+		resampleFlatten = GafferImage.DeepToFlat()
+		resampleFlatten["in"].setInput( resample["out"] )
 
 		# Aside from depth, everything should match extremely closely in the flat image, because we adjust
 		# samples to produce an exactly matching flat image
 		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
-		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
-		self.assertImagesEqual( origFlatten["out"], deepFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
+		resampleFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
+		self.assertImagesEqual( origFlatten["out"], resampleFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
 
-		# Comparing depth on flat images against the expected tolerance a bit complicated, but it still
-		# seems like a useful way to double check.  The problems are:
-		# A) low alpha pixels are allowed to have large depth discrepancies ( ie. if the alpha is less
-		#    than alpha threshold, it's permissible for the depth to be completely wrong )
-		# B) the way DeepToFlat computes filtered depth is not 100% accurate for large volume samples.
-		#    The depth is set at the midpoint of each sample, but really, the average depth should
-		#    be an integral of the depth across alpha levels
-		# We partially deal with A) by premultiplying ( so low alpha pixels are multiplied down ), and
-		# partially deal with B) by oversampling before flattening, and then we take care of the remaining
-		# testing error by using a special tolerance that has to be set higher.  So, this is some silly
-		# and complicated code for not much benefit, but it still seems worthwhile like a useful check that
-		# we're producing depths that are basically valid
-		origOversample = GafferImageTest.DeepOversample()
-		origOversample["in"].setInput( toResample )
-		origOversample["maxSampleAlpha"].setValue( 0.1 )
-		origFlatten['in'].setInput( origOversample["out"] )
+		# If we look at depth on the flat images, there will some error introduced by our alpha and
+		# depths tolerances. We premult before testing because very low alpha pixels are allowed to have
+		# large depth discrepancies ( ie. if the alpha is less than alpha threshold, it's permissible for
+		# the depth to be completely wrong )
 		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.Filtered )
+		resampleFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.Filtered )
 		origFlatPremult = GafferImage.Premultiply()
 		origFlatPremult["channels"].setValue( "Z" )
 		origFlatPremult["in"].setInput( origFlatten["out"] )
-		origFlatZOnly = GafferImage.DeleteChannels()
-		origFlatZOnly["mode"].setValue( GafferImage.DeleteChannels.Mode.Keep )
-		origFlatZOnly["channels"].setValue( 'Z' )
-		origFlatZOnly["in"].setInput( origFlatPremult["out"] )
-		resampleOversample = GafferImageTest.DeepOversample()
-		resampleOversample["in"].setInput( resample["out"] )
-		resampleOversample["maxSampleAlpha"].setValue( 0.1 )
-		deepFlatten['in'].setInput( resampleOversample["out"] )
-		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.Filtered )
-		deepFlatPremult = GafferImage.Premultiply()
-		deepFlatPremult["channels"].setValue( "Z" )
-		deepFlatPremult["in"].setInput( deepFlatten["out"] )
-		deepFlatZOnly = GafferImage.DeleteChannels()
-		deepFlatZOnly["mode"].setValue( GafferImage.DeleteChannels.Mode.Keep )
-		deepFlatZOnly["channels"].setValue( 'Z' )
-		deepFlatZOnly["in"].setInput( deepFlatPremult["out"] )
-
-		self.assertImagesEqual( origFlatZOnly["out"], deepFlatZOnly["out"], maxDifference = flatZError )
+		resampleFlatPremult = GafferImage.Premultiply()
+		resampleFlatPremult["channels"].setValue( "Z" )
+		resampleFlatPremult["in"].setInput( resampleFlatten["out"] )
+		self.assertImagesEqual( origFlatPremult["out"], resampleFlatPremult["out"], maxDifference = flatZError )
 
 		dw = toResample.dataWindow()
 	
@@ -140,7 +115,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		print "RESAMPLE COUNT: ", resampleCountResult
 		# Make sure we substantially reduce the sample count
 		#self.assertLess( resampleCount, 53250 ) # TODO
-		self.assertLess( resampleCountResult, resampleCount ) # TODO
+		self.assertEqual( resampleCountResult, resampleCount ) # TODO
 	
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( toCompare )
@@ -159,15 +134,15 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		representativeImage = GafferImage.ImageReader()
 		representativeImage["fileName"].setValue( self.representativeImagePath )
 
-		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53500 )
-		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 25000 )
+		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53396 )
+		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 22387 )
 
 		oversample = GafferImageTest.DeepOversample()
 		oversample["in"].setInput( representativeImage["out"] )
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53500 )
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 25000 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22387 )
 
 	def testRandomSamples( self ):
 
@@ -203,8 +178,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy = GafferImage.DeepTidy()
 		deepTidy["in"].setInput( oslImage["out"] )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.012, 13011287, 53500 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.13, 13011287, 25000 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125970 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 25000 )
 
 
 	"""
