@@ -537,7 +537,7 @@ void minimalSegmentsForConstraints(
 			}
 
 			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
-			if( delta.y == 0 )
+			if( delta.y == 0 || isnan( delta.y ) )
 			{
 				std::cerr << " MAX LINEAR Y : " << maximumLinearY << "\n";
 				throw std::runtime_error( "FLAT from " +
@@ -546,6 +546,18 @@ void minimalSegmentsForConstraints(
 					" to " +
 					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) + "," +
 					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].y ) );
+			}
+			if( isnan( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) )
+			{
+				throw std::runtime_error( "UPPER is NAN" );
+			}
+			if( isnan( constraintsLower[currentSearchParams.lowerConstraintIndex].x ) )
+			{
+				throw std::runtime_error( "LOWER is NAN" );
+			}
+			if( isnan( delta.x ) )
+			{
+				throw std::runtime_error( "DELTA X is NAN" );
 			}
 			lineA = delta.y / delta.x;
 			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
@@ -980,9 +992,20 @@ void linearConstraintsForPixel(
 				double nextMinAlpha = deepSamples[j+1].y - aTol;
 				if( nextMinAlpha > 0 )
 				{
-					double min = -log1p( -minAlpha );
-					double nextMin = -log1p( -nextMinAlpha );
-					double lerp = -min / ( nextMin - min );
+					//double min = -log1p( -minAlpha );
+					//double nextMin = -log1p( -nextMinAlpha );
+
+					//BLAH // This should look more like the more complex calculation below
+					//double lerp = -min / ( nextMin - min );
+					//double lerp = ( -exponentialToLinear( aTol ) -min ) / ( nextMin - min );
+					double lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
+						( exponentialToLinear(deepSamples[j+1].y) - exponentialToLinear(deepSamples[j].y ) );
+
+					if( std::isnan( lerp ) || !std::isfinite( lerp ))
+					{
+						throw std::runtime_error( "CUR" );
+					}
+		
 					double xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
 					nextX = xIntercept * ( 1 + zTolerance );
 					nextAlpha = 0.0;
@@ -1000,12 +1023,20 @@ void linearConstraintsForPixel(
 		double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 
 		//double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
-		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x)
+		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
 		{
-			double intersectionX =
-				( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) /
-				( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
-                ( deepSamples[j].x - deepSamples[j - 1].x ) * ( 1 + zTolerance ) + deepSamples[j - 1].x * ( 1 + zTolerance );
+			double denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
+			if( denom == 0.0f )
+			{
+				break;  // TODO - don't 100% understand the circumstances this occurs in
+			}
+			double lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / denom;
+			if( !std::isfinite( lerp ))
+			{
+				throw std::runtime_error( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
+			}
+			double intersectionX = ( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x ) *
+				( 1 + zTolerance );
 		
 			if( intersectionX > nextLower.x )
 			{
@@ -1019,6 +1050,10 @@ void linearConstraintsForPixel(
 			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 		}
 
+		if( std::isnan( nextLower.x ) || !std::isfinite( nextLower.x ))
+		{
+			throw std::runtime_error( "BLAH" );
+		}
 		lowerConstraints.push_back( nextLower );
 		prevLower = nextLower;
 		prevAlpha = nextAlpha;
