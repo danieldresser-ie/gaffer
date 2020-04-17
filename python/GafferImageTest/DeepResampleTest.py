@@ -179,7 +179,10 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy["in"].setInput( oslImage["out"] )
 
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125970 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 25000 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 69087 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25970 )
+
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 25970 )
 
 
 	"""
