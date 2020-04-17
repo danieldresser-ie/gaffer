@@ -41,7 +41,7 @@
 #include <assert.h>
 #include <limits> // TODO
 #include <iostream> // TODO
-#include <iostream> // TODO
+#include <stdexcept> // TODO
 
 using namespace GafferImage::DeepAlgo::Detail;
 
@@ -51,7 +51,8 @@ namespace
 /// Creates a set of point samples across the range of the pixel's depth for the alpha channel.
 /// The deepSamples that are returned are stored in the deepSamples vector, with values for depth and accumulated alpha from front to back
 
-const double maximumLinearY = -log1p( - ( 1. - std::numeric_limits<float>::epsilon() ) );
+const double maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
+const double maximumLinearY = -log1p( - maxConvertibleAlpha );
 const double linearOpacityThreshold = -log1p( - 0.9999 );
 
 /// Given a value in linear space, make it exponential.
@@ -63,7 +64,7 @@ double linearToExponential( double value )
 /// Given a value in exponential space, make it linear.
 double exponentialToLinear( double value )
 {
-	return value <= 0 ? 0 : value >= 1 ? maximumLinearY : -log1p( -value );
+	return value <= 0 ? 0 : -log1p( -std::min( maxConvertibleAlpha, value ) );
 }
 
 struct SimplePoint
@@ -532,10 +533,20 @@ void minimalSegmentsForConstraints(
 				shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
 				//std::cerr << "INDICES AFTER " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
 				//currentSearchParams = { -1, -1 };
-				assert( refindShallowSuccess );
+				//assert( refindShallowSuccess );
 			}
 
 			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
+			if( delta.y == 0 )
+			{
+				std::cerr << " MAX LINEAR Y : " << maximumLinearY << "\n";
+				throw std::runtime_error( "FLAT from " +
+					std::to_string( constraintsLower[currentSearchParams.lowerConstraintIndex].x ) + "," +
+					std::to_string( constraintsLower[currentSearchParams.lowerConstraintIndex].y ) +
+					" to " +
+					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) + "," +
+					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].y ) );
+			}
 			lineA = delta.y / delta.x;
 			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
 		}
@@ -708,6 +719,10 @@ HUH WHAT
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - lineB ) / lineA;
+		if( std::isnan( xEnd ) )
+		{
+			throw std::runtime_error( "BAD" );
+		}
 		assert( !std::isnan( xEnd ) );
 
 		// TODO
@@ -939,7 +954,7 @@ void linearConstraintsForPixel(
 		{
 			// Ensure that we always reach the exact final value
 			nextX = deepSamples[j].x * ( 1 + zTolerance );
-			nextAlpha = deepSamples[j].y;
+			nextAlpha = std::min( deepSamples[j].y, maximumLinearY );
 		}
 		else
 		{
@@ -1015,6 +1030,9 @@ void linearConstraintsForPixel(
 	assert( deepSamples.size() >= 1 );
 	assert( deepSamples[0].y == 0  );
 	assert( !isinf( deepSamples[0].x ) );
+
+	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
+	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
 
 	SimplePoint prevUpper = { deepSamples[0].x * ( 1 - zTolerance ), 0 };
 	prevAlpha = 0;
@@ -1165,6 +1183,21 @@ void resampleDeepPixel(
 		alphaTolerance, zTolerance,
 		constraintsLower, constraintsUpper
 	);
+
+	if( debug )
+	{
+		std::cerr << "LOWER\n";
+		for( const auto &i : constraintsLower )
+		{
+			std::cerr << i.x << "," << i.y << " ";
+		}
+		std::cerr << "\nUPPER\n";
+		for( const auto &i : constraintsUpper )
+		{
+			std::cerr << i.x << "," << i.y << " ";
+		}
+		std::cerr << "\n\n";
+	}
 
 
 	std::vector< LinearSegment > compressedSamples;
