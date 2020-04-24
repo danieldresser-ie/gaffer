@@ -128,21 +128,21 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), alphaTolerance + 0.000001, depthTolerance, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ), depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 	def testRepresentative( self ) :
 		representativeImage = GafferImage.ImageReader()
 		representativeImage["fileName"].setValue( self.representativeImagePath )
 
 		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53396 )
-		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 22387 )
+		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 22372 )
 
 		oversample = GafferImageTest.DeepOversample()
 		oversample["in"].setInput( representativeImage["out"] )
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22387 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372 )
 
 	def testRandomSamples( self ):
 
@@ -178,11 +178,12 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy = GafferImage.DeepTidy()
 		deepTidy["in"].setInput( oslImage["out"] )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125970 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 69087 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25970 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 ) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68994 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 25970 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 79177 )
+		#self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 96691, 79177 )
 
 
 	"""
