@@ -148,7 +148,7 @@ IECore::CompoundDataPtr GafferImageTest::evaluateDeepPixel( const IECore::Compou
 	return resultData;
 }
 
-void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float depthTolerance, float alphaTolerance, float channelTolerance, const std::string &message )
+void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* pixelDataA, const IECore::CompoundData* pixelDataB, float alphaTolerance, float depthTolerance, float channelTolerance, const std::string &message )
 {
 	std::set<std::string> channelNamesA, channelNamesB;
 	for( const auto &entry : pixelDataA->readable() )
