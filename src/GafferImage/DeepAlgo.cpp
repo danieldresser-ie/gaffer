@@ -53,7 +53,10 @@ namespace
 
 const double maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
 const double maximumLinearY = -log1p( - maxConvertibleAlpha );
-const double linearOpacityThreshold = -log1p( - 0.9999 );
+
+// TODO - maybe should be a bit lower like, say 0.9999?
+// Need to figure out how to deal with error threshold where this happens
+const double linearOpacityThreshold = -log1p( - 0.99999 );  
 
 /// Given a value in linear space, make it exponential.
 double linearToExponential( double value )
@@ -94,7 +97,29 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 
 	double t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
 
-	return { a1.x + dir1.x * t, a1.y + dir1.y * t };
+	SimplePoint r;
+	if( a2.x == b2.x )
+	{
+		r.x = a2.x;
+	}
+	else
+	{
+		r.x = a1.x + dir1.x * t;
+	}
+
+	if( a2.y == b2.y )
+	{
+		r.y = a2.y;
+	}
+	else
+	{
+		r.y = a1.y + dir1.y * t;
+	}
+
+	return r;
+
+	// TODO testing without the special cases above is a good way to test hang handling
+	//return { a1.x + dir1.x * t, a1.y + dir1.y * t }; 
 }
 
 
@@ -340,7 +365,12 @@ void conformToSegments(
 			}
 			else
 			{
-				assert( alphaNeeded >= 0 );
+				//assert( alphaNeeded >= 0 );
+				if( alphaNeeded < 0 )
+				{
+					std::cerr << "BAD alphaNeeded : " << alphaNeeded << "\n";
+					alphaNeeded = 0;
+				}
 				alphaToTake = alphaNeeded;
 				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
 			}
@@ -406,7 +436,8 @@ void minimalSegmentsForConstraints(
 
 	if( debug ) std::cerr << "SEGMENT SEARCH START\n";
 
-	while( lowerStopIndex < constraintsLower.size() )
+	//while( lowerStopIndex < constraintsLower.size() )
+	while( yPrev  < constraintsLower.back().y )
 	{
 		// Initial constraint search parameters for not yet having found anything
 		ConstraintSearchParams currentSearchParams;
@@ -424,7 +455,7 @@ void minimalSegmentsForConstraints(
 		while( lowerStopIndex < constraintsLower.size() )
 		{
 			advanceUpper = upperStopIndex < constraintsUpper.size() &&
-				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y;
+				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y && constraintsUpper[ upperStopIndex ].x < constraintsLower[lowerStopIndex].x;
 			/*if( debug && upperStopIndex < constraintsUpper.size() )
 			{
 				std::cerr.precision( 20 );
@@ -441,6 +472,12 @@ void minimalSegmentsForConstraints(
 			else
 			{
 				testLowerStopIndex++;
+			}
+
+			if( debug )
+			{
+				std::cerr << "SEARCHING LOWER : " << lowerStartIndex << " -> " << testLowerStopIndex << " of " << constraintsLower.size() << "\n";
+				std::cerr << "SEARCHING UPPER : " << upperStartIndex << " -> " << testUpperStopIndex << " of " << constraintsUpper.size() <<  "\n";
 			}
 
 			if( !( testUpperStopIndex > upperStartIndex && testLowerStopIndex > lowerStartIndex ) )
@@ -509,24 +546,23 @@ void minimalSegmentsForConstraints(
 		{		
 			if( advanceUpper )
 			{
-				/*{
-					std::cerr << "BEFORE"; 
-					std::cerr << "LOWER : "; 
-					for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
-					{
-						std::cerr << constraintsLower[i].x << " " << constraintsLower[i].y << " "; 
-					}
-					std::cerr << "\n"; 
-					std::cerr << "UPPER : "; 
-					for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
-					{
-						std::cerr << constraintsUpper[i].x << " " << constraintsUpper[i].y << " "; 
-					}
-					std::cerr << "\n"; 
-				}
+				//{
+				//	std::cerr << "BEFORE"; 
+				//	std::cerr << "LOWER : "; 
+				//	for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+				//	{
+				//		std::cerr << constraintsLower[i].x << " " << constraintsLower[i].y << " "; 
+				//	}
+				//	std::cerr << "\n"; 
+				//	std::cerr << "UPPER : "; 
+				//	for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+				//	{
+				//		std::cerr << constraintsUpper[i].x << " " << constraintsUpper[i].y << " "; 
+				//	}
+				//	std::cerr << "\n"; 
+				//}
 
-				std::cerr << "INDICES BEFORE " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
-				*/
+				//std::cerr << "INDICES BEFORE " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
 				currentSearchParams = { -1, -1 };
 				// Hit upper, sneak a bit farther by taking shallowest line
 				//bool refindShallowSuccess =
@@ -540,12 +576,16 @@ void minimalSegmentsForConstraints(
 			if( delta.y == 0 || isnan( delta.y ) )
 			{
 				std::cerr << " MAX LINEAR Y : " << maximumLinearY << "\n";
-				throw std::runtime_error( "FLAT from " +
+				std::cerr << "FLAT from " << constraintsLower[currentSearchParams.lowerConstraintIndex].x << "," <<
+					constraintsLower[currentSearchParams.lowerConstraintIndex].y <<
+					" to " << constraintsUpper[currentSearchParams.upperConstraintIndex].x << "," <<
+					constraintsUpper[currentSearchParams.upperConstraintIndex].y << "\n";
+				/*throw std::runtime_error( "FLAT from " +
 					std::to_string( constraintsLower[currentSearchParams.lowerConstraintIndex].x ) + "," +
 					std::to_string( constraintsLower[currentSearchParams.lowerConstraintIndex].y ) +
 					" to " +
 					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) + "," +
-					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].y ) );
+					std::to_string( constraintsUpper[currentSearchParams.upperConstraintIndex].y ) );*/
 			}
 			if( isnan( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) )
 			{
@@ -561,6 +601,40 @@ void minimalSegmentsForConstraints(
 			}
 			lineA = delta.y / delta.x;
 			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
+
+			if( debug ) std::cerr << "LINE A : " << lineA << " : " << delta.y << " / " << delta.x << "\n";
+		}
+
+		if( debug ) std::cerr << "LINE A result : " << lineA << "\n";
+
+		// TODO - This matches condition below, clean them up
+		if( !( currentSearchParams.lowerConstraintIndex == -1 /*|| fabs( yFinal ) == std::numeric_limits<double>::infinity()*/ ) && lineA == 0.0f ) 
+		{
+			std::cerr << "SEARCHING LOWER: " << lowerStartIndex << " : " << lowerStopIndex << "\n";
+			std::cerr << "SEARCHING UPPER: " << upperStartIndex << " : " << upperStopIndex << "\n";
+			std::cerr << "CURRENT: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
+			bool skipped = false;
+			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y == yPrev )
+			{
+				skipped = true;
+				std::cerr << "FAST FORWARD UPPER";
+				upperStartIndex++;
+			}
+			
+			if( !skipped )
+			{
+				if( upperStartIndex + 1 < constraintsUpper.size() )
+				{
+					std::cerr << "TEST : " << yPrev << " : " << constraintsUpper[upperStartIndex + 1 ].y << "\n";
+				}
+				else
+				{
+					std::cerr << "HIT END\n";
+				}
+				throw std::runtime_error( "unskippable flat" );
+			}
+			
+			continue;
 		}
 
 		if( currentSearchParams.upperConstraintIndex == -1 || currentSearchParams.lowerConstraintIndex == -1 )
@@ -568,6 +642,7 @@ void minimalSegmentsForConstraints(
 			currentSearchParams.upperConstraintIndex = upperStopIndex - 1;
 			currentSearchParams.lowerConstraintIndex = lowerStartIndex;
 		}
+
 
 		lowerStartIndex = lowerStopIndex;
 
@@ -577,8 +652,12 @@ void minimalSegmentsForConstraints(
 			upperStartIndex = currentSearchParams.upperConstraintIndex;
 		}
 
-
 		double yFinal = constraintsLower[lowerStopIndex - 1].y;
+		if( debug )
+		{
+			std::cerr << "INITIAL yFinal : " << yFinal << "\n";
+		}
+
 
 		if( lowerStopIndex == constraintsLower.size() )
 		{
@@ -606,8 +685,35 @@ void minimalSegmentsForConstraints(
 					constraintsUpper[ upperStopIndex ]
 				);
 
+				if(
+					intersection.x < constraintsUpper[upperStopIndex - 1].x ||
+					intersection.y < constraintsUpper[upperStopIndex - 1].y
+				)
+				{
+					std::cerr << "HIT UPPER BEGIN\n";
+					upperStartIndex--;
+					yFinal = constraintsUpper[upperStartIndex].y;
+				}
+				else if( 
+					intersection.x > constraintsUpper[upperStopIndex ].x ||
+					intersection.y > constraintsUpper[upperStopIndex ].y
+				)
+				{
+					std::cerr << "HIT UPPER END\n";
+					yFinal = constraintsUpper[upperStartIndex].y;
+				}
+				else
+				{
+					if(debug) std::cerr << "HIT UPPER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					
+					upperStartIndex--;
+					constraintsUpper[upperStartIndex].x = intersection.x;
+					constraintsUpper[upperStartIndex].y = intersection.y;
+					
+					yFinal = intersection.y;
+				}
 
-				double intersectionEpsilon = 1e-10;
+				/*double intersectionEpsilon = 1e-10;
 				if(
 					intersection.x >= constraintsUpper[upperStopIndex - 1].x - intersectionEpsilon &&
 					intersection.x <= constraintsUpper[upperStopIndex ].x + intersectionEpsilon &&
@@ -615,7 +721,7 @@ void minimalSegmentsForConstraints(
 					intersection.y <= constraintsUpper[upperStopIndex ].y + intersectionEpsilon
 				)
 				{
-					if(debug) std::cerr << "UPPER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					if(debug) std::cerr << "HIT UPPER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
 					
 					upperStartIndex--;
 					constraintsUpper[upperStartIndex].x = intersection.x;
@@ -632,10 +738,9 @@ void minimalSegmentsForConstraints(
 					std::cerr << "B : " << ( intersection.x <= constraintsUpper[upperStopIndex ].x ) << "\n";
 					std::cerr << "C : " << ( intersection.y >= constraintsUpper[upperStopIndex - 1].y ) << "\n";
 					std::cerr << "D : " << ( intersection.y <= constraintsUpper[upperStopIndex ].y ) << "\n";
-				}
+				}*/
 			}
 
-			
 			if( lowerStopIndex >= 2 && currentSearchParams.upperConstraintIndex != -1 )
 			{
 				if( yFinal < constraintsLower[ lowerStopIndex - 1].y )
@@ -654,13 +759,14 @@ void minimalSegmentsForConstraints(
 				}
 				else
 				{
-					lowerStartIndex--;
-					constraintsLower[lowerStartIndex].x = ( yFinal - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
-					constraintsLower[lowerStartIndex].y = yFinal;
+					if( constraintsLower[ lowerStopIndex ].y != constraintsLower[ lowerStopIndex - 1 ].y )  // TODO
+					{
+						lowerStartIndex--;
+						constraintsLower[lowerStartIndex].x = ( yFinal - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
+						constraintsLower[lowerStartIndex].y = yFinal;
+					}
 				}
 			}
-
-			
 		}
 		else
 		{
@@ -700,7 +806,8 @@ void minimalSegmentsForConstraints(
 					intersection.y <= constraintsLower[lowerStopIndex ].y
 				)
 				{
-					if(debug) std::cerr << "CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					if( debug ) std::cerr << "HIT LOWER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
+					if( debug ) std::cerr << "HIT LOWER : CHANGING X FROM " << constraintsLower[lowerStartIndex].x << " to " << intersection.x << "\n";
 
 					lowerStartIndex--;
 					constraintsLower[lowerStartIndex].x = intersection.x;
@@ -713,6 +820,23 @@ void minimalSegmentsForConstraints(
 					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
 				}
 			}
+		}
+
+		if( debug )
+		{
+			if( lowerStopIndex < constraintsLower.size() )
+			{
+				std::cerr.precision( 20 );
+				std::cerr << "TRYING LOWER CONSTRAINT FAST FORWARD : " << constraintsLower[lowerStopIndex].y << " : " <<  yFinal << " : " << ( constraintsLower[lowerStopIndex].y <= yFinal ) << "\n";
+			}
+		}
+		// If our flat top coincides with horizontal segment, we can fast forward to the end of
+		// the horizontal segment when considering constraints, because the previous constraints
+		// are under the flat top
+		while( lowerStopIndex + 1 < constraintsLower.size() && constraintsLower[lowerStopIndex + 1].y <= yFinal )
+		{
+			lowerStopIndex++;
+			lowerStartIndex = lowerStopIndex;
 		}
 
 /*
@@ -731,12 +855,8 @@ HUH WHAT
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
 		double xEnd = ( yFinal - lineB ) / lineA;
-		if( std::isnan( xEnd ) )
-		{
-			throw std::runtime_error( "BAD" );
-		}
-		assert( !std::isnan( xEnd ) );
 
+		if( debug ) std::cerr << "clineA : " << lineA << "\n";
 		// TODO
 		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<double>::infinity() )
 		{
@@ -749,12 +869,19 @@ HUH WHAT
 		}
 		else if( fabs( lineA ) == std::numeric_limits<double>::infinity() )
 		{
+			if( debug ) std::cerr << "VERTICAL LINE FOUND at : " << constraintsLower[currentSearchParams.lowerConstraintIndex].x << " : " << currentSearchParams.lowerConstraintIndex << " of " << constraintsLower.size() << "\n";
 			// The line we have found is a point sample.
 			xStart = xEnd = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
+			assert( std::isfinite( xEnd ) && !isnan( xEnd ) );
 			// TODO - intersect and update constraints
 		}
 		else
 		{
+			if( std::isnan( xEnd ) )
+			{
+				throw std::runtime_error( "BAD" );
+			}
+			assert( !std::isnan( xEnd ) );
 			
 
 			// Calculate where our new line hits the previous flat top
@@ -801,6 +928,7 @@ HUH WHAT
 			}
 		}
 
+		if( debug ) std::cerr << "xstart/end : " << xStart << " : " << xEnd << "\n";
 		assert( xEnd >= xStart );
 		assert( !std::isnan( yFinal ) );
 
@@ -808,13 +936,17 @@ HUH WHAT
 		compressedSample.X = xStart;
 		compressedSample.XBack = xEnd;
 		compressedSample.YBack = yFinal;
-		compressedSamples.push_back( compressedSample );
+
 
 		if( debug )
 		{
 			std::cerr << "yFinal: " << yFinal << "\n";
+			std::cerr << "SEGMENT INDICES: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
 			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n";
 		}
+
+		if( compressedSamples.size() ) assert( compressedSamples.back().YBack != compressedSample.YBack );
+		compressedSamples.push_back( compressedSample );
 
 		yPrev = yFinal;
 
@@ -843,6 +975,8 @@ HUH WHAT
 		finalSample.YBack = compressedSamples.back().YBack;
 
 		double YPrev = compressedSamples[ compressedSamples.size() - 2].YBack;
+
+		// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
 		compressedSamples.back().XBack = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().YBack - YPrev ) ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
 		compressedSamples.back().YBack = linearOpacityThreshold;
 
@@ -892,6 +1026,7 @@ void integratedPointSamplesForPixel(
 		{
 			accumAlpha = 1.0f;
 		}
+		if( deepSamples.size() ) assert( accumAlpha >= deepSamples.back().y );
 		deepSamples.push_back( { ZBack, accumAlpha } );
 	
 		ZBackPrev = ZBack;	
@@ -936,7 +1071,7 @@ void linearConstraintsForPixel(
 	// In log space, the above constraint becomes a constraint that the difference between adjacent samples
 	// can never exceed ln( 0.76 )
 	const double curveSampleRatio = 0.76;
-	const double minimumCurveSample = 0.01 * alphaTolerance;
+	const double minimumCurveSample = std::max( 0.01 * alphaTolerance, 0.000001 );
 	//const double stepToNextCurveSample = -log( 0.76 );
 	//const double maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
 
@@ -1023,8 +1158,14 @@ void linearConstraintsForPixel(
 		double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
 
 		//double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+		int qqq = 0;
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
 		{
+			qqq++;
+			if( qqq % 1000 == 0 )
+			{
+				std::cerr << "QQQ: " << nextCurveSample << "\n";
+			}
 			double denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
 			if( denom == 0.0f )
 			{
@@ -1043,6 +1184,11 @@ void linearConstraintsForPixel(
 				break;
 			}
 
+			if( !std::isfinite( intersectionX ))
+			{
+				throw std::runtime_error( "HOOWWWWW??" );
+			}
+
 			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
 			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
@@ -1054,6 +1200,7 @@ void linearConstraintsForPixel(
 		{
 			throw std::runtime_error( "BLAH" );
 		}
+		if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
 		lowerConstraints.push_back( nextLower );
 		prevLower = nextLower;
 		prevAlpha = nextAlpha;
@@ -1162,8 +1309,8 @@ void debugConstraintsForPixel(
     const int inSamples, const float *inA, const float *inZ, const float *inZBack,
     double alphaTolerance,
     double zTolerance,
-    std::vector< DeepConstraint > &lowerConstraints,
-    std::vector< DeepConstraint > &upperConstraints
+    std::vector< std::pair<float,float> > &lowerConstraints,
+    std::vector< std::pair<float,float> > &upperConstraints
 )
 {
 	std::vector< SimplePoint > lowerLinear;
@@ -1179,6 +1326,7 @@ void debugConstraintsForPixel(
 	upperConstraints.reserve( upperLinear.size() );
 	for( SimplePoint &c : lowerLinear )
 	{
+		if( lowerConstraints.size() ) assert( ((float)linearToExponential( c.y )) >= lowerConstraints.back().second );
 		lowerConstraints.push_back( { c.x, linearToExponential( c.y ) } );
 	}
 	for( SimplePoint &c : upperLinear )
@@ -1241,11 +1389,13 @@ void resampleDeepPixel(
 	// TODO - runtime check? Plus one?
 	assert( compressedSamples.size() <= (size_t)inSamples + 1 );
 
+	if( debug ) std::cerr << "START CONFORM\n";
 	conformToSegments(
 		inSamples, inA, inZ, inZBack,
 		compressedSamples,
 		outSamples, outA, outZ, outZBack
 	);
+	if( debug ) std::cerr << "END CONFORM\n";
 	return;
 }
 
