@@ -50,6 +50,7 @@ namespace DeepAlgo
 namespace Detail
 {
 
+// TODO - remove
 struct GAFFERIMAGETEST_API DeepConstraint
 {
 	double z;
@@ -60,8 +61,8 @@ GAFFERIMAGETEST_API void debugConstraintsForPixel(
     const int inSamples, const float *inA, const float *inZ, const float *inZBack,
     double alphaTolerance,
     double zTolerance,
-    std::vector< DeepConstraint > &lowerConstraints,
-    std::vector< DeepConstraint > &upperConstraints
+    std::vector< std::pair<float,float> > &lowerConstraints,
+    std::vector< std::pair<float,float> > &upperConstraints
 );
 
 }

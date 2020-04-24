@@ -239,9 +239,9 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		int prev = 0;
 		int outputCount = 0;
 
-		std::vector<DeepAlgo::Detail::DeepConstraint> lowerConstraints;
-		std::vector<DeepAlgo::Detail::DeepConstraint> upperConstraints;
-		std::vector<DeepAlgo::Detail::DeepConstraint> &currentConstraints = upper ? upperConstraints : lowerConstraints;
+		std::vector<std::pair<float, float> > lowerConstraints;
+		std::vector<std::pair<float, float> > upperConstraints;
+		std::vector<std::pair<float, float> > &currentConstraints = upper ? upperConstraints : lowerConstraints;
 		
 		for( unsigned int i = 0; i < sampleOffsets.size(); i++ )
 		{
@@ -258,17 +258,17 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 			float currentDepth = -1e8;
 			for( auto &c : currentConstraints )
 			{
-				if( c.a != currentAlpha )
+				if( c.second != currentAlpha )
 				{
-					float sampleAlpha = 1 - ( 1 - c.a ) / ( 1 - currentAlpha );
+					float sampleAlpha = 1 - ( 1 - c.second ) / ( 1 - currentAlpha );
 					outAlpha.push_back( sampleAlpha );
 					outZ.push_back( currentDepth );
-					outZBack.push_back( c.z );
+					outZBack.push_back( c.first );
 
-					currentAlpha = c.a;
+					currentAlpha = c.second;
 					constraintsCount++;
 				}
-				currentDepth = c.z;
+				currentDepth = c.first;
 			}
 			
 			outputCount += constraintsCount;
