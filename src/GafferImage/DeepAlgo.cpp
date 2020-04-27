@@ -36,6 +36,9 @@
 
 #include "GafferImage/DeepAlgo.h"
 
+// TODO
+#include "IECore/Exception.h"
+
 #include <vector>
 #include <cmath>
 #include <assert.h>
@@ -51,28 +54,28 @@ namespace
 /// Creates a set of point samples across the range of the pixel's depth for the alpha channel.
 /// The deepSamples that are returned are stored in the deepSamples vector, with values for depth and accumulated alpha from front to back
 
-const double maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
-const double maximumLinearY = -log1p( - maxConvertibleAlpha );
+const float maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
+const float maximumLinearY = -log1pf( - maxConvertibleAlpha );
 
 // TODO - maybe should be a bit lower like, say 0.9999?
 // Need to figure out how to deal with error threshold where this happens
-const double linearOpacityThreshold = -log1p( - 0.99999 );  
+const float linearOpacityThreshold = -log1pf( - 0.99999 );  
 
 /// Given a value in linear space, make it exponential.
-double linearToExponential( double value )
+float linearToExponential( float value )
 {
-	return value == maximumLinearY ? 1 : -expm1( -value );
+	return value == maximumLinearY ? 1 : -expm1f( -value );
 }
 
 /// Given a value in exponential space, make it linear.
-double exponentialToLinear( double value )
+float exponentialToLinear( float value )
 {
-	return value <= 0 ? 0 : -log1p( -std::min( maxConvertibleAlpha, value ) );
+	return value <= 0 ? 0 : -log1pf( -std::min( maxConvertibleAlpha, value ) );
 }
 
 struct SimplePoint
 {
-	double x, y;
+	float x, y;
 };
 
 SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, SimplePoint b2 )
@@ -81,7 +84,7 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 	SimplePoint dir1 = { b1.x - a1.x, b1.y - a1.y };
 	SimplePoint dir2 = { b2.x - a2.x, b2.y - a2.y };
 
-	double denom = dir1.x * dir2.y - dir1.y * dir2.x;
+	float denom = dir1.x * dir2.y - dir1.y * dir2.x;
 	if( fabs( denom ) < 1e-10 )
 	{
 		// TODO what if lines not coincident
@@ -95,7 +98,7 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 		}
 	}
 
-	double t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
+	float t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
 
 	SimplePoint r;
 	if( a2.x == b2.x )
@@ -125,9 +128,9 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 
 struct LinearSegment
 {
-	double X; // The depth of the front of the sample.
-	double XBack; // The depth at the back of the sample.
-	double YBack; // The alpha at the back of the sample.
+	float X; // The depth of the front of the sample.
+	float XBack; // The depth at the back of the sample.
+	float YBack; // The alpha at the back of the sample.
 };
 
 
@@ -140,12 +143,12 @@ struct ConstraintSearchParams
 };
 
 
-inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, double scanDirection, double constraintDirection, double steeperDirection )
+inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, float scanDirection, float constraintDirection, float steeperDirection )
 {
 	int anchor = startAnchor;
 
-	double a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
-	double b = points[anchor].y - a * points[anchor].x;
+	float a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
+	float b = points[anchor].y - a * points[anchor].x;
 
 
 	// Test all constraints to make sure that the current line fufills all of them
@@ -156,10 +159,10 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 			continue;
 		}
 
-		double lowerX = points[i].x;
-		double minY = points[i].y;
+		float lowerX = points[i].x;
+		float minY = points[i].y;
 
-		double yAtLowerX = a * lowerX + b;
+		float yAtLowerX = a * lowerX + b;
 
 		// Check if we go underneath the minimum constraint at this index
 		if( yAtLowerX * constraintDirection < minY * constraintDirection )
@@ -178,7 +181,7 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 			{
 				// Replace the lower constraint with the constraint we violated.  Recalculate the steepest line through these constraints, TODO "steepest"
 				// and trigger a rescan to check our new line against previous constraints
-				double newA = delta.y / delta.x;
+				float newA = delta.y / delta.x;
 				if( newA * steeperDirection < a * steeperDirection )
 				{
 					a = newA;
@@ -317,17 +320,17 @@ void conformToSegments(
 {
 	outSamples = compressedSamples.size();
 
-	double totalAccumAlpha = 0;
+	float totalAccumAlpha = 0;
 
-	double curA = 0;
-	double accumA = 0;
+	float curA = 0;
+	float accumA = 0;
 
-	double alphaRemaining = 0.0;
+	float alphaRemaining = 0.0;
 
 	int integrateIndex = 0;
 	for( unsigned int i = 0; i < compressedSamples.size(); ++i )
 	{
-		double targetAlpha = -expm1( -compressedSamples[i].YBack );
+		float targetAlpha = -expm1f( -compressedSamples[i].YBack );
 		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
 		{
 			std::cerr << "BAD TARGET: " << targetAlpha << "\n";
@@ -354,9 +357,9 @@ void conformToSegments(
 				}
 			}
 
-			double alphaNeeded = ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha );
+			float alphaNeeded = ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha );
 
-			double alphaToTake;
+			float alphaToTake;
 			if( alphaNeeded >= alphaRemaining )
 			{
 				assert( alphaRemaining >= 0 );
@@ -376,7 +379,7 @@ void conformToSegments(
 			}
 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
-			double curChannelMultiplier = curA > 0 ? ( 1 - accumA ) * alphaToTake / curA : 0.0; // TODO
+			float curChannelMultiplier = curA > 0 ? ( 1 - accumA ) * alphaToTake / curA : 0.0; // TODO
 			if( curChannelMultiplier < 0 )
 			{
 				std::cerr << "BAD MULTIPLIER :" << curChannelMultiplier << " : " << alphaToTake << "\n";
@@ -423,11 +426,11 @@ void minimalSegmentsForConstraints(
 {
 	compressedSamples.clear();
 
-	double yPrev = 0; // exponentialToLinear( 0 ) == 0
+	float yPrev = 0; // exponentialToLinear( 0 ) == 0
 
 	//ConstraintSearchParams prevSearchParams;
-	double prevLineA = 0;
-	double prevLineB = 0;
+	float prevLineA = 0;
+	float prevLineB = 0;
 
 	unsigned int lowerStartIndex = 0;
 	unsigned int lowerStopIndex = 0;
@@ -441,7 +444,7 @@ void minimalSegmentsForConstraints(
 	{
 		// Initial constraint search parameters for not yet having found anything
 		ConstraintSearchParams currentSearchParams;
-		//currentSearchParams.a = std::numeric_limits<double>::infinity();
+		//currentSearchParams.a = std::numeric_limits<float>::infinity();
 		//currentSearchParams.b = 0;
 
 		currentSearchParams.lowerConstraintIndex = -1;
@@ -491,7 +494,7 @@ void minimalSegmentsForConstraints(
 			// constraints up to searchIndex which haven't been previously covered
 
 			// We will create a flat top which just reaches the lower constraint at this index
-			//double yFinalTrial = constraintsLower[lowerStopIndex].y;
+			//float yFinalTrial = constraintsLower[lowerStopIndex].y;
 
 			// Any upper constraints greater than yFinalTrial can be ignored, because we are going to cut before reaching them
 			//tailIndex = searchIndex;
@@ -528,7 +531,7 @@ void minimalSegmentsForConstraints(
 		//assert( searchIndex > scanIndex );
 		//std::cerr << "Segment " << compressedSamples.size() << " : " << currentSearchParams.lowerConstraint.x << "," << currentSearchParams.lowerConstraint.y << "->" << currentSearchParams.upperConstraint.x << "," << currentSearchParams.upperConstraint.y << "\n";
 
-		double xStart;
+		float xStart;
 
 
 		//assert( currentSearchParams.lowerConstraintIndex != -1 );
@@ -536,8 +539,8 @@ void minimalSegmentsForConstraints(
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
 
-		double lineA = std::numeric_limits<double>::infinity();
-		double lineB = 0;
+		float lineA = std::numeric_limits<float>::infinity();
+		float lineB = 0;
 		if(
 			currentSearchParams.upperConstraintIndex != -1 &&
 			currentSearchParams.lowerConstraintIndex != -1 &&
@@ -546,32 +549,62 @@ void minimalSegmentsForConstraints(
 		{		
 			if( advanceUpper )
 			{
-				//{
-				//	std::cerr << "BEFORE"; 
-				//	std::cerr << "LOWER : "; 
-				//	for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
-				//	{
-				//		std::cerr << constraintsLower[i].x << " " << constraintsLower[i].y << " "; 
-				//	}
-				//	std::cerr << "\n"; 
-				//	std::cerr << "UPPER : "; 
-				//	for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
-				//	{
-				//		std::cerr << constraintsUpper[i].x << " " << constraintsUpper[i].y << " "; 
-				//	}
-				//	std::cerr << "\n"; 
-				//}
+				if( debug )
+				{
+					std::cerr << "BEFORE"; 
+					std::cerr << "REFIND SHALLOW\n\n";
+					std::cerr << "LOWER : "; 
+					for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+					{
+						std::cerr << constraintsLower[i].x << "," << constraintsLower[i].y << " "; 
+					}
+					std::cerr << "\n"; 
+					std::cerr << "UPPER : "; 
+					for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+					{
+						std::cerr << constraintsUpper[i].x << "," << constraintsUpper[i].y << " "; 
+					}
+					std::cerr << "\n"; 
+				}
 
-				//std::cerr << "INDICES BEFORE " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
-				currentSearchParams = { -1, -1 };
+				if( debug ) std::cerr << "INDICES BEFORE " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
 				// Hit upper, sneak a bit farther by taking shallowest line
 				//bool refindShallowSuccess =
-				shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &currentSearchParams );
-				//std::cerr << "INDICES AFTER " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
+				ConstraintSearchParams newSearchParams = { -1, -1 };
+				shallowestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, lowerStopIndex, &constraintsUpper[0], upperStartIndex, upperStopIndex, &newSearchParams );
+				if( newSearchParams.upperConstraintIndex >= 0 && newSearchParams.lowerConstraintIndex >= 0 )
+				{
+					currentSearchParams = newSearchParams;
+				}
+				else
+				{
+					// 
+					/*std::cerr << "FAILED TO REFIND SHALLOW\n";
+					std::cerr << "REFIND SHALLOW TEMP\n";
+					float a = ( constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y ) / ( constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x );
+					float b = constraintsUpper[currentSearchParams.upperConstraintIndex].y - a * constraintsUpper[currentSearchParams.upperConstraintIndex].x;
+
+					std::cerr << "LOW CONSTRAINTS\n";
+					for( unsigned int i = lowerStartIndex; i < lowerStopIndex; i++ )
+					{
+						std::cerr << ( a * constraintsLower[i].x + b ) - constraintsLower[i].y << "\n";
+					}
+					std::cerr << "UPPER CONSTRAINTS\n";
+					for( unsigned int i = upperStartIndex; i < upperStopIndex; i++ )
+					{
+						std::cerr << constraintsUpper[i].y - ( a * constraintsUpper[i].x + b ) << "\n";
+					}
+					//throw std::runtime_error( "SHALLOWEST GOT BAD" );
+					*/
+				}
+				if( debug ) std::cerr << "INDICES AFTER " << currentSearchParams.lowerConstraintIndex << " " << currentSearchParams.upperConstraintIndex << "\n";
+				if( !constraintsUpper[currentSearchParams.upperConstraintIndex].x > constraintsLower[currentSearchParams.lowerConstraintIndex].x ) throw IECore::Exception( "SHALLOWEST GOT BAD" );
 				//currentSearchParams = { -1, -1 };
 				//assert( refindShallowSuccess );
 			}
 
+			if( debug ) std::cerr << "DELTA: " << constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x << "\n";
+			if( debug ) std::cerr << "DELTA BOOL : " << ( constraintsUpper[currentSearchParams.upperConstraintIndex].x < constraintsLower[currentSearchParams.lowerConstraintIndex].x ) << "\n";
 			SimplePoint delta = { constraintsUpper[currentSearchParams.upperConstraintIndex].x - constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].y };
 			if( delta.y == 0 || isnan( delta.y ) )
 			{
@@ -589,15 +622,15 @@ void minimalSegmentsForConstraints(
 			}
 			if( isnan( constraintsUpper[currentSearchParams.upperConstraintIndex].x ) )
 			{
-				throw std::runtime_error( "UPPER is NAN" );
+				throw IECore::Exception( "UPPER is NAN" );
 			}
 			if( isnan( constraintsLower[currentSearchParams.lowerConstraintIndex].x ) )
 			{
-				throw std::runtime_error( "LOWER is NAN" );
+				throw IECore::Exception( "LOWER is NAN" );
 			}
 			if( isnan( delta.x ) )
 			{
-				throw std::runtime_error( "DELTA X is NAN" );
+				throw IECore::Exception( "DELTA X is NAN" );
 			}
 			lineA = delta.y / delta.x;
 			lineB = constraintsLower[currentSearchParams.lowerConstraintIndex].y - constraintsLower[currentSearchParams.lowerConstraintIndex].x * lineA;
@@ -608,13 +641,14 @@ void minimalSegmentsForConstraints(
 		if( debug ) std::cerr << "LINE A result : " << lineA << "\n";
 
 		// TODO - This matches condition below, clean them up
-		if( !( currentSearchParams.lowerConstraintIndex == -1 /*|| fabs( yFinal ) == std::numeric_limits<double>::infinity()*/ ) && lineA == 0.0f ) 
+		if( !( currentSearchParams.lowerConstraintIndex == -1 /*|| fabs( yFinal ) == std::numeric_limits<float>::infinity()*/ ) && lineA == 0.0f ) 
 		{
 			std::cerr << "SEARCHING LOWER: " << lowerStartIndex << " : " << lowerStopIndex << "\n";
 			std::cerr << "SEARCHING UPPER: " << upperStartIndex << " : " << upperStopIndex << "\n";
 			std::cerr << "CURRENT: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
 			bool skipped = false;
-			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y == yPrev )
+			//while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y == yPrev )
+			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() * 40.0f ) // TODO TODO TODO - get rid of epsilon
 			{
 				skipped = true;
 				std::cerr << "FAST FORWARD UPPER";
@@ -631,7 +665,7 @@ void minimalSegmentsForConstraints(
 				{
 					std::cerr << "HIT END\n";
 				}
-				throw std::runtime_error( "unskippable flat" );
+				throw IECore::Exception( "unskippable flat" );
 			}
 			
 			continue;
@@ -652,7 +686,7 @@ void minimalSegmentsForConstraints(
 			upperStartIndex = currentSearchParams.upperConstraintIndex;
 		}
 
-		double yFinal = constraintsLower[lowerStopIndex - 1].y;
+		float yFinal = constraintsLower[lowerStopIndex - 1].y;
 		if( debug )
 		{
 			std::cerr << "INITIAL yFinal : " << yFinal << "\n";
@@ -713,7 +747,7 @@ void minimalSegmentsForConstraints(
 					yFinal = intersection.y;
 				}
 
-				/*double intersectionEpsilon = 1e-10;
+				/*float intersectionEpsilon = 1e-10;
 				if(
 					intersection.x >= constraintsUpper[upperStopIndex - 1].x - intersectionEpsilon &&
 					intersection.x <= constraintsUpper[upperStopIndex ].x + intersectionEpsilon &&
@@ -791,13 +825,13 @@ void minimalSegmentsForConstraints(
 				SimplePoint constraintDirection = curConstraint - prevConstraint;
 				if( constraintDirection.x != 0 ) // TODO - vertical constraints
 				{
-					double ca = constraintDirection.y / constraintDirection.x;
-					double cb = prevConstraint.y - ca * prevConstraint.x;
-					double denom = currentSearchParams.a - ca;
+					float ca = constraintDirection.y / constraintDirection.x;
+					float cb = prevConstraint.y - ca * prevConstraint.x;
+					float denom = currentSearchParams.a - ca;
 					if( denom != 0.0 )
 					{
-						double intersectionX = -( currentSearchParams.b - cb ) / denom;
-						double intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
+						float intersectionX = -( currentSearchParams.b - cb ) / denom;
+						float intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
 
 				if(
 					intersection.x >= constraintsLower[lowerStopIndex - 1].x &&
@@ -854,20 +888,20 @@ HUH WHAT
 
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
 		// Calculate where our new line hits its flat top
-		double xEnd = ( yFinal - lineB ) / lineA;
+		float xEnd = ( yFinal - lineB ) / lineA;
 
 		if( debug ) std::cerr << "clineA : " << lineA << "\n";
 		// TODO
-		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<double>::infinity() )
+		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<float>::infinity() )
 		{
 			std::cerr << "????????NEVER?????????" << "\n";
 			// We should never get here but if we do, do something fairly sensible.
 			yFinal = constraintsLower.back().y;
 			xStart = xEnd = constraintsLower.back().x;
-			lineA = std::numeric_limits<double>::infinity();
+			lineA = std::numeric_limits<float>::infinity();
 			lowerStopIndex = constraintsLower.size();
 		}
-		else if( fabs( lineA ) == std::numeric_limits<double>::infinity() )
+		else if( fabs( lineA ) == std::numeric_limits<float>::infinity() )
 		{
 			if( debug ) std::cerr << "VERTICAL LINE FOUND at : " << constraintsLower[currentSearchParams.lowerConstraintIndex].x << " : " << currentSearchParams.lowerConstraintIndex << " of " << constraintsLower.size() << "\n";
 			// The line we have found is a point sample.
@@ -879,7 +913,9 @@ HUH WHAT
 		{
 			if( std::isnan( xEnd ) )
 			{
-				throw std::runtime_error( "BAD" );
+				std::cerr << "THROWING BAD\n";
+				//assert( false );
+				throw IECore::Exception( "BAD" );
 			}
 			assert( !std::isnan( xEnd ) );
 			
@@ -892,7 +928,7 @@ HUH WHAT
 			{
 				LinearSegment &prevSegment = compressedSamples.back();
 				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
-				if( fabs( prevLineA ) == std::numeric_limits<double>::infinity() )
+				if( fabs( prevLineA ) == std::numeric_limits<float>::infinity() )
 				{
 					xStart = compressedSamples.back().XBack;
 					prevSegment.YBack = prevSegment.XBack * lineA + lineB;
@@ -942,10 +978,23 @@ HUH WHAT
 		{
 			std::cerr << "yFinal: " << yFinal << "\n";
 			std::cerr << "SEGMENT INDICES: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
+			std::cerr << "SEGMENT RAW : " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << compressedSample.YBack << "\n";
 			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n";
 		}
 
-		if( compressedSamples.size() ) assert( compressedSamples.back().YBack != compressedSample.YBack );
+		if( compressedSamples.size() )
+		{
+			if( compressedSample.YBack < compressedSamples.back().YBack )
+			{
+
+				std::cerr << "BAD CURRENT : " << compressedSamples.back().YBack << " -> " << compressedSample.YBack << "\n";
+				//throw IECore::Exception( "BAD CURRENT" );
+				
+				//TODO
+				yPrev = yFinal;
+				continue;
+			}
+		}
 		compressedSamples.push_back( compressedSample );
 
 		yPrev = yFinal;
@@ -974,7 +1023,7 @@ HUH WHAT
 		finalSample.X = finalSample.XBack = compressedSamples.back().XBack;
 		finalSample.YBack = compressedSamples.back().YBack;
 
-		double YPrev = compressedSamples[ compressedSamples.size() - 2].YBack;
+		float YPrev = compressedSamples[ compressedSamples.size() - 2].YBack;
 
 		// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
 		compressedSamples.back().XBack = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().YBack - YPrev ) ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
@@ -998,12 +1047,12 @@ void integratedPointSamplesForPixel(
 {
 	// Create an additional sample just before the first to force
 	// the algorithm to start from the first sample.  // TODO - why is this necessary?
-	//double depthOfFirstPoint = inZ[ 0 ] * 0.99999;
+	//float depthOfFirstPoint = inZ[ 0 ] * 0.99999;
 	//deepSamples.push_back( SimplePoint( depthOfFirstPoint, 0 ) );
 
 	float ZBackPrev = -1;
-	double accumAlpha = 0;
-	//double accumAlphaLinear = 0;
+	float accumAlpha = 0;
+	//float accumAlphaLinear = 0;
 	// Now add the remaining samples.
 	for ( int i = 0; i < inSamples; ++i )
 	{
@@ -1013,8 +1062,8 @@ void integratedPointSamplesForPixel(
 			continue;
 		}
 
-		double Z = inZ[ i ];
-		double ZBack = inZBack[ i ];
+		float Z = inZ[ i ];
+		float ZBack = inZBack[ i ];
 
 		if( Z != ZBackPrev )
 		{
@@ -1039,8 +1088,8 @@ void integratedPointSamplesForPixel(
 */
 void linearConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	double alphaTolerance,
-	double zTolerance,
+	float alphaTolerance,
+	float zTolerance,
 	std::vector< SimplePoint > &lowerConstraints,
 	std::vector< SimplePoint > &upperConstraints
 )
@@ -1070,13 +1119,13 @@ void linearConstraintsForPixel(
 	//
 	// In log space, the above constraint becomes a constraint that the difference between adjacent samples
 	// can never exceed ln( 0.76 )
-	const double curveSampleRatio = 0.76;
-	const double minimumCurveSample = std::max( 0.01 * alphaTolerance, 0.000001 );
-	//const double stepToNextCurveSample = -log( 0.76 );
-	//const double maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
+	const float curveSampleRatio = 0.76;
+	const float minimumCurveSample = std::max( 0.01 * alphaTolerance, 0.000001 );
+	//const float stepToNextCurveSample = -log( 0.76 );
+	//const float maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
 
 	// The alpha tolerance that we actually use is padded to take account of the curve error
-	double aTol = 0.99 * alphaTolerance;
+	float aTol = 0.99 * alphaTolerance;
 	
 	// TODO - get rid of this alloc by combining with function above
 	std::vector< SimplePoint > deepSamples;
@@ -1089,13 +1138,13 @@ void linearConstraintsForPixel(
 
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
-	//double lastValidMinY = 0;
-	double prevAlpha = 0;
+	//float lastValidMinY = 0;
+	float prevAlpha = 0;
 	SimplePoint prevLower = { 0, 0 };
 	for( unsigned int j = 0; j < deepSamples.size(); ++j )
 	{
-		double nextX;
-		double nextAlpha;
+		float nextX;
+		float nextAlpha;
 
 		if( j == deepSamples.size() - 1 )
 		{
@@ -1105,13 +1154,13 @@ void linearConstraintsForPixel(
 		}
 		else
 		{
-			double minAlpha = deepSamples[j].y - aTol;
+			float minAlpha = deepSamples[j].y - aTol;
 			if( minAlpha >= 0 )
 			{
-				/*double min = 0.0f;
+				/*float min = 0.0f;
 				if( minAlpha < 1 )
 				{
-					min = -log1p( -minAlpha );
+					min = -log1pf( -minAlpha );
 					lastValidMinY = min;
 				}
 				else
@@ -1124,24 +1173,24 @@ void linearConstraintsForPixel(
 			}
 			else
 			{
-				double nextMinAlpha = deepSamples[j+1].y - aTol;
+				float nextMinAlpha = deepSamples[j+1].y - aTol;
 				if( nextMinAlpha > 0 )
 				{
-					//double min = -log1p( -minAlpha );
-					//double nextMin = -log1p( -nextMinAlpha );
+					//float min = -log1pf( -minAlpha );
+					//float nextMin = -log1pf( -nextMinAlpha );
 
 					//BLAH // This should look more like the more complex calculation below
-					//double lerp = -min / ( nextMin - min );
-					//double lerp = ( -exponentialToLinear( aTol ) -min ) / ( nextMin - min );
-					double lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
+					//float lerp = -min / ( nextMin - min );
+					//float lerp = ( -exponentialToLinear( aTol ) -min ) / ( nextMin - min );
+					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
 						( exponentialToLinear(deepSamples[j+1].y) - exponentialToLinear(deepSamples[j].y ) );
 
 					if( std::isnan( lerp ) || !std::isfinite( lerp ))
 					{
-						throw std::runtime_error( "CUR" );
+						throw IECore::Exception( "CUR" );
 					}
 		
-					double xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
+					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
 					nextX = xIntercept * ( 1 + zTolerance );
 					nextAlpha = 0.0;
 				}
@@ -1154,10 +1203,10 @@ void linearConstraintsForPixel(
 
 		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
 
-		double nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
-		double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
+		float nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
+		float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 
-		//double nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+		//float nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 		int qqq = 0;
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
 		{
@@ -1166,17 +1215,17 @@ void linearConstraintsForPixel(
 			{
 				std::cerr << "QQQ: " << nextCurveSample << "\n";
 			}
-			double denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
+			float denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
 			if( denom == 0.0f )
 			{
 				break;  // TODO - don't 100% understand the circumstances this occurs in
 			}
-			double lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / denom;
+			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / denom;
 			if( !std::isfinite( lerp ))
 			{
-				throw std::runtime_error( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
+				throw IECore::Exception( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
 			}
-			double intersectionX = ( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x ) *
+			float intersectionX = ( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x ) *
 				( 1 + zTolerance );
 		
 			if( intersectionX > nextLower.x )
@@ -1186,19 +1235,19 @@ void linearConstraintsForPixel(
 
 			if( !std::isfinite( intersectionX ))
 			{
-				throw std::runtime_error( "HOOWWWWW??" );
+				throw IECore::Exception( "HOOWWWWW??" );
 			}
 
 			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
-			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
-			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
+			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 		}
 
 		if( std::isnan( nextLower.x ) || !std::isfinite( nextLower.x ))
 		{
-			throw std::runtime_error( "BLAH" );
+			throw IECore::Exception( "BLAH" );
 		}
 		if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
 		lowerConstraints.push_back( nextLower );
@@ -1224,12 +1273,12 @@ void linearConstraintsForPixel(
 	
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
 	{
-		double nextAlpha = deepSamples[j].y + aTol;
+		float nextAlpha = deepSamples[j].y + aTol;
 
 		// TODO - comment
 		SimplePoint nextUpper = {
 			deepSamples[j].x * ( 1 - zTolerance ),
-			nextAlpha < 1 ? -log1p( -nextAlpha ) : maximumLinearY
+			nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
 		};
 
 		if( nextUpper.x == prevUpper.x )
@@ -1243,14 +1292,14 @@ void linearConstraintsForPixel(
 		}
 		else
 		{
-			double nextCurveSampleAlpha = ( prevAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - prevAlpha ) : 1.0;
-			double nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
+			float nextCurveSampleAlpha = ( prevAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - prevAlpha ) : 1.0;
+			float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 			while(
 				matchingLowerIndex < lowerConstraints.size() &&
 				( lowerConstraints[matchingLowerIndex].y < nextUpper.y || nextCurveSample < nextUpper.y )
 			)
 			{
-				double yValueToInsert;
+				float yValueToInsert;
 				if( lowerConstraints[matchingLowerIndex].y < nextCurveSample )
 				{
 					yValueToInsert = lowerConstraints[matchingLowerIndex].y;
@@ -1259,9 +1308,9 @@ void linearConstraintsForPixel(
 				else
 				{
 					yValueToInsert = nextCurveSample;
-					//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<double>::infinity();
+					//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 					nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - nextCurveSampleAlpha ) : 1.0;
-					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<double>::infinity();
+					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 				}
 
 
@@ -1307,8 +1356,8 @@ namespace Detail
 
 void debugConstraintsForPixel(
     const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    double alphaTolerance,
-    double zTolerance,
+    float alphaTolerance,
+    float zTolerance,
     std::vector< std::pair<float,float> > &lowerConstraints,
     std::vector< std::pair<float,float> > &upperConstraints
 )
@@ -1338,10 +1387,10 @@ void debugConstraintsForPixel(
 }
 
 // TODO - some way to specify tolerances in other channels
-// TODO : Shouldn't really be any need for anything to be in double precision here?
+// TODO : Shouldn't really be any need for anything to be in float precision here?
 void resampleDeepPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	double alphaTolerance, double zTolerance,
+	float alphaTolerance, float zTolerance,
 	int &outSamples, float *outA, float *outZ, float *outZBack,
 	bool debug
 )
@@ -1401,10 +1450,10 @@ void resampleDeepPixel(
 
 void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const float *outAlpha, const float *inChannel, float *outChannel )
 {
-	double totalAccumAlpha = 0;
+	float totalAccumAlpha = 0;
 
 
-	double alphaRemaining = 0.0;
+	float alphaRemaining = 0.0;
 
 	float curChannelData = 0;
 	float curChannelAlpha = 0;
@@ -1432,9 +1481,9 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 				alphaRemaining = inAlpha[ integrateIndex ];
 			}
 
-			double alphaNeeded = totalAccumAlpha < 1.0f ? ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha ) : 0.0f;
+			float alphaNeeded = totalAccumAlpha < 1.0f ? ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha ) : 0.0f;
 
-			double alphaToTake;
+			float alphaToTake;
 			if( alphaNeeded >= alphaRemaining || alphaNeeded >= 1.0f )
 			{
 				alphaToTake = alphaRemaining;
@@ -1447,7 +1496,7 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 			}
 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
-			double curChannelMultiplier = curChannelAlpha > 0 ? ( 1 - segmentAccumAlpha ) * alphaToTake / curChannelAlpha : 0.0; // TODO
+			float curChannelMultiplier = curChannelAlpha > 0 ? ( 1 - segmentAccumAlpha ) * alphaToTake / curChannelAlpha : 0.0; // TODO
 
 			segmentAccumChannel += curChannelMultiplier * curChannelData;
 			segmentAccumAlpha += curChannelMultiplier * curChannelAlpha;

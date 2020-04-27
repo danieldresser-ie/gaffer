@@ -53,14 +53,14 @@ namespace Detail
 // TODO - remove
 struct GAFFERIMAGETEST_API DeepConstraint
 {
-	double z;
-	double a;
+	float z;
+	float a;
 };
 
 GAFFERIMAGETEST_API void debugConstraintsForPixel(
     const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    double alphaTolerance,
-    double zTolerance,
+    float alphaTolerance,
+    float zTolerance,
     std::vector< std::pair<float,float> > &lowerConstraints,
     std::vector< std::pair<float,float> > &upperConstraints
 );
@@ -69,7 +69,7 @@ GAFFERIMAGETEST_API void debugConstraintsForPixel(
 
 GAFFERIMAGETEST_API void resampleDeepPixel(
     const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    double alphaTolerance, double zTolerance,
+    float alphaTolerance, float zTolerance,
     int &outSamples, float *outA, float *outZ, float *outZBack,
     bool debug
 );
