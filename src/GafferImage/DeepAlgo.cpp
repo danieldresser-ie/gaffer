@@ -125,6 +125,46 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 	//return { a1.x + dir1.x * t, a1.y + dir1.y * t }; 
 }
 
+SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2, SimplePoint b2 )
+{
+	SimplePoint disp = { a2.x - p.x, a2.y - p.y };
+	SimplePoint dir2 = { b2.x - a2.x, b2.y - a2.y };
+
+	float denom = dir.x * dir2.y - dir.y * dir2.x;
+	if( fabs( denom ) < 1e-10 )
+	{
+		// TODO what if lines not coincident
+		// TODO this logic now looks bad
+		if( p.x + dir.x < b2.x )
+		{
+			return {p.x + dir.x, p.y + dir.y};
+		}
+		else
+		{
+			return b2;
+		}
+	}
+
+	float t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
+
+	SimplePoint r = { p.x + dir.x * t, p.y + dir.y * t }; 
+
+	// TODO - note about assuming increasingness
+	if( r.x < a2.x || r.y < a2.y )
+	{
+		return a2;
+	}
+	else if( r.x > b2.x || r.y > b2.y )
+	{
+		return b2;
+	}
+
+	return r;
+
+	// TODO testing without the special cases above is a good way to test hang handling
+	//return { a1.x + dir.x * t, a1.y + dir.y * t }; 
+}
+
 
 struct LinearSegment
 {
@@ -709,11 +749,14 @@ void minimalSegmentsForConstraints(
 		}
 
 		float yFinal = constraintsLower[lowerStopIndex - 1].y;
+		float xEnd = ( yFinal - lineB ) / lineA;
 		if( debug )
 		{
 			std::cerr << "INITIAL yFinal : " << yFinal << "\n";
 		}
 
+
+		// Calculate where our new line hits its flat top
 
 		if( lowerStopIndex == constraintsLower.size() )
 		{
@@ -740,7 +783,6 @@ void minimalSegmentsForConstraints(
 					constraintsUpper[ upperStopIndex - 1 ],
 					constraintsUpper[ upperStopIndex ]
 				);
-
 				if(
 					intersection.x < constraintsUpper[upperStopIndex - 1].x ||
 					intersection.y < constraintsUpper[upperStopIndex - 1].y
@@ -749,6 +791,7 @@ void minimalSegmentsForConstraints(
 					if( debug ) std::cerr << "HIT UPPER BEGIN\n";
 					upperStartIndex--;
 					yFinal = constraintsUpper[upperStartIndex].y;
+					xEnd = constraintsUpper[upperStartIndex].x;
 				}
 				else if( 
 					intersection.x > constraintsUpper[upperStopIndex ].x ||
@@ -757,6 +800,7 @@ void minimalSegmentsForConstraints(
 				{
 					if( debug ) std::cerr << "HIT UPPER END\n";
 					yFinal = constraintsUpper[upperStartIndex].y;
+					xEnd = constraintsUpper[upperStartIndex].x;
 				}
 				else
 				{
@@ -767,7 +811,27 @@ void minimalSegmentsForConstraints(
 					constraintsUpper[upperStartIndex].y = intersection.y;
 					
 					yFinal = intersection.y;
+					xEnd = intersection.x;
 				}
+				/*SimplePoint intersection = intersectWithSegment(
+					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
+					{ constraintsUpper[ currentSearchParams.upperConstraintIndex ].x - constraintsLower[ currentSearchParams.lowerConstraintIndex ].x,
+					constraintsUpper[ currentSearchParams.upperConstraintIndex ].y - constraintsLower[ currentSearchParams.lowerConstraintIndex ].y },
+					constraintsUpper[ upperStopIndex - 1 ],
+					constraintsUpper[ upperStopIndex ]
+				);
+
+				if( !(
+					intersection.x == constraintsUpper[upperStopIndex ].x && 
+					intersection.y == constraintsUpper[upperStopIndex ].y
+				) )
+				{
+					upperStartIndex--;
+				}
+				constraintsUpper[upperStartIndex] = intersection;
+				yFinal = constraintsUpper[upperStartIndex].y;
+				xEnd = constraintsUpper[upperStartIndex].x;
+				*/
 
 				/*float intersectionEpsilon = 1e-10;
 				if(
@@ -871,6 +935,7 @@ void minimalSegmentsForConstraints(
 					constraintsLower[lowerStartIndex].y = intersection.y;
 
 					yFinal = intersection.y;
+					xEnd = intersection.x;
 				}
 				else
 				{
@@ -910,8 +975,6 @@ HUH WHAT
 */
 
 		//std::cerr << "CALC : " << yFinal << " - " << currentSearchParams.b << " / " << currentSearchParams.a << "\n";
-		// Calculate where our new line hits its flat top
-		float xEnd = ( yFinal - lineB ) / lineA;
 
 		if( debug ) std::cerr << "yFinal for computing xEnd : " << yFinal << "\n";
 		if( debug ) std::cerr << "clineA : " << lineA << "\n";
