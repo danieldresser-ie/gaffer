@@ -292,7 +292,12 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			int ly = i / ImagePlug::tileSize();
 			V2i pixelLocation = tileOrigin + V2i( i - ly * ImagePlug::tileSize(), ly );
 			//std::cerr << "P : " << tileOrigin.x + i - ( ly * ImagePlug::tileSize() ) << " , " << tileOrigin.y + ly << "\n"; 
-			bool debug = pixelLocation == V2i( 44000, 51 );
+
+			//bool debug = pixelLocation == V2i( 79, 41 );
+			//bool debug = pixelLocation == V2i( 57, 21 );
+			//bool debug = pixelLocation == V2i( 54, 85 );
+			bool debug = pixelLocation == V2i( 2, 19 );
+			if( debug ) std::cerr << "\n\n\nPixel start : " << pixelLocation << "\n";
 			int resampledCount;
 			try
 			{
@@ -308,7 +313,9 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			{
 				std::cerr << "Caught : " << e.what() << "\n";
 				std::cerr << "On pixel : " << pixelLocation << "\n";
+				throw;
 			}
+			if( debug ) std::cerr << "\nPixel end : " << pixelLocation << "\n\n\n";
 			outSampleOffsets[i] = outputCount;
 
 			prev = index;
