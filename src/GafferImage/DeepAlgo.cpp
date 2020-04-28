@@ -546,7 +546,7 @@ void minimalSegmentsForConstraints(
 			currentSearchParams.lowerConstraintIndex != -1 &&
 			constraintsLower[ currentSearchParams.lowerConstraintIndex ].x < constraintsUpper[ currentSearchParams.upperConstraintIndex ].x
 		)
-		{		
+		{
 			if( advanceUpper )
 			{
 				if( debug )
@@ -638,24 +638,43 @@ void minimalSegmentsForConstraints(
 			if( debug ) std::cerr << "LINE A : " << lineA << " : " << delta.y << " / " << delta.x << "\n";
 		}
 
-		if( debug ) std::cerr << "LINE A result : " << lineA << "\n";
+		
+
+		if( debug )
+		{
+			std::cerr << "\nFOUND LINE\n";
+			std::cerr << "\nLOWER : " <<
+				constraintsLower[currentSearchParams.lowerConstraintIndex].x << ", " << 
+				constraintsLower[currentSearchParams.lowerConstraintIndex].y << "\n";
+			std::cerr << "\nUPPER : " <<
+				constraintsUpper[currentSearchParams.upperConstraintIndex].x << ", " << 
+				constraintsUpper[currentSearchParams.upperConstraintIndex].y << "\n";
+			std::cerr << "LINE A result : " << lineA << "\n";
+		}
 
 		// TODO - This matches condition below, clean them up
 		if( !( currentSearchParams.lowerConstraintIndex == -1 /*|| fabs( yFinal ) == std::numeric_limits<float>::infinity()*/ ) && lineA == 0.0f ) 
 		{
+			std::cerr << "\n\nBAD FLAT\n";
 			std::cerr << "SEARCHING LOWER: " << lowerStartIndex << " : " << lowerStopIndex << "\n";
 			std::cerr << "SEARCHING UPPER: " << upperStartIndex << " : " << upperStopIndex << "\n";
 			std::cerr << "CURRENT: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
-			bool skipped = false;
+			//bool skipped = false;
 			//while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y == yPrev )
-			while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() * 40.0f ) // TODO TODO TODO - get rid of epsilon
+			/*while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() * 40.0f ) // TODO TODO TODO - get rid of epsilon
 			{
 				skipped = true;
 				std::cerr << "FAST FORWARD UPPER";
 				upperStartIndex++;
-			}
+			}*/
+			/*while( lowerStartIndex + 1 < constraintsLower.size() && constraintsLower[lowerStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() ) // TODO TODO TODO - get rid of epsilon
+			{
+				skipped = true;
+				std::cerr << "FAST FORWARD LOWER";
+				lowerStartIndex++;
+			}*/
 			
-			if( !skipped )
+			/*if( !skipped )
 			{
 				if( upperStartIndex + 1 < constraintsUpper.size() )
 				{
@@ -666,7 +685,10 @@ void minimalSegmentsForConstraints(
 					std::cerr << "HIT END\n";
 				}
 				throw IECore::Exception( "unskippable flat" );
-			}
+			}*/
+
+			lowerStartIndex++;
+			lowerStopIndex = std::max( lowerStopIndex, lowerStartIndex );
 			
 			continue;
 		}
@@ -724,7 +746,7 @@ void minimalSegmentsForConstraints(
 					intersection.y < constraintsUpper[upperStopIndex - 1].y
 				)
 				{
-					std::cerr << "HIT UPPER BEGIN\n";
+					if( debug ) std::cerr << "HIT UPPER BEGIN\n";
 					upperStartIndex--;
 					yFinal = constraintsUpper[upperStartIndex].y;
 				}
@@ -733,7 +755,7 @@ void minimalSegmentsForConstraints(
 					intersection.y > constraintsUpper[upperStopIndex ].y
 				)
 				{
-					std::cerr << "HIT UPPER END\n";
+					if( debug ) std::cerr << "HIT UPPER END\n";
 					yFinal = constraintsUpper[upperStartIndex].y;
 				}
 				else
@@ -840,6 +862,7 @@ void minimalSegmentsForConstraints(
 					intersection.y <= constraintsLower[lowerStopIndex ].y
 				)
 				{
+					if( debug ) std::cerr << "HIT LOWER : CHANGING Y (RAW) FROM " << yFinal << " to " << intersection.y << "\n";
 					if( debug ) std::cerr << "HIT LOWER : CHANGING Y FROM " << linearToExponential( yFinal ) << " to " << linearToExponential( intersection.y ) << "\n";
 					if( debug ) std::cerr << "HIT LOWER : CHANGING X FROM " << constraintsLower[lowerStartIndex].x << " to " << intersection.x << "\n";
 
@@ -890,6 +913,7 @@ HUH WHAT
 		// Calculate where our new line hits its flat top
 		float xEnd = ( yFinal - lineB ) / lineA;
 
+		if( debug ) std::cerr << "yFinal for computing xEnd : " << yFinal << "\n";
 		if( debug ) std::cerr << "clineA : " << lineA << "\n";
 		// TODO
 		if( currentSearchParams.lowerConstraintIndex == -1 || fabs( yFinal ) == std::numeric_limits<float>::infinity() )
@@ -918,7 +942,8 @@ HUH WHAT
 				throw IECore::Exception( "BAD" );
 			}
 			assert( !std::isnan( xEnd ) );
-			
+		
+				
 
 			// Calculate where our new line hits the previous flat top
 			xStart = ( yPrev - lineB ) / lineA;
@@ -979,7 +1004,7 @@ HUH WHAT
 			std::cerr << "yFinal: " << yFinal << "\n";
 			std::cerr << "SEGMENT INDICES: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
 			std::cerr << "SEGMENT RAW : " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << compressedSample.YBack << "\n";
-			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n";
+			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n\n\n";
 		}
 
 		if( compressedSamples.size() )
