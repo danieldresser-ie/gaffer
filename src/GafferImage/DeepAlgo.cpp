@@ -135,9 +135,14 @@ SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2
 	{
 		// TODO what if lines not coincident
 		// TODO this logic now looks bad
+		// TODO and even worse
 		if( p.x + dir.x < b2.x )
 		{
-			return {p.x + dir.x, p.y + dir.y};
+			//return {p.x + dir.x, p.y + dir.y};
+			return {
+				std::max( a2.x, std::min( b2.x, p.x + dir.x ) ),
+				std::max( a2.y, std::min( b2.y, p.y + dir.y ) )
+			}; 
 		}
 		else
 		{
@@ -147,17 +152,31 @@ SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2
 
 	float t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
 
-	SimplePoint r = { p.x + dir.x * t, p.y + dir.y * t }; 
+	SimplePoint r = {
+		std::max( a2.x, std::min( b2.x, p.x + dir.x * t ) ),
+		std::max( a2.y, std::min( b2.y, p.y + dir.y * t ) )
+	}; 
+
+	/////// TODO TEMP
+	/*if( a2.x == b2.x )
+	{
+		r.x = a2.x;
+	}
+	if( a2.y == b2.y )
+	{
+		r.y = a2.y;
+	}*/
+	/////// TODO TEMP
 
 	// TODO - note about assuming increasingness
-	if( r.x < a2.x || r.y < a2.y )
+	/*if( r.x < a2.x || r.y < a2.y )
 	{
 		return a2;
 	}
 	else if( r.x > b2.x || r.y > b2.y )
 	{
 		return b2;
-	}
+	}*/
 
 	return r;
 
@@ -777,7 +796,7 @@ void minimalSegmentsForConstraints(
 			{ 
 				if( debug ) std::cerr << "CHECKING UPPER:" << constraintsUpper[ upperStopIndex - 1].x << " " << constraintsUpper[ upperStopIndex ].x << "\n";
 				if( debug ) std::cerr << "CHECKING UPPER Y:" << linearToExponential( constraintsUpper[ upperStopIndex - 1 ].y ) << " " << linearToExponential( constraintsUpper[ upperStopIndex ].y ) << "\n";
-				SimplePoint intersection = segmentIntersect(
+				/*SimplePoint intersection = segmentIntersect(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
 					constraintsUpper[ upperStopIndex - 1 ],
@@ -812,8 +831,10 @@ void minimalSegmentsForConstraints(
 					
 					yFinal = intersection.y;
 					xEnd = intersection.x;
-				}
-				/*SimplePoint intersection = intersectWithSegment(
+				}*/
+
+
+				SimplePoint intersection = intersectWithSegment(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					{ constraintsUpper[ currentSearchParams.upperConstraintIndex ].x - constraintsLower[ currentSearchParams.lowerConstraintIndex ].x,
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ].y - constraintsLower[ currentSearchParams.lowerConstraintIndex ].y },
@@ -831,7 +852,7 @@ void minimalSegmentsForConstraints(
 				constraintsUpper[upperStartIndex] = intersection;
 				yFinal = constraintsUpper[upperStartIndex].y;
 				xEnd = constraintsUpper[upperStartIndex].x;
-				*/
+				
 
 				/*float intersectionEpsilon = 1e-10;
 				if(
