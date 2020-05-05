@@ -57,8 +57,6 @@ namespace
 const float maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
 const float maximumLinearY = -log1pf( - maxConvertibleAlpha );
 
-// TODO - maybe should be a bit lower like, say 0.9999?
-// Need to figure out how to deal with error threshold where this happens
 const float linearOpacityThreshold = -log1pf( - 0.99999 );  
 
 /// Given a value in linear space, make it exponential.
@@ -921,24 +919,12 @@ void minimalSegmentsForConstraints(
 			{ 
 				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 1].x << " " << constraintsLower[ lowerStopIndex ].x << "\n";
 				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex ].y ) << "\n";
-				SimplePoint intersection = segmentIntersect(
+				/*SimplePoint intersection = segmentIntersect(
 					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
 					constraintsUpper[ currentSearchParams.upperConstraintIndex ],
 					constraintsLower[ lowerStopIndex - 1 ],
 					constraintsLower[ lowerStopIndex ]
 				);
-				/*SimplePoint curConstraint = constraintsLower[lowerStopIndex];
-				SimplePoint prevConstraint = constraintsLower[lowerStopIndex - 1];
-				SimplePoint constraintDirection = curConstraint - prevConstraint;
-				if( constraintDirection.x != 0 ) // TODO - vertical constraints
-				{
-					float ca = constraintDirection.y / constraintDirection.x;
-					float cb = prevConstraint.y - ca * prevConstraint.x;
-					float denom = currentSearchParams.a - ca;
-					if( denom != 0.0 )
-					{
-						float intersectionX = -( currentSearchParams.b - cb ) / denom;
-						float intersectionY = currentSearchParams.a * intersectionX + currentSearchParams.b;*/
 
 				if(
 					intersection.x >= constraintsLower[lowerStopIndex - 1].x &&
@@ -961,7 +947,25 @@ void minimalSegmentsForConstraints(
 				else
 				{
 					std::cerr << "BAD CONSTRAINT : " << intersection.x << " : " << constraintsLower[lowerStopIndex - 1].x << " -> " << constraintsLower[lowerStopIndex].x << "\n";
+				}*/
+				SimplePoint intersection = intersectWithSegment(
+					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
+					{ constraintsUpper[ currentSearchParams.upperConstraintIndex ].x - constraintsLower[ currentSearchParams.lowerConstraintIndex ].x,
+					constraintsUpper[ currentSearchParams.upperConstraintIndex ].y - constraintsLower[ currentSearchParams.lowerConstraintIndex ].y },
+					constraintsLower[ lowerStopIndex - 1 ],
+					constraintsLower[ lowerStopIndex ]
+				);
+
+				if( !(
+					intersection.x == constraintsLower[lowerStopIndex ].x && 
+					intersection.y == constraintsLower[lowerStopIndex ].y
+				) )
+				{
+					lowerStartIndex--;
 				}
+				constraintsLower[lowerStartIndex] = intersection;
+				yFinal = constraintsLower[lowerStartIndex].y;
+				xEnd = constraintsLower[lowerStartIndex].x;
 			}
 		}
 
@@ -1128,17 +1132,24 @@ HUH WHAT
 	// Instead, write a large almost opaque sample, followed by a tiny point sample to take it up to opaque
 	if( compressedSamples.back().YBack > linearOpacityThreshold && compressedSamples.back().XBack != compressedSamples.back().X )
 	{
-		LinearSegment finalSample;
-		finalSample.X = finalSample.XBack = compressedSamples.back().XBack;
-		finalSample.YBack = compressedSamples.back().YBack;
+		float YPrev = compressedSamples.size() > 1 ? compressedSamples[ compressedSamples.size() - 2].YBack : 0.0f;
 
-		float YPrev = compressedSamples[ compressedSamples.size() - 2].YBack;
+		if( YPrev < linearOpacityThreshold )
+		{
+			float thresholdX = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().YBack - YPrev ) ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
 
-		// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
-		compressedSamples.back().XBack = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().YBack - YPrev ) ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
-		compressedSamples.back().YBack = linearOpacityThreshold;
+			LinearSegment finalSample;
+			finalSample.X = thresholdX;
+			finalSample.XBack = compressedSamples.back().XBack;
+			finalSample.YBack = compressedSamples.back().YBack;
 
-		compressedSamples.push_back( finalSample );
+
+			// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
+			compressedSamples.back().XBack = thresholdX;
+			compressedSamples.back().YBack = linearOpacityThreshold;
+
+			compressedSamples.push_back( finalSample );
+		}
 	}
 }
 
@@ -1189,6 +1200,11 @@ void integratedPointSamplesForPixel(
 	
 		ZBackPrev = ZBack;	
 	}
+}
+
+inline float applyZTol( float z, float tol, bool upper )
+{
+	return z * ( 1 + ( upper ? -tol : tol ) * copysign( 1.0f, z ) );
 }
 
 /*
@@ -1258,7 +1274,7 @@ void linearConstraintsForPixel(
 		if( j == deepSamples.size() - 1 )
 		{
 			// Ensure that we always reach the exact final value
-			nextX = deepSamples[j].x * ( 1 + zTolerance );
+			nextX = applyZTol( deepSamples[j].x, zTolerance, false );
 			nextAlpha = std::min( deepSamples[j].y, maximumLinearY );
 		}
 		else
@@ -1277,7 +1293,7 @@ void linearConstraintsForPixel(
 					min = lastValidMinY; // TODO - why?
 				}*/
 
-				nextX = deepSamples[j].x * ( 1 + zTolerance );
+				nextX = applyZTol( deepSamples[j].x, zTolerance, false );
 				nextAlpha = std::min( minAlpha, maximumLinearY );
 			}
 			else
@@ -1300,7 +1316,7 @@ void linearConstraintsForPixel(
 					}
 		
 					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
-					nextX = xIntercept * ( 1 + zTolerance );
+					nextX = applyZTol( xIntercept, zTolerance, false );
 					nextAlpha = 0.0;
 				}
 				else
@@ -1334,8 +1350,8 @@ void linearConstraintsForPixel(
 			{
 				throw IECore::Exception( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
 			}
-			float intersectionX = ( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x ) *
-				( 1 + zTolerance );
+			float intersectionX = applyZTol( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x,
+				zTolerance, false );
 		
 			if( intersectionX > nextLower.x )
 			{
@@ -1374,7 +1390,7 @@ void linearConstraintsForPixel(
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
 	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
 
-	SimplePoint prevUpper = { deepSamples[0].x * ( 1 - zTolerance ), 0 };
+	SimplePoint prevUpper = { applyZTol( deepSamples[0].x, zTolerance, true ), 0 };
 	prevAlpha = 0;
 	upperConstraints.push_back( prevUpper );
 	assert( !isinf( prevUpper.x ) );
@@ -1386,7 +1402,7 @@ void linearConstraintsForPixel(
 
 		// TODO - comment
 		SimplePoint nextUpper = {
-			deepSamples[j].x * ( 1 - zTolerance ),
+			applyZTol( deepSamples[j].x, zTolerance, true ),
 			nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
 		};
 

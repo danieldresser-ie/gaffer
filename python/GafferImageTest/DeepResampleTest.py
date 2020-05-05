@@ -144,6 +144,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372 )
 
+		# TODO - negative depth
+
 	def testRandomSamples( self ):
 
 		constant = GafferImage.Constant()
@@ -179,13 +181,12 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy["in"].setInput( oslImage["out"] )
 
 		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 ) 
-		#self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125857 ) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125857 ) 
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68994 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219155 )
-		#self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 96691, 79177 )
-
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219250 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
 
 	"""
 	def testRepresentative( self ) :
