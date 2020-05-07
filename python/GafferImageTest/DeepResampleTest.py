@@ -144,6 +144,14 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372 )
 
+		depthGrade = GafferImage.Grade( "Grade11" )
+		depthGrade["in"].setInput( representativeImage["out"] )
+		depthGrade["channels"].setValue( 'Z ZBack' )
+		depthGrade["blackClamp"].setValue( False )
+
+		depthGrade["offset"]["r"].setValue( 10 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73068 )
+
 		# TODO - negative depth
 
 	def testRandomSamples( self ):

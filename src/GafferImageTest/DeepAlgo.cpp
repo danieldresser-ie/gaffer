@@ -74,7 +74,7 @@ void evaluateDeepPixelInternal( const std::vector<float> &z, const std::vector<f
 			float weight;
 			if( a[i] > 1e-8 )
 			{
-				curAlpha = -expm1( fraction * log1p( -a[i] ) );
+				curAlpha = -expm1f( fraction * log1pf( -a[i] ) );
 				weight = curAlpha / a[i];
 			}
 			else
@@ -89,6 +89,15 @@ void evaluateDeepPixelInternal( const std::vector<float> &z, const std::vector<f
             }
 
             accumAlpha += curAlpha - curAlpha * accumAlpha;
+			if( !std::isfinite( accumAlpha ) )
+			{
+				std::cerr << "FRACTION : " << fraction << "\n";
+				std::cerr << "DEPTH : " << depth << "\n";
+				std::cerr << "Z : " << z[i] << " : " << zBack[i] << "\n";
+				std::cerr << "CUR ALPHA : " << curAlpha << "\n";
+				std::cerr << "A[i] : " << a[i] << "\n";
+				throw IECore::Exception( "BAD ALPHA" );
+			}
 
             break;
         }
