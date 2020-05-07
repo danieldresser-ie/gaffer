@@ -123,6 +123,7 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 	//return { a1.x + dir1.x * t, a1.y + dir1.y * t }; 
 }
 
+
 SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2, SimplePoint b2 )
 {
 	SimplePoint disp = { a2.x - p.x, a2.y - p.y };
@@ -150,51 +151,59 @@ SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2
 
 	float t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
 
-	SimplePoint r = {
+	return { p.x + dir.x * t, p.y + dir.y * t }; 
+	/*SimplePoint r = {
 		std::max( a2.x, std::min( b2.x, p.x + dir.x * t ) ),
 		std::max( a2.y, std::min( b2.y, p.y + dir.y * t ) )
 	}; 
 
 	/////// TODO TEMP
-	/*if( a2.x == b2.x )
-	{
-		r.x = a2.x;
-	}
-	if( a2.y == b2.y )
-	{
-		r.y = a2.y;
-	}*/
+	//if( a2.x == b2.x )
+	//{
+		//r.x = a2.x;
+	//}
+	//if( a2.y == b2.y )
+	//{
+		//r.y = a2.y;
+	//}
 	/////// TODO TEMP
 
 	// TODO - note about assuming increasingness
-	/*if( r.x < a2.x || r.y < a2.y )
-	{
-		return a2;
-	}
-	else if( r.x > b2.x || r.y > b2.y )
-	{
-		return b2;
-	}*/
+	//if( r.x < a2.x || r.y < a2.y )
+	//{
+	//	return a2;
+	//}
+	//else if( r.x > b2.x || r.y > b2.y )
+	//{
+	//	return b2;
+	//}
 
-	return r;
+	return r;*/
 
 	// TODO testing without the special cases above is a good way to test hang handling
-	//return { a1.x + dir.x * t, a1.y + dir.y * t }; 
 }
 
+SimplePoint clampToBox( SimplePoint p, SimplePoint a, SimplePoint b )
+{
+	return {
+		std::max( a.x, std::min( b.x, p.x ) ),
+		std::max( a.y, std::min( b.y, p.y ) )
+	}; 
+}
 
 struct LinearSegment
 {
-	float X; // The depth of the front of the sample.
+	SimplePoint a, b;
+/*	float X; // The depth of the front of the sample.
 	float XBack; // The depth at the back of the sample.
-	float YBack; // The alpha at the back of the sample.
+	float YBack; // The alpha at the back of the sample.*/
 };
 
 
 struct ConstraintSearchParams
 {
-    // The points which impose the shallowest constraints
-    // ie:  if the current line was any steeper, it could not pass over lowerConstraint and under upperConstraint
+	// The points which impose the shallowest constraints
+	// ie:  if the current line was any steeper, it could not pass over lowerConstraint and under upperConstraint
 	//SimplePoint lowerConstraint, upperConstraint;
 	int lowerConstraintIndex, upperConstraintIndex;
 };
@@ -205,6 +214,8 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 	int anchor = startAnchor;
 
 	float a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
+
+	// TODO - this could be more accurate by avoiding catastrophic cancellation
 	float b = points[anchor].y - a * points[anchor].x;
 
 
@@ -389,7 +400,7 @@ void conformToSegments(
 	int integrateIndex = 0;
 	for( unsigned int i = 0; i < compressedSamples.size(); ++i )
 	{
-		float targetAlpha = -expm1f( -compressedSamples[i].YBack );
+		float targetAlpha = -expm1f( -compressedSamples[i].b.y );
 		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
 		{
 			std::cerr << "BAD TARGET: " << targetAlpha << "\n";
@@ -452,9 +463,9 @@ void conformToSegments(
 			}
 		}
 
-		if( compressedSamples[i].XBack < compressedSamples[i].X )
+		if( compressedSamples[i].b.x < compressedSamples[i].a.x )
 		{
-			std::cerr << "BAD XBACK: " << compressedSamples[i].X << " -> " << compressedSamples[i].XBack << "\n";
+			std::cerr << "BAD XBACK: " << compressedSamples[i].a.x << " -> " << compressedSamples[i].b.x << "\n";
 		}
 
 		if( ! ( accumA > -0.1 && accumA < 1.1 ) )
@@ -464,8 +475,8 @@ void conformToSegments(
 		}
 
 
-		outZ[i] = compressedSamples[i].X;
-		outZBack[i] = compressedSamples[i].XBack;
+		outZ[i] = compressedSamples[i].a.x;
+		outZBack[i] = compressedSamples[i].b.x;
 		outA[i] = accumA;
 
 		accumA = 0.0f;
@@ -784,11 +795,10 @@ void minimalSegmentsForConstraints(
 		// TODO - max?
 		upperStartIndex = currentSearchParams.upperConstraintIndex;
 
-		float yFinal = constraintsLower[lowerStopIndex - 1].y;
-		float xEnd = ( yFinal - lineB ) / lineA;
+		SimplePoint segmentEnd = { ( constraintsLower[lowerStopIndex - 1].y - lineB ) / lineA, constraintsLower[lowerStopIndex - 1].y };
 		if( debug )
 		{
-			std::cerr << "INITIAL yFinal : " << yFinal << "\n";
+			std::cerr << "INITIAL yFinal : " << segmentEnd.y << "\n";
 		}
 
 
@@ -821,6 +831,10 @@ void minimalSegmentsForConstraints(
 					constraintsUpper[ upperStopIndex - 1 ],
 					constraintsUpper[ upperStopIndex ]
 				);
+				
+				intersection = clampToBox(
+					intersection, constraintsUpper[ upperStopIndex - 1 ], constraintsUpper[ upperStopIndex ]
+				);
 
 				if( !(
 					intersection.x == constraintsUpper[upperStopIndex ].x && 
@@ -831,34 +845,33 @@ void minimalSegmentsForConstraints(
 				}
 				if( debug ) std::cerr << "**** CHANGE UPPER << " << intersection.x << " , " << intersection.y << "\n";
 				constraintsUpper[upperStartIndex] = intersection;
-				yFinal = constraintsUpper[upperStartIndex].y;
-				xEnd = constraintsUpper[upperStartIndex].x;
+				segmentEnd = intersection;
 			}
 
 			if( lowerStopIndex >= 2 )
 			{
-				if( yFinal < constraintsLower[ lowerStopIndex - 1].y )
+				if( segmentEnd.y < constraintsLower[ lowerStopIndex - 1].y )
 				{
-					if( constraintsLower[ lowerStopIndex - 1].y - yFinal > 1e-15 )
+					if( constraintsLower[ lowerStopIndex - 1].y - segmentEnd.y > 1e-15 )
 					{
-						std::cerr << "TERRIBLE: " << constraintsLower[ lowerStopIndex - 1].y - yFinal << "\n"; // TODO
+						std::cerr << "TERRIBLE: " << constraintsLower[ lowerStopIndex - 1].y - segmentEnd.y << "\n"; // TODO
 						//throw IECore::Exception( "TERRIBLE" );
 					}
 					lowerStartIndex--;
 				}
-				else if( yFinal > constraintsLower[ lowerStopIndex ].y )
+				else if( segmentEnd.y > constraintsLower[ lowerStopIndex ].y )
 				{
 					std::cerr.precision( 20 );
-					std::cerr << "LINEAR: " << ( yFinal ) << " : " << ( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << ( constraintsLower[ lowerStopIndex].y ) << "\n";
-					std::cerr << "BAD HORIZ-to-LOWER TEST: " << linearToExponential( yFinal ) << " : " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << linearToExponential( constraintsLower[ lowerStopIndex].y ) << "\n";
+					std::cerr << "LINEAR: " << ( segmentEnd.y ) << " : " << ( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << ( constraintsLower[ lowerStopIndex].y ) << "\n";
+					std::cerr << "BAD HORIZ-to-LOWER TEST: " << linearToExponential( segmentEnd.y ) << " : " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << linearToExponential( constraintsLower[ lowerStopIndex].y ) << "\n";
 				}
 				else
 				{
 					if( constraintsLower[ lowerStopIndex ].y != constraintsLower[ lowerStopIndex - 1 ].y )  // TODO
 					{
 						lowerStartIndex--;
-						constraintsLower[lowerStartIndex].x = ( yFinal - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
-						constraintsLower[lowerStartIndex].y = yFinal;
+						constraintsLower[lowerStartIndex].x = ( segmentEnd.y - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
+						constraintsLower[lowerStartIndex].y = segmentEnd.y;
 					}
 				}
 			}
@@ -882,6 +895,10 @@ void minimalSegmentsForConstraints(
 					constraintsLower[ lowerStopIndex ]
 				);
 
+				intersection = clampToBox(
+					intersection, constraintsLower[ lowerStopIndex - 1 ], constraintsLower[ lowerStopIndex ]
+				);
+
 				if( intersection.y <= constraintsLower[origLowerStartIndex].y && intersection.x <= constraintsLower[origLowerStartIndex].x )
 				{
 					intersection = constraintsLower[ lowerStopIndex ];
@@ -897,8 +914,7 @@ void minimalSegmentsForConstraints(
 				}
 				if( debug ) std::cerr << "**** CHANGE LOWER << " << intersection.x << " , " << intersection.y << "\n";
 				constraintsLower[lowerStartIndex] = intersection;
-				yFinal = constraintsLower[lowerStartIndex].y;
-				xEnd = constraintsLower[lowerStartIndex].x;
+				segmentEnd = constraintsLower[lowerStartIndex];
 			}
 		}
 
@@ -907,27 +923,27 @@ void minimalSegmentsForConstraints(
 			if( lowerStopIndex < constraintsLower.size() )
 			{
 				std::cerr.precision( 20 );
-				std::cerr << "TRYING LOWER CONSTRAINT FAST FORWARD : " << constraintsLower[lowerStopIndex].y << " : " <<  yFinal << " : " << ( constraintsLower[lowerStopIndex].y <= yFinal ) << "\n";
+				std::cerr << "TRYING LOWER CONSTRAINT FAST FORWARD : " << constraintsLower[lowerStopIndex].y << " : " <<  segmentEnd.y << " : " << ( constraintsLower[lowerStopIndex].y <= segmentEnd.y ) << "\n";
 			}
 		}
 		// If our flat top coincides with horizontal segment, we can fast forward to the end of
 		// the horizontal segment when considering constraints, because the previous constraints
 		// are under the flat top
-		while( lowerStopIndex + 1 < constraintsLower.size() && constraintsLower[lowerStopIndex + 1].y <= yFinal )
+		while( lowerStopIndex + 1 < constraintsLower.size() && constraintsLower[lowerStopIndex + 1].y <= segmentEnd.y )
 		{
 			lowerStopIndex++;
 			lowerStartIndex = lowerStopIndex;
 		}
 
-		if( debug ) std::cerr << "yFinal for computing xEnd : " << yFinal << "\n";
+		if( debug ) std::cerr << "yFinal for computing xEnd : " << segmentEnd.y << "\n";
 		if( debug ) std::cerr << "clineA : " << lineA << "\n";
 		// TODO
-		if( fabs( yFinal ) == std::numeric_limits<float>::infinity() )
+		if( fabs( segmentEnd.y ) == std::numeric_limits<float>::infinity() )
 		{
 			std::cerr << "????????NEVER?????????" << "\n";
 			// We should never get here but if we do, do something fairly sensible.
-			yFinal = constraintsLower.back().y;
-			xStart = xEnd = constraintsLower.back().x;
+			segmentEnd = constraintsLower.back();
+			xStart = segmentEnd.x;
 			lineA = std::numeric_limits<float>::infinity();
 			lowerStopIndex = constraintsLower.size();
 		}
@@ -935,19 +951,19 @@ void minimalSegmentsForConstraints(
 		{
 			if( debug ) std::cerr << "VERTICAL LINE FOUND at : " << constraintsLower[currentSearchParams.lowerConstraintIndex].x << " : " << currentSearchParams.lowerConstraintIndex << " of " << constraintsLower.size() << "\n";
 			// The line we have found is a point sample.
-			xStart = xEnd = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
-			assert( std::isfinite( xEnd ) && !isnan( xEnd ) );
+			xStart = segmentEnd.x = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
+			assert( std::isfinite( segmentEnd.x ) && !isnan( segmentEnd.x ) );
 			// TODO - intersect and update constraints
 		}
 		else
 		{
-			if( std::isnan( xEnd ) )
+			if( std::isnan( segmentEnd.x ) )
 			{
 				std::cerr << "THROWING BAD\n";
 				//assert( false );
 				throw IECore::Exception( "BAD" );
 			}
-			assert( !std::isnan( xEnd ) );
+			assert( !std::isnan( segmentEnd.x ) );
 		
 				
 
@@ -955,36 +971,36 @@ void minimalSegmentsForConstraints(
 			xStart = ( yPrev - lineB ) / lineA;
 
 			// If there is a previous segment, we need to cover the possibility that we are overlapping with it
-			if( compressedSamples.size() > 0 && xStart < compressedSamples.back().XBack )
+			if( compressedSamples.size() > 0 && xStart < compressedSamples.back().b.x )
 			{
 				LinearSegment &prevSegment = compressedSamples.back();
 				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
 				if( fabs( prevLineA ) == std::numeric_limits<float>::infinity() )
 				{
-					xStart = compressedSamples.back().XBack;
-					prevSegment.YBack = prevSegment.XBack * lineA + lineB;
+					xStart = compressedSamples.back().b.x;
+					prevSegment.b.y = prevSegment.b.x * lineA + lineB;
 				}
 				else
 				{
 					// Calculate the intersection of our new line with the previous line
 					xStart = ( lineB - prevLineB ) / ( prevLineA - lineA );
-					if( xStart < prevSegment.X )
+					if( xStart < prevSegment.a.x )
 					{
 						// This case may occur due to precision issues.
-						xStart = prevSegment.XBack;
+						xStart = prevSegment.b.x;
 					}
-					else if( xStart > xEnd )
+					else if( xStart > segmentEnd.x )
 					{
 						// This case may occur due to precision issues.
-						xStart = xEnd;
+						xStart = segmentEnd.x;
 					}
 					else
 					{
 						//std::cerr << "BEFORE : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
 						// The start of the new segment falls between the start and end of the previous segment.
 						// As a result, intersect the two line segments.
-						prevSegment.XBack = xStart;
-						if( prevSegment.X > prevSegment.XBack )
+						prevSegment.b.x = xStart;
+						if( prevSegment.a.x > prevSegment.b.x )
 						{
 							std::cerr << "MESSING THINGS UP\n";
 						}
@@ -992,14 +1008,14 @@ void minimalSegmentsForConstraints(
 						if( debug )
 						{
 							std::cerr << "****** CHANGING PREV YBACK *********\n";
-							std::cerr << "FROM : " << prevSegment.YBack << " to " << xStart * prevLineA + prevLineB << "\n";
+							std::cerr << "FROM : " << prevSegment.b.y << " to " << xStart * prevLineA + prevLineB << "\n";
 							std::cerr << "CALC : " << xStart << " * " <<  prevLineA  << " + " << prevLineB << "\n";
 						}
-						prevSegment.YBack = xStart * prevLineA + prevLineB;
+						prevSegment.b.y = xStart * prevLineA + prevLineB;
 						//std::cerr << "AFTER : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
 					}
 				}
-				if( !std::isfinite( prevSegment.XBack ) )
+				if( !std::isfinite( prevSegment.b.x ) )
 				{
 					std::cerr << "XSstart : " << xStart << "\n";
 					std::cerr << "PrevLineA : " << prevLineA << "\n";
@@ -1009,48 +1025,47 @@ void minimalSegmentsForConstraints(
 			}
 		}
 
-		if( debug ) std::cerr << "xstart/end : " << xStart << " : " << xEnd << "\n";
-		assert( xEnd >= xStart );
-		assert( !std::isnan( yFinal ) );
+		if( debug ) std::cerr << "xstart/end : " << xStart << " : " << segmentEnd.x << "\n";
+		assert( segmentEnd.x >= xStart );
+		assert( !std::isnan( segmentEnd.y ) );
 
 		LinearSegment compressedSample;
-		compressedSample.X = xStart;
-		compressedSample.XBack = xEnd;
-		compressedSample.YBack = yFinal;
+		compressedSample.a.x = xStart;
+		compressedSample.b = segmentEnd;
 
 
 		if( debug )
 		{
-			std::cerr << "yFinal: " << yFinal << "\n";
+			std::cerr << "yFinal: " << segmentEnd.y << "\n";
 			std::cerr << "SEGMENT INDICES: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
-			std::cerr << "SEGMENT RAW : " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << compressedSample.YBack << "\n";
-			std::cerr << "SEGMENT: " << compressedSample.X << "\t" << compressedSample.XBack << "\t" << linearToExponential( compressedSample.YBack ) << "\n\n\n";
+			std::cerr << "SEGMENT RAW : " << compressedSample.a.x << "\t" << compressedSample.b.x << "\t" << compressedSample.b.y << "\n";
+			std::cerr << "SEGMENT: " << compressedSample.a.x << "\t" << compressedSample.b.x << "\t" << linearToExponential( compressedSample.b.y ) << "\n\n\n";
 		}
 
 		if( compressedSamples.size() )
 		{
-			if( compressedSample.YBack < compressedSamples.back().YBack )
+			if( compressedSample.b.y < compressedSamples.back().b.y )
 			{
 
-				std::cerr << "BAD CURRENT : " << compressedSamples.back().YBack << " -> " << compressedSample.YBack << "\n";
+				std::cerr << "BAD CURRENT : " << compressedSamples.back().b.y << " -> " << compressedSample.b.y << "\n";
 				
 				//TODO
-				yPrev = yFinal;
+				yPrev = segmentEnd.y;
 				continue;
 			}
-			if( debug && compressedSample.YBack <= compressedSamples.back().YBack )
+			if( debug && compressedSample.b.y <= compressedSamples.back().b.y )
 			{
-				std::cerr << "BAD CURRENT : " << compressedSamples.back().YBack << " -> " << compressedSample.YBack << "\n";
+				std::cerr << "BAD CURRENT : " << compressedSamples.back().b.y << " -> " << compressedSample.b.y << "\n";
 				throw IECore::Exception( "BAD CURRENT" );
 			}
 		}
-		if( !std::isfinite( compressedSample.XBack ) )
+		if( !std::isfinite( compressedSample.b.x ) )
 		{
 			throw IECore::Exception( "BAD XBACK" );
 		}
 		compressedSamples.push_back( compressedSample );
 
-		yPrev = yFinal;
+		yPrev = segmentEnd.y;
 
 
 		//prevSearchParams = currentSearchParams;
@@ -1070,23 +1085,21 @@ void minimalSegmentsForConstraints(
 
 	// As per section on Opaque Volume Samples in "Interpreting OpenEXR Deep Pixels", don't write out a large opaque volume sample
 	// Instead, write a large almost opaque sample, followed by a tiny point sample to take it up to opaque
-	if( compressedSamples.back().YBack > linearOpacityThreshold && compressedSamples.back().XBack != compressedSamples.back().X )
+	if( compressedSamples.back().b.y > linearOpacityThreshold && compressedSamples.back().b.x != compressedSamples.back().a.x )
 	{
-		float YPrev = compressedSamples.size() > 1 ? compressedSamples[ compressedSamples.size() - 2].YBack : 0.0f;
+		float YPrev = compressedSamples.size() > 1 ? compressedSamples[ compressedSamples.size() - 2].b.y : 0.0f;
 
 		if( YPrev < linearOpacityThreshold )
 		{
-			float thresholdX = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().YBack - YPrev ) ) * ( compressedSamples.back().XBack - compressedSamples.back().X ) + compressedSamples.back().X;
+			float thresholdX = ( (linearOpacityThreshold - YPrev ) / ( compressedSamples.back().b.y - YPrev ) ) * ( compressedSamples.back().b.x - compressedSamples.back().a.x ) + compressedSamples.back().a.x;
 
 			LinearSegment finalSample;
-			finalSample.X = thresholdX;
-			finalSample.XBack = compressedSamples.back().XBack;
-			finalSample.YBack = compressedSamples.back().YBack;
+			finalSample.a = { thresholdX, linearOpacityThreshold };
+			finalSample.b = compressedSamples.back().b;
 
 
 			// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
-			compressedSamples.back().XBack = thresholdX;
-			compressedSamples.back().YBack = linearOpacityThreshold;
+			compressedSamples.back().b = finalSample.a;
 			if( !std::isfinite( thresholdX ) )
 			{
 				throw IECore::Exception( "BAD THRESHOLD" );
