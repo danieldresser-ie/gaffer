@@ -150,7 +150,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		depthGrade["blackClamp"].setValue( False )
 
 		depthGrade["offset"]["r"].setValue( 10 )
-		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73068 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73073 )
+		#self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73410 )
 
 		# TODO - negative depth
 
@@ -193,7 +194,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68994 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219250 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219305 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
 
 	"""

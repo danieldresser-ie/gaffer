@@ -299,7 +299,8 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			//bool debug = pixelLocation == V2i( 93, 54 ) || pixelLocation == V2i( 0, 0 );
 			//bool debug = pixelLocation == V2i( 87, 59 );
 			//bool debug = pixelLocation == V2i( 32, 33 );
-			bool debug = pixelLocation == V2i( 75, 80 );
+			//bool debug = pixelLocation == V2i( 75, 80 );
+			bool debug = pixelLocation == V2i( 96, 71 );
 			if( debug ) std::cerr << "\n\n\nPixel start : " << pixelLocation << "\n";
 			int resampledCount;
 			try
