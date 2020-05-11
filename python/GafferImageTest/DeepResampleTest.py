@@ -149,11 +149,19 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		depthGrade["channels"].setValue( 'Z ZBack' )
 		depthGrade["blackClamp"].setValue( False )
 
-		depthGrade["offset"]["r"].setValue( 10 )
-		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73073 )
-		#self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 73410 )
+		depthGrade["offset"]["r"].setValue( -7 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 0.001, 0.012, 191482, 59421 )
 
-		# TODO - negative depth
+		depthGrade["offset"]["r"].setValue( 10 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-7, 0.012, 191482, 71833 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.012, 191482, 72000 )
+
+		depthGrade["offset"]["r"].setValue( 1000000 )
+
+		# We need a high depth tolerance once we push everything way out this far.  ( The biggest error
+		# actually comes from the FilteredDepth output of DeepToFlat suffering from precision errors
+		# on the original, unresampled data )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.8, 191482, 67991 )
 
 	def testRandomSamples( self ):
 
@@ -191,10 +199,10 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 ) 
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125857 ) 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68994 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68995 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219305 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219304 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
 
 	"""

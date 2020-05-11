@@ -224,10 +224,6 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 
 	float a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
 
-	// TODO - this could be more accurate by avoiding catastrophic cancellation
-	float b = points[anchor].y - a * points[anchor].x;
-
-
 	// Test all constraints to make sure that the current line fufills all of them
 	for( int i = startIndex; i < endIndex; i++ )
 	{
@@ -239,7 +235,7 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 		float lowerX = points[i].x;
 		float minY = points[i].y;
 
-		float yAtLowerX = a * lowerX + b;
+		float yAtLowerX = a * ( lowerX - points[anchor].x ) + points[anchor].y;
 
 		// Check if we go underneath the minimum constraint at this index
 		if( yAtLowerX * constraintDirection < minY * constraintDirection )
@@ -262,7 +258,6 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 				if( newA * steeperDirection < a * steeperDirection )
 				{
 					a = newA;
-					b = minY - lowerX * a;
 					anchor = i;
 				}
 			}
@@ -409,6 +404,19 @@ void conformToSegments(
 	int integrateIndex = 0;
 	for( unsigned int i = 0; i < compressedSamples.size(); ++i )
 	{
+		// We could potentially get samples squashed down to being zero length and overlapping,
+		// which would result in them not being merged in the right order.  Outputting a single
+		// sample will yield a correct result.
+		if(
+			i + 1 < compressedSamples.size() &&
+			compressedSamples[i].a.x == compressedSamples[i].b.x &&
+			compressedSamples[i].a.x == compressedSamples[i+1].a.x &&
+			compressedSamples[i+1].a.x == compressedSamples[i+1].b.x
+		)
+		{
+			continue;
+		}
+
 		float targetAlpha = -expm1f( -compressedSamples[i].b.y );
 		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
 		{
@@ -482,7 +490,6 @@ void conformToSegments(
 			std::cerr << "BAD CALC: " << accumA << "\n";
 			accumA = 0.0f;
 		}
-
 
 		outZ[i] = compressedSamples[i].a.x;
 		outZBack[i] = compressedSamples[i].b.x;
@@ -1293,6 +1300,8 @@ void linearConstraintsForPixel(
 					}
 		
 					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
+					// Make sure floating point error doesn't violate non-decreasing X
+					xIntercept = std::min( deepSamples[j+1].x, xIntercept );
 					nextX = applyZTol( xIntercept, zTolerance, false );
 					nextAlpha = 0.0;
 				}
@@ -1327,7 +1336,7 @@ void linearConstraintsForPixel(
 			{
 				throw IECore::Exception( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
 			}
-			float intersectionX = applyZTol( lerp * deepSamples[j].x + ( 1 - lerp ) * deepSamples[j - 1].x,
+			float intersectionX = applyZTol( deepSamples[j - 1].x + lerp * ( deepSamples[j].x - deepSamples[j - 1 ].x ),
 				zTolerance, false );
 		
 			if( intersectionX > nextLower.x )

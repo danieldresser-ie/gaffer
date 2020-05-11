@@ -264,8 +264,8 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 			{
 				float depth = testDepths[i];
 				evaluateDeepPixelInternal( zA->readable(), zBackA->readable(), alphaA->readable(), channelsA, depth, resultA );
-				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 - depthTolerance ), resultBUpper );
-				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 + depthTolerance ), resultBLower );
+				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 - copysign( depthTolerance, depth ) ), resultBUpper );
+				evaluateDeepPixelInternal( zB->readable(), zBackB->readable(), alphaB->readable(), channelsB, depth / ( 1 + copysign( depthTolerance, depth ) ), resultBLower );
 
 				for( unsigned int j = 0; j < resultA.size(); j++ )
 				{
@@ -279,13 +279,13 @@ void GafferImageTest::assertDeepPixelsEvaluateSame( const IECore::CompoundData* 
 					{
 						fail = true;
 						compare = resultBUpper[j];
-						compareDepth = depth / ( 1 - depthTolerance );
+						compareDepth = depth / ( 1 - copysign( depthTolerance, depth ) );
 					}
 					if( !( resultA[j] - resultBLower[j] >= -tol ) )
 					{
 						fail = true;
 						compare = resultBLower[j];
-						compareDepth = depth / ( 1 + depthTolerance );
+						compareDepth = depth / ( 1 + copysign( depthTolerance, depth ) );
 					}
 
 					if( fail )
