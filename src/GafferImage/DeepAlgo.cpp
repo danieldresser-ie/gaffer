@@ -277,35 +277,22 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 
  This function either updates masterSearchParams with a line that fufills all constraints and returns true, or returns false and does not alter masterSearchParams.
 */
-bool steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, ConstraintSearchParams *masterSearchParams, bool debug )
+ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, bool debug )
 {
-	ConstraintSearchParams p = *masterSearchParams;
-
-	if( p.upperConstraintIndex == -1 || p.lowerConstraintIndex == -1 ) // TODO
-	{
-		p.upperConstraintIndex = upperStop - 1;
-		p.lowerConstraintIndex = lowerStart;
-
-		if( lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
-		{
-			if( debug ) std::cerr << "SKIPPING SEARCH, NO OVERLAP\n";
-			//*masterSearchParams = p;
-			return true;
-		}
-	}
+	ConstraintSearchParams p = { lowerStart, upperStop - 1 };
 
 	while( true )
 	{
-		int newLower = findAnchor( lowerConstraints, lowerStart, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, debug );
+		int newLower = findAnchor( lowerConstraints, p.lowerConstraintIndex, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, debug );
 		if( newLower == -1 )
 		{
-			return false;
+			return {-1, -1};
 		}
 
-		int newUpper = findAnchor( upperConstraints, upperStart, upperStop, p.upperConstraintIndex, lowerConstraints[newLower], -1.0, -1.0, 1.0, debug );
+		int newUpper = findAnchor( upperConstraints, upperStart, p.upperConstraintIndex + 1, p.upperConstraintIndex, lowerConstraints[newLower], -1.0, -1.0, 1.0, debug );
 		if( newUpper == -1 )
 		{
-			return false;
+			return {-1, -1};
 		}
 
 		if( p.lowerConstraintIndex == newLower && p.upperConstraintIndex == newUpper )
@@ -317,8 +304,7 @@ bool steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int
 		p.upperConstraintIndex = newUpper;
 	}
 
-	*masterSearchParams = p;
-	return true;
+	return p;
 }
 
 bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, ConstraintSearchParams *masterSearchParams )
@@ -562,12 +548,40 @@ void minimalSegmentsForConstraints(
 				std::cerr << "SEARCHING UPPER : " << upperStartIndex << " -> " << testUpperStopIndex << " of " << constraintsUpper.size() <<  "\n";
 			}
 
-			if( !( testUpperStopIndex > upperStartIndex && testLowerStopIndex > lowerStartIndex ) )
+			/*if( lowerConstraints[ p.lowerConstraintIndex ].x >= upperConstraints[ p.upperConstraintIndex ].x )
 			{
-				if( debug ) std::cerr << "NOT ENOUGH CONSTRAINTS FOR SEARCH\n";
+				if( debug ) std::cerr << "SKIPPING SEARCH, NO OVERLAP\n";
+				// *masterSearchParams = p;
+				return true;
+			}*/
+			if( !( testUpperStopIndex > upperStartIndex && testLowerStopIndex > lowerStartIndex && constraintsLower[ lowerStartIndex ].x < constraintsUpper[ testUpperStopIndex - 1 ].x ) )
+			{
+				if( debug ) std::cerr << "NOT ENOUGH CONSTRAINTS FOR SEARCH, OR NO OVERLAP\n";
 				upperStopIndex = testUpperStopIndex;
 				lowerStopIndex = testLowerStopIndex;
 				continue;
+			}
+
+			ConstraintSearchParams tempParams = currentSearchParams;
+			if( currentSearchParams.lowerConstraintIndex == -1 )
+			{
+				tempParams.lowerConstraintIndex = lowerStartIndex;
+				tempParams.upperConstraintIndex = testUpperStopIndex - 1;
+			}
+			else
+			{
+				tempParams = currentSearchParams;
+				if( advanceUpper )
+				{
+					// Generally, once we have found a valid segment, we don't need to ever recheck
+					// upper constraints to the right of the upper constraint we've found.  But when
+					// we advance the upper constraint, we do need to switch to the new constraint
+					// if it is under the previously found line.
+					//
+					// TODO explain this general principle more
+					tempParams.upperConstraintIndex = findAnchor( &constraintsUpper[0], testUpperStopIndex - 1, testUpperStopIndex, tempParams.upperConstraintIndex, constraintsLower[tempParams.lowerConstraintIndex], -1.0, -1.0, 1.0, debug );
+				}
+				
 			}
 			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
@@ -585,7 +599,9 @@ void minimalSegmentsForConstraints(
 
 			// Try fitting a line to our new set of constraints
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			bool success = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams, debug );
+			//bool success = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams, debug );
+			//ConstraintSearchParams newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &tempParams, debug );
+			ConstraintSearchParams newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], tempParams.lowerConstraintIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, tempParams.upperConstraintIndex + 1, debug );
 
 			/*if( debug )
 			{
@@ -593,12 +609,14 @@ void minimalSegmentsForConstraints(
 				std::cerr << "UP TO UPPER " << constraintsUpper[testUpperStopIndex].x << "\n";
 				std::cerr << "SUCCESS: " << success << "\n";
 			}*/
-			if( !success )
+			if( newSegment.lowerConstraintIndex == -1 )
 			{
 				// It didn't work, so we'll use the previous value left in currentSearchParams
 				break;
 			}
-			if( debug && success )
+
+			currentSearchParams = newSegment;
+			if( debug && newSegment.lowerConstraintIndex != -1 )
 			{
 				std::cerr << "SUCCESSFULLY FOUND INDICES : " << currentSearchParams.lowerConstraintIndex << " -> " << currentSearchParams.upperConstraintIndex << "\n";
 				
