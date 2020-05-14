@@ -218,6 +218,30 @@ struct ConstraintSearchParams
 };
 
 
+inline float measureViolation( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, float compareDirection )
+{
+	int anchor = startAnchor;
+
+	float a = ( points[anchor].y - comparePoint.y ) / ( points[anchor].x - comparePoint.x );
+
+	float violation = -100;
+	// Test all constraints to make sure that the current line fufills all of them
+	for( int i = startIndex; i < endIndex; i++ )
+	{
+		if( i == anchor )
+		{
+			continue;
+		}
+
+		float lowerX = points[i].x;
+		float minY = points[i].y;
+
+		float yAtLowerX = a * ( lowerX - points[anchor].x ) + points[anchor].y;
+		violation = std::max( violation, ( yAtLowerX - minY ) * compareDirection );
+	}
+	return violation;
+}
+
 inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, float scanDirection, float constraintDirection, float steeperDirection, bool debug )
 {
 	int anchor = startAnchor;
@@ -288,12 +312,18 @@ ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *low
 			int newLower = findAnchor( lowerConstraints, p.lowerConstraintIndex, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, debug );
 			if( newLower == -1 )
 			{
+				if( debug ) std::cerr << "LOWER FAILED\n";
 				return {-1, -1};
 			}
 			else if( newLower != p.lowerConstraintIndex )
 			{
 				p.lowerConstraintIndex = newLower;
 				upperChecked = false;
+				if( debug ) std::cerr << "LOWER FOUND : " << newLower << "\n";
+			}
+			else
+			{
+				if( debug ) std::cerr << "LOWER UNCHANGED : " << newLower << "\n";
 			}
 			lowerChecked = true;
 		}
@@ -303,12 +333,18 @@ ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *low
 			int newUpper = findAnchor( upperConstraints, upperStart, p.upperConstraintIndex + 1, p.upperConstraintIndex, lowerConstraints[p.lowerConstraintIndex], -1.0, -1.0, 1.0, debug );
 			if( newUpper == -1 )
 			{
+				if( debug ) std::cerr << "UPPER FAILED\n";
 				return {-1, -1};
 			}
 			else if( newUpper != p.upperConstraintIndex )
 			{
 				p.upperConstraintIndex = newUpper;
 				lowerChecked = false;
+				if( debug ) std::cerr << "UPPER FOUND : " << newUpper << "\n";
+			}
+			else
+			{
+				if( debug ) std::cerr << "UPPER UNCHANGED : " << newUpper << "\n";
 			}
 			upperChecked = true;
 		}
@@ -585,11 +621,12 @@ void minimalSegmentsForConstraints(
 			if( currentSearchParams.lowerConstraintIndex == -1 )
 			{
 				// No valid segment found yet, need to check all constraints
-				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false, debug );
+				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false, false );
 			}
 			else
 			{
-				int searchStartUpperConstraintIndex = currentSearchParams.upperConstraintIndex;
+				int searchLowerIndex = currentSearchParams.lowerConstraintIndex;
+				int searchUpperIndex = currentSearchParams.upperConstraintIndex;
 				if( advanceUpper )
 				{
 					// Generally, once we have found a valid segment, we don't need to ever recheck
@@ -598,17 +635,113 @@ void minimalSegmentsForConstraints(
 					// if it is under the previously found line.
 					//
 					// TODO explain this general principle more
-					searchStartUpperConstraintIndex = findAnchor( &constraintsUpper[0], testUpperStopIndex - 1, testUpperStopIndex, currentSearchParams.upperConstraintIndex, constraintsLower[tempParams.lowerConstraintIndex], -1.0, -1.0, 1.0, debug );
-					if( searchStartUpperConstraintIndex == currentSearchParams.upperConstraintIndex )
+					searchUpperIndex = findAnchor( &constraintsUpper[0], testUpperStopIndex - 1, testUpperStopIndex, currentSearchParams.upperConstraintIndex, constraintsLower[tempParams.lowerConstraintIndex], -1.0, -1.0, 1.0, false );
+					if( searchUpperIndex == currentSearchParams.upperConstraintIndex )
 					{
 						upperStopIndex = testUpperStopIndex;
 						lowerStopIndex = testLowerStopIndex;
 						continue;
 					}
+
+					int possiblyInvalidatedUpperConstraints = upperStartIndex;
+					float pivotX = constraintsLower[ currentSearchParams.lowerConstraintIndex ].x;
+					while( possiblyInvalidatedUpperConstraints < (int)testUpperStopIndex - 2 && constraintsUpper[possiblyInvalidatedUpperConstraints + 1].x < pivotX )
+					{
+						possiblyInvalidatedUpperConstraints++;
+					}
+					
+					if( -1 == findAnchor( &constraintsUpper[0], upperStartIndex, possiblyInvalidatedUpperConstraints + 1, searchUpperIndex, constraintsLower[tempParams.lowerConstraintIndex], -1.0, -1.0, 1.0, false ) )
+					{
+						//throw IECore::Exception( "Does this ever happen?" );
+						break;
+					}
+
+					// NOTE : At this point, we need to do a search with TODO
 				}
-				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], currentSearchParams.lowerConstraintIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchStartUpperConstraintIndex + 1, false, !advanceUpper, debug );
-				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], currentSearchParams.lowerConstraintIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchStartUpperConstraintIndex + 1, false, false, debug );
-				
+				else
+				{
+					searchLowerIndex = findAnchor( &constraintsLower[0], testLowerStopIndex - 1, testLowerStopIndex, currentSearchParams.lowerConstraintIndex, constraintsUpper[tempParams.upperConstraintIndex], 1.0, 1.0, 1.0, false );
+					if( searchLowerIndex == currentSearchParams.lowerConstraintIndex )
+					{
+						upperStopIndex = testUpperStopIndex;
+						lowerStopIndex = testLowerStopIndex;
+						continue;
+					}
+					if( searchLowerIndex == -1 )
+					{
+						break;
+					}
+				}
+				if( debug ) std::cerr << "\n\n************ SEARCH AFTER ADJUST *********** \n\n";
+				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, !advanceUpper, advanceUpper, debug );
+				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false, debug );
+				/*if( advanceUpper )
+				{
+					newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false, debug );
+				}
+				else
+				{
+					newSegment = { searchLowerIndex, searchUpperIndex };
+				}*/
+
+				/*ConstraintSearchParams validate = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false, false );
+				if( !(
+					newSegment.lowerConstraintIndex == validate.lowerConstraintIndex &&
+					newSegment.upperConstraintIndex == validate.upperConstraintIndex
+				) )
+				{
+					if( newSegment.lowerConstraintIndex == -1 )
+					{
+						float violation = std::max(
+							measureViolation( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, validate.lowerConstraintIndex, constraintsUpper[validate.upperConstraintIndex], 1.0 ),
+							measureViolation( &constraintsUpper[0], upperStartIndex, testUpperStopIndex, validate.upperConstraintIndex, constraintsLower[validate.lowerConstraintIndex], -1.0 )
+						);
+						if( violation < 0 )
+						{
+							std::cerr << "VIOLATION OF : " << violation << "\n";
+							throw IECore::Exception( "No segment found with new method, but old method had low violation." );
+						}
+					}
+					else if( validate.lowerConstraintIndex == -1 )
+					{
+						float lowerViolation = measureViolation( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, newSegment.lowerConstraintIndex, constraintsUpper[newSegment.upperConstraintIndex], 1.0 );
+						float upperViolation = measureViolation( &constraintsUpper[0], upperStartIndex, testUpperStopIndex, newSegment.upperConstraintIndex, constraintsLower[newSegment.lowerConstraintIndex], -1.0 );
+						if( lowerViolation > 0 || upperViolation > 0 )
+						{
+							std::cerr << "BEFORE: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
+							std::cerr << "ANCHOR ON NEW UPPER: " << searchUpperIndex << "\n";
+							std::cerr << "VALID: " << validate.lowerConstraintIndex << " : " << validate.upperConstraintIndex << "\n";
+							std::cerr << "VIOLATION OF : " << lowerViolation << " : " << upperViolation << "\n";
+							throw IECore::Exception( "Found a segment, but there is constraint violation." );
+						}
+					}
+					else
+					{
+
+						SimplePoint vA = constraintsLower[validate.lowerConstraintIndex];
+						SimplePoint vB = constraintsUpper[validate.upperConstraintIndex];
+						SimplePoint nA = constraintsLower[newSegment.lowerConstraintIndex];
+						SimplePoint nB = constraintsUpper[newSegment.upperConstraintIndex];
+						
+						std::cerr << "\n";
+						std::cerr << "VALIDATE : " << validate.lowerConstraintIndex << " : " << validate.upperConstraintIndex << "\n";
+						std::cerr << "VALIDATE : " <<
+							( constraintsUpper[validate.upperConstraintIndex].y - constraintsLower[validate.lowerConstraintIndex].y ) /
+							( constraintsUpper[validate.upperConstraintIndex].x - constraintsLower[validate.lowerConstraintIndex].x ) << "\n";
+						std::cerr << "FOUND : " << newSegment.lowerConstraintIndex << " : " << newSegment.upperConstraintIndex << "\n";
+						std::cerr << "FOUND : " <<
+							( constraintsUpper[newSegment.upperConstraintIndex].y - constraintsLower[newSegment.lowerConstraintIndex].y ) /
+							( constraintsUpper[newSegment.upperConstraintIndex].x - constraintsLower[newSegment.lowerConstraintIndex].x ) << "\n";
+
+
+						float slopeDifference = (vB.y - vB.y ) / ( vB.x - vA.x ) - (nB.y - nB.y ) / ( nB.x - nA.x );
+						if( fabs( slopeDifference ) > 0 )
+						{
+							std::cerr << "SLOPE DIFFERENCE: " << slopeDifference << "\n";
+							throw IECore::Exception( "Slope didn't agree" );
+						}
+					}
+				}*/
 			}
 			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
