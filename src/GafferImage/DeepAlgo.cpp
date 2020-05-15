@@ -301,7 +301,7 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 
  This function either updates masterSearchParams with a line that fufills all constraints and returns true, or returns false and does not alter masterSearchParams.
 */
-ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, bool lowerChecked, bool upperChecked, bool debug ) // TODO - defaults for checked?
+ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, bool lowerChecked, bool upperChecked ) // TODO - defaults for checked?
 {
 	ConstraintSearchParams p = { lowerStart, upperStop - 1 };
 
@@ -309,42 +309,82 @@ ConstraintSearchParams steepestSegmentThroughConstraints( const SimplePoint *low
 	{
 		if( !lowerChecked )
 		{
-			int newLower = findAnchor( lowerConstraints, p.lowerConstraintIndex, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, debug );
+			int newLower = findAnchor( lowerConstraints, p.lowerConstraintIndex, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, false );
 			if( newLower == -1 )
 			{
-				if( debug ) std::cerr << "LOWER FAILED\n";
 				return {-1, -1};
 			}
 			else if( newLower != p.lowerConstraintIndex )
 			{
 				p.lowerConstraintIndex = newLower;
 				upperChecked = false;
-				if( debug ) std::cerr << "LOWER FOUND : " << newLower << "\n";
-			}
-			else
-			{
-				if( debug ) std::cerr << "LOWER UNCHANGED : " << newLower << "\n";
 			}
 			lowerChecked = true;
 		}
 
 		if( !upperChecked )
 		{
-			int newUpper = findAnchor( upperConstraints, upperStart, p.upperConstraintIndex + 1, p.upperConstraintIndex, lowerConstraints[p.lowerConstraintIndex], -1.0, -1.0, 1.0, debug );
+			int newUpper = findAnchor( upperConstraints, upperStart, p.upperConstraintIndex + 1, p.upperConstraintIndex, lowerConstraints[p.lowerConstraintIndex], -1.0, -1.0, 1.0, false );
 			if( newUpper == -1 )
 			{
-				if( debug ) std::cerr << "UPPER FAILED\n";
 				return {-1, -1};
 			}
 			else if( newUpper != p.upperConstraintIndex )
 			{
 				p.upperConstraintIndex = newUpper;
 				lowerChecked = false;
-				if( debug ) std::cerr << "UPPER FOUND : " << newUpper << "\n";
 			}
-			else
+			upperChecked = true;
+		}
+
+		/*if( p.lowerConstraintIndex == newLower && p.upperConstraintIndex == newUpper )
+		{
+			// No changes made
+			break;
+		}
+		p.lowerConstraintIndex = newLower;
+		p.upperConstraintIndex = newUpper;*/
+	}
+
+	return p;
+}
+ConstraintSearchParams steepestSegmentThroughConstraints2( const SimplePoint *lowerConstraints, int lowerStart, int lowerStop, const SimplePoint *upperConstraints, int upperStart, int upperStop, bool startUpper = false )
+{
+	ConstraintSearchParams p = { lowerStart, upperStop - 1 };
+
+	bool upperChecked = false;
+	bool lowerChecked = false;
+
+	while( !( lowerChecked && upperChecked ) )
+	{
+		if( !lowerChecked && !startUpper)
+		{
+			int newLower = findAnchor( lowerConstraints, p.lowerConstraintIndex, lowerStop, p.lowerConstraintIndex, upperConstraints[p.upperConstraintIndex], 1.0, 1.0, 1.0, false );
+			if( newLower == -1 )
 			{
-				if( debug ) std::cerr << "UPPER UNCHANGED : " << newUpper << "\n";
+				return {-1, -1};
+			}
+			else if( newLower != p.lowerConstraintIndex )
+			{
+				p.lowerConstraintIndex = newLower;
+				upperChecked = false;
+			}
+			lowerChecked = true;
+		}
+
+		startUpper = false;
+
+		if( !upperChecked )
+		{
+			int newUpper = findAnchor( upperConstraints, upperStart, p.upperConstraintIndex + 1, p.upperConstraintIndex, lowerConstraints[p.lowerConstraintIndex], -1.0, -1.0, 1.0, false );
+			if( newUpper == -1 )
+			{
+				return {-1, -1};
+			}
+			else if( newUpper != p.upperConstraintIndex )
+			{
+				p.upperConstraintIndex = newUpper;
+				lowerChecked = false;
 			}
 			upperChecked = true;
 		}
@@ -621,7 +661,7 @@ void minimalSegmentsForConstraints(
 			if( currentSearchParams.lowerConstraintIndex == -1 )
 			{
 				// No valid segment found yet, need to check all constraints
-				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false, false );
+				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false );
 			}
 			else
 			{
@@ -671,9 +711,11 @@ void minimalSegmentsForConstraints(
 					{
 						break;
 					}
+					throw IECore::Exception( "DOH" );
 				}
 				if( debug ) std::cerr << "\n\n************ SEARCH AFTER ADJUST *********** \n\n";
-				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, !advanceUpper, advanceUpper, debug );
+				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, true );
+				//newSegment = steepestSegmentThroughConstraints2( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, true );
 				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false, debug );
 				/*if( advanceUpper )
 				{
@@ -759,9 +801,9 @@ void minimalSegmentsForConstraints(
 
 			// Try fitting a line to our new set of constraints
 			//std::cerr << "CONSTRAINT SEARCH: " << tempConstraintLower.size() << " , " << tempConstraintUpper.size() << "\n";
-			//bool success = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams, debug );
-			//ConstraintSearchParams newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &tempParams, debug );
-			//ConstraintSearchParams newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], tempParams.lowerConstraintIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, tempParams.upperConstraintIndex + 1, false, false, debug );
+			//bool success = stepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &currentSearchParams, debug );
+			//ConstraintSearchParams newSegment = stepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, &tempParams, debug );
+			//ConstraintSearchParams newSegment = stepestSegmentThroughConstraints( &constraintsLower[0], tempParams.lowerConstraintIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, tempParams.upperConstraintIndex + 1, false, false, debug );
 
 			/*if( debug )
 			{
