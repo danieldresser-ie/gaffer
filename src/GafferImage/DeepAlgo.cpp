@@ -54,7 +54,7 @@ namespace
 /// Creates a set of point samples across the range of the pixel's depth for the alpha channel.
 /// The deepSamples that are returned are stored in the deepSamples vector, with values for depth and accumulated alpha from front to back
 
-const float maxConvertibleAlpha = 1. - std::numeric_limits<float>::epsilon();
+const float maxConvertibleAlpha = 1. - 4 * std::numeric_limits<float>::epsilon();
 const float maximumLinearY = -log1pf( - maxConvertibleAlpha );
 
 const float linearOpacityThreshold = -log1pf( - 0.99999 );  
@@ -497,11 +497,18 @@ void conformToSegments(
 			continue;
 		}
 
+		// The other situation that could arise from floating point error is a segment that doesn't
+		// rise above the previous sample segment.  Rather than outputting a 0 alpha segment, just
+		// skip it
+		if( i > 0 && compressedSamples[i].b.y <= compressedSamples[i-1].b.y )
+		{
+			continue;
+		}
+
 		float targetAlpha = -expm1f( -compressedSamples[i].b.y );
 		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
 		{
-			std::cerr << "BAD TARGET: " << targetAlpha << "\n";
-			targetAlpha = 0.0f;
+			throw IECore::Exception( "BAD TARGET " );
 		}
 
 		for( ; integrateIndex < inSamples; ++integrateIndex  )
@@ -532,6 +539,8 @@ void conformToSegments(
 				assert( alphaRemaining >= 0 );
 				alphaToTake = alphaRemaining;
 				alphaRemaining = 0;
+				totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
+				totalAccumAlpha = std::min( targetAlpha, totalAccumAlpha );
 			}
 			else
 			{
@@ -543,9 +552,10 @@ void conformToSegments(
 				}
 				alphaToTake = alphaNeeded;
 				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
+
+				totalAccumAlpha = targetAlpha;
 			}
 
-			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
 			float curChannelMultiplier = curA > 0 ? ( 1 - accumA ) * alphaToTake / curA : 0.0; // TODO
 			if( curChannelMultiplier < 0 )
 			{
@@ -683,7 +693,7 @@ void minimalSegmentsForConstraints(
 						continue;
 					}
 
-					int possiblyInvalidatedUpperConstraints = upperStartIndex;
+					/*int possiblyInvalidatedUpperConstraints = upperStartIndex;
 					float pivotX = constraintsLower[ currentSearchParams.lowerConstraintIndex ].x;
 					while( possiblyInvalidatedUpperConstraints < (int)testUpperStopIndex - 2 && constraintsUpper[possiblyInvalidatedUpperConstraints + 1].x < pivotX )
 					{
@@ -694,7 +704,7 @@ void minimalSegmentsForConstraints(
 					{
 						//throw IECore::Exception( "Does this ever happen?" );
 						break;
-					}
+					}*/
 
 					// NOTE : At this point, we need to do a search with TODO
 				}
@@ -714,8 +724,8 @@ void minimalSegmentsForConstraints(
 					throw IECore::Exception( "DOH" );
 				}
 				if( debug ) std::cerr << "\n\n************ SEARCH AFTER ADJUST *********** \n\n";
-				newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, true );
-				//newSegment = steepestSegmentThroughConstraints2( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, true );
+				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false );
+				newSegment = steepestSegmentThroughConstraints2( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, true );
 				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false, debug );
 				/*if( advanceUpper )
 				{
@@ -851,9 +861,6 @@ void minimalSegmentsForConstraints(
 		{
 			currentSearchParams.upperConstraintIndex++;
 			upperStopIndex = std::max( upperStopIndex, (unsigned int)currentSearchParams.upperConstraintIndex + 1 );
-			//advanceUpper = true; // TODO?
-
-			std::cerr << "CONSTRAINT ADVANCE FAILURE : FP PRECISION?\n";
 		}
 	
 
@@ -1248,6 +1255,9 @@ void minimalSegmentsForConstraints(
 						// The start of the new segment falls between the start and end of the previous segment.
 						// As a result, intersect the two line segments.
 						prevSegment.b = prevIntersect;
+
+						// Clamp so that we ensure floating point error doesn't make the previous segment decreasing
+						prevSegment.b.y = std::max( prevSegment.a.y, prevSegment.b.y );
 						//prevSegment.b.y = xStart * prevLineA + prevLineB;
 						if( prevSegment.a.x > prevSegment.b.x )
 						{
@@ -1295,6 +1305,7 @@ void minimalSegmentsForConstraints(
 			{
 
 				std::cerr << "BAD CURRENT : " << compressedSamples.back().b.y << " -> " << compressedSample.b.y << "\n";
+				throw IECore::Exception( "VERY BAD CURRENT" );
 				
 				//TODO
 				yPrev = segmentEnd.y;
@@ -1329,6 +1340,7 @@ void minimalSegmentsForConstraints(
 	compressedSamples.back().YBack = constraintsUpper.back().y;*/
 
 	//assert( compressedSamples.back().YBack == constraints.back().minY );
+	//
 
 	// As per section on Opaque Volume Samples in "Interpreting OpenEXR Deep Pixels", don't write out a large opaque volume sample
 	// Instead, write a large almost opaque sample, followed by a tiny point sample to take it up to opaque
@@ -1343,6 +1355,11 @@ void minimalSegmentsForConstraints(
 			LinearSegment finalSample;
 			finalSample.a = { thresholdX, linearOpacityThreshold };
 			finalSample.b = compressedSamples.back().b;
+
+			if( finalSample.a.y > finalSample.b.y )
+			{
+				throw IECore::Exception( "FINAL SAMPLE INSIDE OUT" );
+			}
 
 
 			// TODO - if sample starts over linearOpacityThreshold, this turns it inside out.  Fix this
@@ -1394,10 +1411,31 @@ void integratedPointSamplesForPixel(
 			deepSamples.push_back( { Z, accumAlpha } );
 		}
 
-		accumAlpha += inA[i] - accumAlpha * inA[i];
-		if( accumAlpha >= 1.0f )
+		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
+
+		if( nextAccumAlpha >= maxConvertibleAlpha )
 		{
-			accumAlpha = 1.0f;
+			if( inA[i] >= maxConvertibleAlpha || accumAlpha >= maxConvertibleAlpha || Z == ZBack )
+			{
+				accumAlpha = 1.0f;
+			}
+			else
+			{
+				// Weird special case:  if we convert this to an accumulated alpha, it can't be represented
+				// as a floating point number, because it's less than 1, but greater than the next lowest
+				// floating point number.  If we convert it to 1, we destroy the exponential curved shape
+				// of the sample, which in extreme cases, could be significant.  So we need to round it
+				// down to maxConvertibleAlpha, but then we also need to adjust ZBack to preserve the curve
+				// shape.
+				float alphaTaken = ( maxConvertibleAlpha - accumAlpha ) / ( 1 - accumAlpha );
+				float fractionTaken = log1p( -alphaTaken ) / log1p( -inA[i] );
+				ZBack = std::max( Z, std::min( ZBack, Z + ( ZBack - Z ) * fractionTaken ) );
+				accumAlpha = maxConvertibleAlpha;
+			}
+		}
+		else
+		{
+			accumAlpha = nextAccumAlpha;
 		}
 		if( deepSamples.size() ) assert( accumAlpha >= deepSamples.back().y );
 		deepSamples.push_back( { ZBack, accumAlpha } );
@@ -1768,6 +1806,15 @@ void resampleDeepPixel(
 
 	// TODO - runtime check? Plus one?
 	assert( compressedSamples.size() <= (size_t)inSamples + 1 );
+
+	
+	for( unsigned int i = 1; i < compressedSamples.size(); ++i )
+	{
+		if( i > 0 && compressedSamples[i-1].b.y > compressedSamples[i].b.y )
+		{
+			throw IECore::Exception( "NON-DECREASING PRE CHECK FAILED" );
+		}
+	}
 
 	if( debug ) std::cerr << "START CONFORM\n";
 	conformToSegments(

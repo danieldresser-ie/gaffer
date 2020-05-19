@@ -57,7 +57,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 	#longMessage = True
 
-	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount ):
+	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount, extraAlphaTolerance = 0 ):
 
 		origFlatten = GafferImage.DeepToFlat()
 		origFlatten["in"].setInput( toCompare )
@@ -112,10 +112,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# Make sure we're starting with the expected sample count
 		self.assertEqual( origCountResult, origSampleCount )
 
-		print "RESAMPLE COUNT: ", resampleCountResult
 		# Make sure we substantially reduce the sample count
-		#self.assertLess( resampleCount, 53250 ) # TODO
-		self.assertEqual( resampleCountResult, resampleCount ) # TODO
+		self.assertEqual( resampleCountResult, resampleCount )
 	
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( toCompare )
@@ -128,7 +126,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 	
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ), depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ) + extraAlphaTolerance, depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 	def testRepresentative( self ) :
 		representativeImage = GafferImage.ImageReader()
@@ -143,6 +141,10 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
 		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372 )
+
+		# Raises test time to 143 seconds
+		#oversample["maxSampleAlpha"].setValue( 0.0002 )
+		#self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.12, 64493305, 22372 )
 
 		depthGrade = GafferImage.Grade( "Grade11" )
 		depthGrade["in"].setInput( representativeImage["out"] )
@@ -161,7 +163,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# We need a high depth tolerance once we push everything way out this far.  ( The biggest error
 		# actually comes from the FilteredDepth output of DeepToFlat suffering from precision errors
 		# on the original, unresampled data )
-		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.8, 191482, 67991 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.82, 191482, 67991 )
 
 	def testRandomSamples( self ):
 
@@ -176,14 +178,26 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oversample["maxSampleAlpha"].setValue( 0.05 )
 
 		oslCode = GafferOSL.OSLCode()
+		oslCode["parameters"].addChild( Gaffer.FloatPlug( "minAlpha", defaultValue = 0.0 ) )
+		oslCode["parameters"].addChild( Gaffer.FloatPlug( "maxAlpha", defaultValue = 1.0 ) )
+		oslCode["parameters"].addChild( Gaffer.FloatPlug( "minDepth", defaultValue = 0.0 ) )
+		oslCode["parameters"].addChild( Gaffer.FloatPlug( "maxDepth", defaultValue = 1.0 ) )
 		oslCode["out"].addChild( Gaffer.FloatPlug( "a", direction = Gaffer.Plug.Direction.Out ) )
 		oslCode["out"].addChild( Gaffer.FloatPlug( "z", direction = Gaffer.Plug.Direction.Out ) )
 		oslCode["out"].addChild( Gaffer.FloatPlug( "zBack", direction = Gaffer.Plug.Direction.Out ) )
+		#oslCode["code"].setValue( """
+		#a = pow( hashnoise( P ), 10 );
+		#z = hashnoise( P + point( 344.234, 341.253, 9008.234 ) );
+		#zBack = z + 0.1 * hashnoise( P + point( 43.3242, 2431.23423, 234.5476 ) );
+		#""" )
 		oslCode["code"].setValue( """
-		a = pow( hashnoise( P ), 10 );
-		z = hashnoise( P + point( 344.234, 341.253, 9008.234 ) );
-		zBack = z + 0.1 * hashnoise( P + point( 43.3242, 2431.23423, 234.5476 ) );
-		""" )
+		a = mix( minAlpha, maxAlpha, pow( hashnoise( P ), 10 ) );
+		float zSeed = hashnoise( P + point( 344.234, 341.253, 9008.234 ) );
+		//z = mix( minDepth, maxDepth, zSeed );
+		//zBack = mix( minDepth, maxDepth, zSeed + 0.1 * hashnoise( P + point( 43.3242, 2431.23423, 234.5476 ) ) );
+		z = minDepth + ( maxDepth - minDepth ) * zSeed ;
+		zBack = minDepth + ( maxDepth - minDepth ) * ( zSeed + 0.1 * hashnoise( P + point( 43.3242, 2431.23423, 234.5476 ) ) );
+		""")
 
 		oslImage = GafferOSL.OSLImage()
 		oslImage["channels"].addChild( Gaffer.NameValuePlug( "A", Gaffer.FloatPlug( "value" ), True ) )
@@ -204,6 +218,17 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219304 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
+
+		oslCode["parameters"]["maxAlpha"].setValue( 0.01 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 52291 ) 
+		oslCode["parameters"]["maxAlpha"].setValue( 1 )
+		oslCode["parameters"]["minAlpha"].setValue( 0.99 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.007, 526233, 51832, extraAlphaTolerance = 0.000055) 
+		oslCode["parameters"]["minAlpha"].setValue( 0.0 )
+		oslCode["parameters"]["maxDepth"].setValue( 1000000 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1100, 526233, 125857 ) 
+		oslCode["parameters"]["minDepth"].setValue( 999999 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1001, 252101, 16384 ) 
 
 	"""
 	def testRepresentative( self ) :
