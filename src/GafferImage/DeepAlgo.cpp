@@ -736,64 +736,6 @@ void minimalSegmentsForConstraints(
 					newSegment = { searchLowerIndex, searchUpperIndex };
 				}*/
 
-				/*ConstraintSearchParams validate = steepestSegmentThroughConstraints( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, testUpperStopIndex, false, false, false );
-				if( !(
-					newSegment.lowerConstraintIndex == validate.lowerConstraintIndex &&
-					newSegment.upperConstraintIndex == validate.upperConstraintIndex
-				) )
-				{
-					if( newSegment.lowerConstraintIndex == -1 )
-					{
-						float violation = std::max(
-							measureViolation( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, validate.lowerConstraintIndex, constraintsUpper[validate.upperConstraintIndex], 1.0 ),
-							measureViolation( &constraintsUpper[0], upperStartIndex, testUpperStopIndex, validate.upperConstraintIndex, constraintsLower[validate.lowerConstraintIndex], -1.0 )
-						);
-						if( violation < 0 )
-						{
-							std::cerr << "VIOLATION OF : " << violation << "\n";
-							throw IECore::Exception( "No segment found with new method, but old method had low violation." );
-						}
-					}
-					else if( validate.lowerConstraintIndex == -1 )
-					{
-						float lowerViolation = measureViolation( &constraintsLower[0], lowerStartIndex, testLowerStopIndex, newSegment.lowerConstraintIndex, constraintsUpper[newSegment.upperConstraintIndex], 1.0 );
-						float upperViolation = measureViolation( &constraintsUpper[0], upperStartIndex, testUpperStopIndex, newSegment.upperConstraintIndex, constraintsLower[newSegment.lowerConstraintIndex], -1.0 );
-						if( lowerViolation > 0 || upperViolation > 0 )
-						{
-							std::cerr << "BEFORE: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
-							std::cerr << "ANCHOR ON NEW UPPER: " << searchUpperIndex << "\n";
-							std::cerr << "VALID: " << validate.lowerConstraintIndex << " : " << validate.upperConstraintIndex << "\n";
-							std::cerr << "VIOLATION OF : " << lowerViolation << " : " << upperViolation << "\n";
-							throw IECore::Exception( "Found a segment, but there is constraint violation." );
-						}
-					}
-					else
-					{
-
-						SimplePoint vA = constraintsLower[validate.lowerConstraintIndex];
-						SimplePoint vB = constraintsUpper[validate.upperConstraintIndex];
-						SimplePoint nA = constraintsLower[newSegment.lowerConstraintIndex];
-						SimplePoint nB = constraintsUpper[newSegment.upperConstraintIndex];
-						
-						std::cerr << "\n";
-						std::cerr << "VALIDATE : " << validate.lowerConstraintIndex << " : " << validate.upperConstraintIndex << "\n";
-						std::cerr << "VALIDATE : " <<
-							( constraintsUpper[validate.upperConstraintIndex].y - constraintsLower[validate.lowerConstraintIndex].y ) /
-							( constraintsUpper[validate.upperConstraintIndex].x - constraintsLower[validate.lowerConstraintIndex].x ) << "\n";
-						std::cerr << "FOUND : " << newSegment.lowerConstraintIndex << " : " << newSegment.upperConstraintIndex << "\n";
-						std::cerr << "FOUND : " <<
-							( constraintsUpper[newSegment.upperConstraintIndex].y - constraintsLower[newSegment.lowerConstraintIndex].y ) /
-							( constraintsUpper[newSegment.upperConstraintIndex].x - constraintsLower[newSegment.lowerConstraintIndex].x ) << "\n";
-
-
-						float slopeDifference = (vB.y - vB.y ) / ( vB.x - vA.x ) - (nB.y - nB.y ) / ( nB.x - nA.x );
-						if( fabs( slopeDifference ) > 0 )
-						{
-							std::cerr << "SLOPE DIFFERENCE: " << slopeDifference << "\n";
-							throw IECore::Exception( "Slope didn't agree" );
-						}
-					}
-				}*/
 			}
 			//
 			// Try forming a segment that pass over all lower constraints up to searchIndex, and under any upper
@@ -951,9 +893,8 @@ void minimalSegmentsForConstraints(
 		// TODO - This matches condition below, clean them up
 		if(
 			foundSlope &&
-			fabs( constraintsLower[ currentSearchParams.lowerConstraintIndex ].x - 
-			constraintsUpper[ currentSearchParams.upperConstraintIndex ].x ) > 1e-8f 
-			&& constraintsLower[ currentSearchParams.lowerConstraintIndex ].y == constraintsUpper[ currentSearchParams.upperConstraintIndex ].y
+			//fabs( constraintsLower[ currentSearchParams.lowerConstraintIndex ].x - constraintsUpper[ currentSearchParams.upperConstraintIndex ].x ) > 1e-8f &&  // TODO?
+			constraintsLower[ currentSearchParams.lowerConstraintIndex ].y == constraintsUpper[ currentSearchParams.upperConstraintIndex ].y
 		)
 		{
 			// TODO TODO TODO TODO
@@ -961,33 +902,6 @@ void minimalSegmentsForConstraints(
 			std::cerr << "SEARCHING LOWER: " << lowerStartIndex << " : " << lowerStopIndex << "\n";
 			std::cerr << "SEARCHING UPPER: " << upperStartIndex << " : " << upperStopIndex << "\n";
 			std::cerr << "CURRENT: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
-			//bool skipped = false;
-			//while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y == yPrev )
-			//while( upperStartIndex + 1 < constraintsUpper.size() && constraintsUpper[upperStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() * 40.0f ) // TODO TODO TODO - get rid of epsilon
-			//{
-			//	skipped = true;
-			//	std::cerr << "FAST FORWARD UPPER";
-			//	upperStartIndex++;
-			//}
-			//while( lowerStartIndex + 1 < constraintsLower.size() && constraintsLower[lowerStartIndex + 1].y <= yPrev + std::numeric_limits<float>::epsilon() ) // TODO TODO TODO - get rid of epsilon
-			//{
-			//	skipped = true;
-			//	std::cerr << "FAST FORWARD LOWER";
-			//	lowerStartIndex++;
-			//}
-			
-			//if( !skipped )
-			//{
-			//	if( upperStartIndex + 1 < constraintsUpper.size() )
-			//	{
-			//		std::cerr << "TEST : " << yPrev << " : " << constraintsUpper[upperStartIndex + 1 ].y << "\n";
-			//	}
-			//	else
-			//	{
-			//		std::cerr << "HIT END\n";
-			//	}
-			//	throw IECore::Exception( "unskippable flat" );
-			//}
 
 			lowerStartIndex++;
 			lowerStopIndex = std::max( lowerStopIndex, lowerStartIndex );
@@ -1017,8 +931,40 @@ void minimalSegmentsForConstraints(
 		}
 
 
-		SimplePoint cacheLowerBeforeIntersect = constraintsLower[ currentSearchParams.lowerConstraintIndex ];
-		SimplePoint cacheUpperBeforeIntersect = constraintsUpper[ currentSearchParams.upperConstraintIndex ];
+		//SimplePoint cacheLowerBeforeIntersect = constraintsLower[ currentSearchParams.lowerConstraintIndex ];
+		//SimplePoint cacheUpperBeforeIntersect = constraintsUpper[ currentSearchParams.upperConstraintIndex ];
+
+		SimplePoint prevIntersect;
+		if( foundSlope )
+		{
+			prevIntersect = evaluateLineAtY(
+				constraintsLower[currentSearchParams.lowerConstraintIndex],
+				constraintsUpper[currentSearchParams.upperConstraintIndex],
+				yPrev
+			);
+
+			if( compressedSamples.size() > 0 && prevIntersect.x < compressedSamples.back().b.x )
+			{
+				LinearSegment &prevSegment = compressedSamples.back();
+				// Calculate the intersection of our new line with the previous line
+				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
+				prevIntersect = segmentIntersect(
+					constraintsLower[currentSearchParams.lowerConstraintIndex],
+					constraintsUpper[currentSearchParams.upperConstraintIndex],
+					prevSegment.a, prevSegment.b
+				);
+				if( prevIntersect.x < prevSegment.a.x )
+				{
+					// This case may occur due to precision issues.
+					prevIntersect.x = prevSegment.a.x;
+				}
+				if( prevIntersect.x > prevSegment.b.x )
+				{
+					prevIntersect.x = prevSegment.b.x;
+				}
+			}
+		}
+
 		// Calculate where our new line hits its flat top
 
 		if( lowerStopIndex == constraintsLower.size() )
@@ -1168,10 +1114,10 @@ void minimalSegmentsForConstraints(
 			lowerStopIndex = constraintsLower.size();
 		}
 		else*/
-		if( !( foundSlope && fabs( cacheLowerBeforeIntersect.x - cacheUpperBeforeIntersect.x ) > 1e-8f ) )
+
+		if( !foundSlope )
 		//if( fabs( lineA ) == std::numeric_limits<float>::infinity() )
 		{
-			if( debug ) std::cerr << "VERTICAL LINE FOUND at : " << constraintsLower[currentSearchParams.lowerConstraintIndex].x << " : " << currentSearchParams.lowerConstraintIndex << " of " << constraintsLower.size() << "\n";
 			// The line we have found is a point sample.
 			xStart = segmentEnd.x = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
 			assert( std::isfinite( segmentEnd.x ) && !isnan( segmentEnd.x ) );
@@ -1188,97 +1134,21 @@ void minimalSegmentsForConstraints(
 			assert( !std::isnan( segmentEnd.x ) );
 		
 				
-
 			// Calculate where our new line hits the previous flat top
-			xStart = evaluateLineAtY(
-				cacheLowerBeforeIntersect, cacheUpperBeforeIntersect,
-			/*	constraintsLower[currentSearchParams.lowerConstraintIndex],
-				constraintsUpper[currentSearchParams.upperConstraintIndex],
-			*/
-				yPrev
-			).x;
-
-			/*float xStartOld = ( yPrev - lineB ) / lineA;
-			if( debug && xStart != xStartOld )
-			{
-				std::cerr << "xStart mismatch : " << xStart << " : " << xStartOld << "\n";
-				std::cerr << "\nCOMPUTED FROM\n";
-				std::cerr << "yPrev : " << yPrev << "\n";
-				if( currentSearchParams.lowerConstraintIndex >= 0 )
-				{
-					std::cerr << "\nLOWER : " <<
-						constraintsLower[currentSearchParams.lowerConstraintIndex].x << ", " << 
-						constraintsLower[currentSearchParams.lowerConstraintIndex].y << "\n";
-				}
-				if( currentSearchParams.upperConstraintIndex >= 0 )
-				{
-					std::cerr << "\nUPPER : " <<
-						constraintsUpper[currentSearchParams.upperConstraintIndex].x << ", " << 
-						constraintsUpper[currentSearchParams.upperConstraintIndex].y << "\n";
-				}
-			}*/
+			// Calculate the intersection of our new line with the previous line
+			xStart = prevIntersect.x;
 
 			// If there is a previous segment, we need to cover the possibility that we are overlapping with it
-			if( compressedSamples.size() > 0 && xStart < compressedSamples.back().b.x )
+			if( compressedSamples.size() > 0 && xStart <= compressedSamples.back().b.x )
 			{
 				LinearSegment &prevSegment = compressedSamples.back();
-				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
-				//if( fabs( prevLineA ) == std::numeric_limits<float>::infinity() )
-				/*if( compressedSamples.back().a.x == compressedSamples.back().b.x )
-				{
-					xStart = compressedSamples.back().b.x;
-					prevSegment.b.y = prevSegment.b.x * lineA + lineB;
-				}
-				else*/
-				{
 
-					// Calculate the intersection of our new line with the previous line
-					//xStart = ( lineB - prevLineB ) / ( prevLineA - lineA );
-					SimplePoint prevIntersect = segmentIntersect(
-						cacheLowerBeforeIntersect, cacheUpperBeforeIntersect,
-						prevSegment.a, prevSegment.b
-					);
-					xStart = prevIntersect.x;
-					if( xStart < prevSegment.a.x )
-					{
-						// This case may occur due to precision issues.
-						xStart = prevSegment.b.x;
-					}
-					else if( xStart > segmentEnd.x )
-					{
-						// This case may occur due to precision issues.
-						xStart = segmentEnd.x;
-					}
-					else
-					{
-						//std::cerr << "BEFORE : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
-						// The start of the new segment falls between the start and end of the previous segment.
-						// As a result, intersect the two line segments.
-						prevSegment.b = prevIntersect;
+				// The start of the new segment falls between the start and end of the previous segment.
+				// As a result, intersect the two line segments.
+				prevSegment.b = prevIntersect;
 
-						// Clamp so that we ensure floating point error doesn't make the previous segment decreasing
-						prevSegment.b.y = std::max( prevSegment.a.y, prevSegment.b.y );
-						//prevSegment.b.y = xStart * prevLineA + prevLineB;
-						if( prevSegment.a.x > prevSegment.b.x )
-						{
-							std::cerr << "MESSING THINGS UP\n";
-						}
-
-						/*if( debug )
-						{
-							std::cerr << "****** CHANGING PREV YBACK *********\n";
-							std::cerr << "FROM : " << prevSegment.b.y << " to " << prevIntersect.y << "\n";
-							std::cerr << "CALC : " << xStart << " * " <<  prevLineA  << " + " << prevLineB << "\n";
-						}*/
-						//std::cerr << "AFTER : " << prevSegment.XBack << " , " << prevSegment.YBack << "\n";
-					}
-				}
-				if( !std::isfinite( prevSegment.b.x ) )
-				{
-					std::cerr << "XSstart : " << xStart << "\n";
-					//std::cerr << "PrevLineA : " << prevLineA << "\n";
-					throw IECore::Exception( "BAD XBACK" );
-				}
+				// Clamp so that we ensure floating point error doesn't make the previous segment decreasing
+				prevSegment.b.y = std::max( prevSegment.a.y, prevSegment.b.y );
 			}
 		}
 
@@ -1324,11 +1194,6 @@ void minimalSegmentsForConstraints(
 		compressedSamples.push_back( compressedSample );
 
 		yPrev = segmentEnd.y;
-
-
-		//prevSearchParams = currentSearchParams;
-		//prevLineA = lineA;
-		//prevLineB = lineB;
 	}
 
 	// TODO - adjust XBack too
