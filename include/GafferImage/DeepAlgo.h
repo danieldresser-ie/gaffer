@@ -58,20 +58,21 @@ struct GAFFERIMAGETEST_API DeepConstraint
 };
 
 GAFFERIMAGETEST_API void debugConstraintsForPixel(
-    const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    float alphaTolerance,
-    float zTolerance,
-    std::vector< std::pair<float,float> > &lowerConstraints,
-    std::vector< std::pair<float,float> > &upperConstraints
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	const std::vector<const float *> &colorChannels,
+	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	std::vector< std::pair<float,float> > &lowerConstraints,
+	std::vector< std::pair<float,float> > &upperConstraints
 );
 
 }
 
 GAFFERIMAGETEST_API void resampleDeepPixel(
-    const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    float alphaTolerance, float zTolerance,
-    int &outSamples, float *outA, float *outZ, float *outZBack,
-    bool debug
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	const std::vector<const float *> &colorChannels,
+	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	int &outSamples, float *outA, float *outZ, float *outZBack,
+	bool debug
 );
 
 GAFFERIMAGETEST_API void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const float *outAlpha, const float *inChannel, float *outChannel );

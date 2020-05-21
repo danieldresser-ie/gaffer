@@ -59,8 +59,14 @@ class GAFFERIMAGE_API DeepResample : public ImageProcessor
 		Gaffer::FloatPlug *alphaTolerancePlug();
 		const Gaffer::FloatPlug *alphaTolerancePlug() const;
 
+		Gaffer::FloatPlug *colorTolerancePlug();
+		const Gaffer::FloatPlug *colorTolerancePlug() const;
+
 		Gaffer::FloatPlug *depthTolerancePlug();
 		const Gaffer::FloatPlug *depthTolerancePlug() const;
+
+		Gaffer::FloatPlug *silhouetteDepthPlug();
+		const Gaffer::FloatPlug *silhouetteDepthPlug() const;
 
 		void affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const override;
 

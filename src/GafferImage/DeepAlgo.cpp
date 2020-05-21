@@ -57,7 +57,7 @@ namespace
 const float maxConvertibleAlpha = 1. - 4 * std::numeric_limits<float>::epsilon();
 const float maximumLinearY = -log1pf( - maxConvertibleAlpha );
 
-const float linearOpacityThreshold = -log1pf( - 0.99999 );  
+const float linearOpacityThreshold = -log1pf( - 0.99999 );
 
 /// Given a value in linear space, make it exponential.
 float linearToExponential( float value )
@@ -898,10 +898,11 @@ void minimalSegmentsForConstraints(
 		)
 		{
 			// TODO TODO TODO TODO
-			std::cerr << "\n\nBAD FLAT\n";
+			/*std::cerr << "\n\nBAD FLAT\n";
 			std::cerr << "SEARCHING LOWER: " << lowerStartIndex << " : " << lowerStopIndex << "\n";
 			std::cerr << "SEARCHING UPPER: " << upperStartIndex << " : " << upperStopIndex << "\n";
 			std::cerr << "CURRENT: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
+			*/
 
 			lowerStartIndex++;
 			lowerStopIndex = std::max( lowerStopIndex, lowerStartIndex );
@@ -1251,15 +1252,9 @@ void integratedPointSamplesForPixel(
 	std::vector<SimplePoint> &deepSamples
 )
 {
-	// Create an additional sample just before the first to force
-	// the algorithm to start from the first sample.  // TODO - why is this necessary?
-	//float depthOfFirstPoint = inZ[ 0 ] * 0.99999;
-	//deepSamples.push_back( SimplePoint( depthOfFirstPoint, 0 ) );
-
 	float ZBackPrev = -1;
 	float accumAlpha = 0;
-	//float accumAlphaLinear = 0;
-	// Now add the remaining samples.
+
 	for ( int i = 0; i < inSamples; ++i )
 	{
 		// TODO - should I investigate why this causes weirdness?
@@ -1320,8 +1315,8 @@ inline float applyZTol( float z, float tol, bool upper )
 */
 void linearConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	float alphaTolerance,
-	float zTolerance,
+	const std::vector<const float *> &colorChannels,
+	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
 	std::vector< SimplePoint > &lowerConstraints,
 	std::vector< SimplePoint > &upperConstraints
 )
@@ -1452,7 +1447,7 @@ void linearConstraintsForPixel(
 			float denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
 			if( denom == 0.0f )
 			{
-				break;  // TODO - don't 100% understand the circumstances this occurs in
+				break; // TODO - don't 100% understand the circumstances this occurs in
 			}
 			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / denom;
 			if( !std::isfinite( lerp ))
@@ -1493,7 +1488,7 @@ void linearConstraintsForPixel(
 	unsigned int matchingLowerIndex = 0;
 
 	assert( deepSamples.size() >= 1 );
-	assert( deepSamples[0].y == 0  );
+	assert( deepSamples[0].y == 0 );
 	assert( !isinf( deepSamples[0].x ) );
 
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
@@ -1589,17 +1584,18 @@ namespace Detail
 {
 
 void debugConstraintsForPixel(
-    const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-    float alphaTolerance,
-    float zTolerance,
-    std::vector< std::pair<float,float> > &lowerConstraints,
-    std::vector< std::pair<float,float> > &upperConstraints
+	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+	const std::vector<const float *> &colorChannels,
+	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	std::vector< std::pair<float,float> > &lowerConstraints,
+	std::vector< std::pair<float,float> > &upperConstraints
 )
 {
 	std::vector< SimplePoint > lowerLinear;
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
-		inSamples, inA, inZ, inZBack, alphaTolerance, zTolerance,
+		inSamples, inA, inZ, inZBack, colorChannels,
+		alphaTolerance, colorTolerance, zTolerance, silhouetteDepth,
 		lowerLinear, upperLinear
 	);
 
@@ -1624,7 +1620,8 @@ void debugConstraintsForPixel(
 // TODO : Shouldn't really be any need for anything to be in float precision here?
 void resampleDeepPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	float alphaTolerance, float zTolerance,
+	const std::vector<const float *> &colorChannels,
+	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
 	int &outSamples, float *outA, float *outZ, float *outZBack,
 	bool debug
 )
@@ -1645,8 +1642,8 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsLower;
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
-		inSamples, inA, inZ, inZBack,
-		alphaTolerance, zTolerance,
+		inSamples, inA, inZ, inZBack, colorChannels,
+		alphaTolerance, colorTolerance, zTolerance, silhouetteDepth,
 		constraintsLower, constraintsUpper
 	);
 
@@ -1715,7 +1712,7 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 		float segmentAccumChannel = 0;
 		float segmentAccumAlpha = 0;
 
-		for( ; integrateIndex < inSamples; integrateIndex++  )
+		for( ; integrateIndex < inSamples; integrateIndex++ )
 		{
 			if( alphaRemaining == 0.0 )
 			{

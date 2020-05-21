@@ -57,8 +57,14 @@ class GAFFERIMAGE_API DeepResampleConstraints : public GafferImage::ImageProcess
 		Gaffer::FloatPlug *alphaTolerancePlug();
 		const Gaffer::FloatPlug *alphaTolerancePlug() const;
 
+        Gaffer::FloatPlug *colorTolerancePlug();
+        const Gaffer::FloatPlug *colorTolerancePlug() const;
+
 		Gaffer::FloatPlug *depthTolerancePlug();
 		const Gaffer::FloatPlug *depthTolerancePlug() const;
+
+        Gaffer::FloatPlug *silhouetteDepthPlug();
+        const Gaffer::FloatPlug *silhouetteDepthPlug() const;
 
 		Gaffer::BoolPlug *upperPlug();
 		const Gaffer::BoolPlug *upperPlug() const;

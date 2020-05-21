@@ -57,7 +57,10 @@ DeepResampleConstraints::DeepResampleConstraints( const std::string &name )
 	storeIndexOfNextChild( g_firstPlugIndex );
 
 	addChild( new FloatPlug( "alphaTolerance", Gaffer::Plug::In, 0.01 ) );
+	addChild( new FloatPlug( "colorTolerance", Gaffer::Plug::In, 0.05 ) );
 	addChild( new FloatPlug( "depthTolerance", Gaffer::Plug::In, 0.01 ) );
+	addChild( new FloatPlug( "silhouetteDepth", Gaffer::Plug::In, 0.1 ) );
+
 	addChild( new BoolPlug( "upper", Gaffer::Plug::In, false ) );
 
 	addChild( new CompoundObjectPlug( "__constraints", Gaffer::Plug::Out, new IECore::CompoundObject() ) );
@@ -83,34 +86,54 @@ const Gaffer::FloatPlug *DeepResampleConstraints::alphaTolerancePlug() const
 	return getChild<FloatPlug>( g_firstPlugIndex + 0 );
 }
 
-Gaffer::FloatPlug *DeepResampleConstraints::depthTolerancePlug()
+Gaffer::FloatPlug *DeepResampleConstraints::colorTolerancePlug()
 {
 	return getChild<FloatPlug>( g_firstPlugIndex + 1 );
+}
+
+const Gaffer::FloatPlug *DeepResampleConstraints::colorTolerancePlug() const
+{
+	return getChild<FloatPlug>( g_firstPlugIndex + 1 );
+}
+
+Gaffer::FloatPlug *DeepResampleConstraints::depthTolerancePlug()
+{
+	return getChild<FloatPlug>( g_firstPlugIndex + 2 );
 }
 
 const Gaffer::FloatPlug *DeepResampleConstraints::depthTolerancePlug() const
 {
-	return getChild<FloatPlug>( g_firstPlugIndex + 1 );
+	return getChild<FloatPlug>( g_firstPlugIndex + 2 );
+}
+
+Gaffer::FloatPlug *DeepResampleConstraints::silhouetteDepthPlug()
+{
+	return getChild<FloatPlug>( g_firstPlugIndex + 3 );
+}
+
+const Gaffer::FloatPlug *DeepResampleConstraints::silhouetteDepthPlug() const
+{
+	return getChild<FloatPlug>( g_firstPlugIndex + 3 );
 }
 
 Gaffer::BoolPlug *DeepResampleConstraints::upperPlug()
 {
-	return getChild<BoolPlug>( g_firstPlugIndex + 2 );
+	return getChild<BoolPlug>( g_firstPlugIndex + 4 );
 }
 
 const Gaffer::BoolPlug *DeepResampleConstraints::upperPlug() const
 {
-	return getChild<BoolPlug>( g_firstPlugIndex + 2 );
+	return getChild<BoolPlug>( g_firstPlugIndex + 4 );
 }
 
 Gaffer::CompoundObjectPlug *DeepResampleConstraints::constraintsPlug()
 {
-	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 3 );
+	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 5 );
 }
 
 const Gaffer::CompoundObjectPlug *DeepResampleConstraints::constraintsPlug() const
 {
-	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 3 );
+	return getChild<CompoundObjectPlug>( g_firstPlugIndex + 5 );
 }
 
 void DeepResampleConstraints::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const
@@ -146,32 +169,29 @@ void DeepResampleConstraints::hash( const Gaffer::ValuePlug *output, const Gaffe
 		return;
 	}
 
+	std::vector<string> channelNames;
+	{
+		ImagePlug::GlobalScope globalScope( context );
+		alphaTolerancePlug()->hash( h );
+		colorTolerancePlug()->hash( h );
+		depthTolerancePlug()->hash( h );
+		silhouetteDepthPlug()->hash( h );
 
-	alphaTolerancePlug()->hash( h );
-	depthTolerancePlug()->hash( h );
-	upperPlug()->hash( h );
+		upperPlug()->hash( h );
 
-	ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
-	std::vector<string> channelNames = channelNamesData->readable();
+		inPlug()->channelNamesPlug()->hash( h );
+
+		ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
+		channelNames = channelNamesData->readable();
+	}
 
 	inPlug()->sampleOffsetsPlug()->hash( h );
 
-	if(
-		ImageAlgo::channelExists( channelNames, "A" ) &&
-		ImageAlgo::channelExists( channelNames, "Z" ) 
-	)
+	ImagePlug::ChannelDataScope channelScope( context );
+	for( const std::string &n : channelNames )
 	{
-		ImagePlug::ChannelDataScope channelScope( context );
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( n );
 		inPlug()->channelDataPlug()->hash( h );
-
-		channelScope.setChannelName( "Z" );
-		inPlug()->channelDataPlug()->hash( h );
-
-		if( ImageAlgo::channelExists( channelNames, "ZBack" ) )
-		{
-			inPlug()->channelDataPlug()->hash( h );
-		}
 	}
 }
 
@@ -184,17 +204,28 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		return;
 	}
 
-	float alphaTolerance = alphaTolerancePlug()->getValue();
-	float depthTolerance = depthTolerancePlug()->getValue();
-	float upper = upperPlug()->getValue();
+	float alphaTolerance;
+	float colorTolerance;
+	float depthTolerance;
+	float silhouetteDepth;
+	float upper;
+	std::vector<string> channelNames;
+	{
+		alphaTolerance = alphaTolerancePlug()->getValue();
+		colorTolerance = colorTolerancePlug()->getValue();
+		depthTolerance = depthTolerancePlug()->getValue();
+		silhouetteDepth = silhouetteDepthPlug()->getValue();
+		upper = upperPlug()->getValue();
+
+		ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
+		channelNames = channelNamesData->readable();
+	}
 
 	ConstIntVectorDataPtr sampleOffsetsData = inPlug()->sampleOffsetsPlug()->getValue();
 	const std::vector<int> &sampleOffsets = sampleOffsetsData->readable();
 
 	CompoundObjectPtr constraintsData = new CompoundObject();
 
-	ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
-	std::vector<string> channelNames = channelNamesData->readable();
 
 	if(
 		ImageAlgo::channelExists( channelNames, "A" ) &&
@@ -222,6 +253,13 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		}
 		const std::vector<float> &zBack = zBackData->readable();
 
+		std::vector<ConstFloatVectorDataPtr> colorChannelsData;
+		for( const std::string &n : channelNames )
+		{
+			channelScope.setChannelName( n );
+			colorChannelsData.push_back( inPlug()->channelDataPlug()->getValue() );
+		}
+
 		IntVectorDataPtr outSampleOffsetsData = new IntVectorData();
 		std::vector<int> &outSampleOffsets = outSampleOffsetsData->writable();
 		outSampleOffsets.resize( sampleOffsets.size() );
@@ -243,13 +281,21 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		std::vector<std::pair<float, float> > upperConstraints;
 		std::vector<std::pair<float, float> > &currentConstraints = upper ? upperConstraints : lowerConstraints;
 		
+		std::vector<const float*> colorChannels;
+
 		for( unsigned int i = 0; i < sampleOffsets.size(); i++ )
 		{
 			int index = sampleOffsets[i];
+
+			colorChannels.clear();
+			for( const ConstFloatVectorDataPtr &channelData : colorChannelsData )
+			{
+				colorChannels.push_back( &channelData->readable()[prev] );
+			}
 		
 			DeepAlgo::Detail::debugConstraintsForPixel(
-				index - prev, &alpha[prev], &z[prev], &zBack[prev],
-				alphaTolerance, depthTolerance,
+				index - prev, &alpha[prev], &z[prev], &zBack[prev], colorChannels,
+				alphaTolerance, colorTolerance, depthTolerance, silhouetteDepth,
 				lowerConstraints, upperConstraints	
 			);
 
