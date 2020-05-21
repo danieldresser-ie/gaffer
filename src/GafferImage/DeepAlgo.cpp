@@ -1249,12 +1249,15 @@ void minimalSegmentsForConstraints(
 */
 void integratedPointSamplesForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	std::vector<SimplePoint> &deepSamples
+	const std::vector<const float *> &colorChannels, float colorTolerance,
+	std::vector<SimplePoint> &deepSamples,
+	std::vector<bool> &canMerge
 )
 {
 	float ZBackPrev = -1;
 	float accumAlpha = 0;
 
+	std::vector<float> accumColor( colorChannels.size(), 0.0f );
 	for ( int i = 0; i < inSamples; ++i )
 	{
 		// TODO - should I investigate why this causes weirdness?
@@ -1266,12 +1269,27 @@ void integratedPointSamplesForPixel(
 		float Z = inZ[ i ];
 		float ZBack = inZBack[ i ];
 
+
+		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
+
+		if( deepSamples.size() )
+		{
+			for( unsigned int c = 0; c < colorChannels.size(); c++ )
+			{
+				float nextChannelValue = accumColor[c] + ( 1 - accumAlpha ) * colorChannels[c][i];
+				float prevError = ( nextChannelValue / nextAccumAlpha ) * accumAlpha - accumColor[c];
+				if( prevError > colorTolerance )
+				{
+					canMerge.back() = false;
+				}
+			}
+		}
+
 		if( Z != ZBackPrev )
 		{
 			deepSamples.push_back( { Z, accumAlpha } );
+			canMerge.push_back( true );
 		}
-
-		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
 
 		if( nextAccumAlpha >= maxConvertibleAlpha )
 		{
@@ -1299,6 +1317,7 @@ void integratedPointSamplesForPixel(
 		}
 		if( deepSamples.size() ) assert( accumAlpha >= deepSamples.back().y );
 		deepSamples.push_back( { ZBack, accumAlpha } );
+		canMerge.push_back( true );
 	
 		ZBackPrev = ZBack;	
 	}
@@ -1356,7 +1375,8 @@ void linearConstraintsForPixel(
 	
 	// TODO - get rid of this alloc by combining with function above
 	std::vector< SimplePoint > deepSamples;
-	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
+	std::vector< bool > canMerge;
+	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, colorChannels, colorTolerance, deepSamples, canMerge );
 	if( deepSamples.size() == 0 )
 	{
 		// TODO : Currently, as per other TODO, we skip 0 alpha samples, so this could trigger
@@ -1373,7 +1393,12 @@ void linearConstraintsForPixel(
 		float nextX;
 		float nextAlpha;
 
-		if( j == deepSamples.size() - 1 )
+		if( !canMerge[j] )
+		{
+			nextX = deepSamples[j].x;
+			nextAlpha = deepSamples[j].y;
+		}
+		else if( j == deepSamples.size() - 1 )
 		{
 			// Ensure that we always reach the exact final value
 			nextX = applyZTol( deepSamples[j].x, zTolerance, false );
@@ -1502,13 +1527,26 @@ void linearConstraintsForPixel(
 	
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
 	{
-		float nextAlpha = deepSamples[j].y + aTol;
+		SimplePoint nextUpper;
+		float nextAlpha;
+		if( !canMerge[j] )
+		{
+			nextAlpha = deepSamples[j].y;
+			nextUpper = {
+				deepSamples[j].x,
+				-log1pf( -nextAlpha )
+			};
+		}
+		else
+		{
+			nextAlpha = deepSamples[j].y + aTol;
 
-		// TODO - comment
-		SimplePoint nextUpper = {
-			applyZTol( deepSamples[j].x, zTolerance, true ),
-			nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
-		};
+			// TODO - comment
+			nextUpper = {
+				applyZTol( deepSamples[j].x, zTolerance, true ),
+				nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
+			};
+		}
 
 		if( nextUpper.x == prevUpper.x )
 		{

@@ -166,7 +166,8 @@ void DeepResample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &o
 	if(
 		input == tidyInPlug()->sampleOffsetsPlug() || input == tidyInPlug()->channelNamesPlug() ||
 		input == tidyInPlug()->channelDataPlug() ||
-		input == alphaTolerancePlug() || input == depthTolerancePlug()
+		input == alphaTolerancePlug() || input == colorTolerancePlug() ||
+		input == depthTolerancePlug() || input == silhouetteDepthPlug() 
 	)
 	{
 		outputs.push_back( resampledPlug() );
@@ -278,10 +279,17 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		const std::vector<float> &zBack = zBackData->readable();
 
 		std::vector<ConstFloatVectorDataPtr> colorChannelsData;
-		for( const std::string &n : channelNames )
+		if( colorTolerance != 0.0f )
 		{
-			channelScope.setChannelName( n );
-			colorChannelsData.push_back( tidyInPlug()->channelDataPlug()->getValue() );
+			for( const std::string &n : channelNames )
+			{
+				if( n == "A" || n == "Z" || n == "ZBack" )
+				{
+					continue;
+				}
+				channelScope.setChannelName( n );
+				colorChannelsData.push_back( tidyInPlug()->channelDataPlug()->getValue() );
+			}
 		}
 
 		IntVectorDataPtr outSampleOffsetsData = new IntVectorData();

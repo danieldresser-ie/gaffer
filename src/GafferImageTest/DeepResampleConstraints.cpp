@@ -143,7 +143,9 @@ void DeepResampleConstraints::affects( const Gaffer::Plug *input, AffectedPlugsC
 	if(
 		input == inPlug()->sampleOffsetsPlug() || input == inPlug()->channelNamesPlug() ||
 		input == inPlug()->channelDataPlug() ||
-		input == alphaTolerancePlug() || input == depthTolerancePlug() || input == upperPlug()
+		input == alphaTolerancePlug() || input == colorTolerancePlug() ||
+		input == depthTolerancePlug() || input == silhouetteDepthPlug() ||
+		input == upperPlug()
 	)
 	{
 		outputs.push_back( constraintsPlug() );
@@ -254,10 +256,17 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		const std::vector<float> &zBack = zBackData->readable();
 
 		std::vector<ConstFloatVectorDataPtr> colorChannelsData;
-		for( const std::string &n : channelNames )
+		if( colorTolerance != 0.0f )
 		{
-			channelScope.setChannelName( n );
-			colorChannelsData.push_back( inPlug()->channelDataPlug()->getValue() );
+			for( const std::string &n : channelNames )
+			{
+				if( n == "A" || n == "Z" || n == "ZBack" )
+				{
+					continue;
+				}
+				channelScope.setChannelName( n );
+				colorChannelsData.push_back( inPlug()->channelDataPlug()->getValue() );
+			}
 		}
 
 		IntVectorDataPtr outSampleOffsetsData = new IntVectorData();
