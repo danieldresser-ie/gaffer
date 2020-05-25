@@ -1254,7 +1254,7 @@ void integratedPointSamplesForPixel(
 	std::vector<bool> &canMerge
 )
 {
-	float ZBackPrev = -1;
+	float ZBackPrev = -1e38f;
 	float accumAlpha = 0;
 
 	std::vector<float> accumColor( colorChannels.size(), 0.0f );
@@ -1287,6 +1287,11 @@ void integratedPointSamplesForPixel(
 
 		if( Z != ZBackPrev )
 		{
+			if( !( Z > -1000 )  )
+			{
+				std::cerr << "Z: " << i << " of " << inSamples << " = " << Z << "\n";
+				throw IECore::Exception( "Q?" );
+			}
 			deepSamples.push_back( { Z, accumAlpha } );
 			canMerge.push_back( true );
 		}
@@ -1421,6 +1426,10 @@ void linearConstraintsForPixel(
 				}*/
 
 				nextX = applyZTol( deepSamples[j].x, zTolerance, false );
+				if( !( nextX > -1000 ) )
+				{
+					throw IECore::Exception( "A?" );
+				}
 				nextAlpha = std::min( minAlpha, maximumLinearY );
 			}
 			else
@@ -1437,22 +1446,46 @@ void linearConstraintsForPixel(
 					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
 						( exponentialToLinear(deepSamples[j+1].y) - exponentialToLinear(deepSamples[j].y ) );
 
+					if( !lerp >= 0.0f )
+					{
+						lerp = 0.0f;
+					}
+					else if( !lerp <= 1.0f )
+					{
+						lerp = 1.0f;
+					}
 					if( std::isnan( lerp ) || !std::isfinite( lerp ))
 					{
 						throw IECore::Exception( "CUR" );
 					}
 		
+					if( !(deepSamples[j].x > -1000 ) )
+					{
+						throw IECore::Exception( "input 1?" );
+					}
+					if( !(deepSamples[j+1].x > -1000 ) )
+					{
+						throw IECore::Exception( "input 2?" );
+					}
 					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
 					// Make sure floating point error doesn't violate non-decreasing X
 					xIntercept = std::min( deepSamples[j+1].x, xIntercept );
 					nextX = applyZTol( xIntercept, zTolerance, false );
 					nextAlpha = 0.0;
+					if( !( nextX > -1000 ) )
+					{
+						throw IECore::Exception( "B?" );
+					}
 				}
 				else
 				{
 					continue;
 				}
 			}
+		}
+		if( !( nextX > -1000 ) )
+		{
+			throw IECore::Exception( "what?" );
 		}
 
 		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
@@ -1486,25 +1519,41 @@ void linearConstraintsForPixel(
 			{
 				break;
 			}
+			if( !( intersectionX > -1000 ) )
+			{
+				throw IECore::Exception( "HOOWWWWW??" );
+			}
 
 			if( !std::isfinite( intersectionX ))
 			{
 				throw IECore::Exception( "HOOWWWWW??" );
 			}
 
-			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
+			if( !lowerConstraints.size() || (
+				intersectionX >= lowerConstraints.back().x && 
+				nextCurveSample >= lowerConstraints.back().y
+			) )
+			{
+				lowerConstraints.push_back( { intersectionX, nextCurveSample } );
+			}
 
 			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
 			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 		}
 
-		if( std::isnan( nextLower.x ) || !std::isfinite( nextLower.x ))
+		if( std::isnan( nextLower.x ) || !std::isfinite( nextLower.x ) || !( nextLower.x > -1000 ) )
 		{
 			throw IECore::Exception( "BLAH" );
 		}
 		if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
-		lowerConstraints.push_back( nextLower );
+		if( !lowerConstraints.size() || (
+			nextLower.x >= lowerConstraints.back().x && 
+			nextLower.y >= lowerConstraints.back().y
+		) )
+		{
+			lowerConstraints.push_back( nextLower );
+		}
 		prevLower = nextLower;
 		prevAlpha = nextAlpha;
 		
@@ -1536,6 +1585,13 @@ void linearConstraintsForPixel(
 				deepSamples[j].x,
 				-log1pf( -nextAlpha )
 			};
+			while( upperConstraints.size() && (
+				upperConstraints.back().x > nextUpper.x ||
+				upperConstraints.back().y > nextUpper.y
+			) )
+			{
+				upperConstraints.pop_back();
+			}
 		}
 		else
 		{
@@ -1580,12 +1636,19 @@ void linearConstraintsForPixel(
 					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 				}
 
-
-				upperConstraints.push_back( {
+				// TODO - function call?
+				SimplePoint intermediatePoint = {
 					( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
 					( nextUpper.x - prevUpper.x ) + prevUpper.x,
-					yValueToInsert
-				} );
+					yValueToInsert };
+
+				if( !upperConstraints.size() || (
+					intermediatePoint.x >= upperConstraints.back().x && 
+					intermediatePoint.y >= upperConstraints.back().y
+				) )
+				{
+					upperConstraints.push_back( intermediatePoint );
+				}
 			}
 		}
 
@@ -1597,7 +1660,13 @@ void linearConstraintsForPixel(
 		}
 
 		assert( !isinf( nextUpper.x ) );
-		upperConstraints.push_back( nextUpper );
+		if( !upperConstraints.size() || (
+			nextUpper.x >= upperConstraints.back().x && 
+			nextUpper.y >= upperConstraints.back().y
+		) )
+		{
+			upperConstraints.push_back( nextUpper );
+		}
 
 		if( lowerConstraints[matchingLowerIndex].y == nextUpper.y )
 		{
@@ -1606,6 +1675,30 @@ void linearConstraintsForPixel(
 
 		prevUpper = nextUpper;
 		prevAlpha = nextAlpha;
+	}
+
+	SimplePoint prev = lowerConstraints[0];
+	for( SimplePoint &i : lowerConstraints )
+	{
+		if( i.x < prev.x || i.y < prev.y )
+		{
+			std::cerr << "DECREASING LOWER CONSTRAINT : " << prev.x << "," << prev.y << " -> " << i.x << "," << i.y << "\n";
+			throw IECore::Exception( "DECREASING LOWER CONSTRAINT" );
+		}
+
+		prev = i;
+	}
+
+	prev = upperConstraints[0];
+	for( SimplePoint &i : upperConstraints )
+	{
+		if( i.x < prev.x || i.y < prev.y )
+		{
+			std::cerr << "DECREASING UPPER CONSTRAINT : " << prev.x << "," << prev.y << " -> " << i.x << "," << i.y << "\n";
+			throw IECore::Exception( "DECREASING UPPER CONSTRAINT" );
+		}
+
+		prev = i;
 	}
 
 }

@@ -59,7 +59,7 @@ DeepResample::DeepResample( const std::string &name )
 	storeIndexOfNextChild( g_firstPlugIndex );
 
 	addChild( new FloatPlug( "alphaTolerance", Gaffer::Plug::In, 0.01 ) );
-	addChild( new FloatPlug( "colorTolerance", Gaffer::Plug::In, 0.05 ) );
+	addChild( new FloatPlug( "colorTolerance", Gaffer::Plug::In, 0.0 ) ); // 0.05 ?
 	addChild( new FloatPlug( "depthTolerance", Gaffer::Plug::In, 0.01 ) );
 	addChild( new FloatPlug( "silhouetteDepth", Gaffer::Plug::In, 0.1 ) );
 
