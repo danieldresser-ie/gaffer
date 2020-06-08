@@ -572,7 +572,7 @@ void conformToSegments(
 
 		if( compressedSamples[i].b.x < compressedSamples[i].a.x )
 		{
-			std::cerr << "BAD XBACK: " << compressedSamples[i].a.x << " -> " << compressedSamples[i].b.x << "\n";
+			std::cerr << "NON-DECREASING XBACK: " << compressedSamples[i].a.x << " -> " << compressedSamples[i].b.x << "\n";
 		}
 
 		if( ! ( accumA > -0.1 && accumA < 1.1 ) )
@@ -614,6 +614,11 @@ void minimalSegmentsForConstraints(
 	unsigned int upperStopIndex = 0;
 
 	if( debug ) std::cerr << "SEGMENT SEARCH START\n";
+
+	if( !constraintsLower.size() )
+	{
+		throw IECore::Exception( "Empty lower constraints C" );
+	}
 
 	//while( lowerStopIndex < constraintsLower.size() )
 	while( yPrev  < constraintsLower.back().y )
@@ -1126,7 +1131,7 @@ void minimalSegmentsForConstraints(
 		}
 		else
 		{
-			if( std::isnan( segmentEnd.x ) )
+			if( !std::isfinite( segmentEnd.x ) )
 			{
 				std::cerr << "THROWING BAD\n";
 				//assert( false );
@@ -1190,7 +1195,7 @@ void minimalSegmentsForConstraints(
 		}
 		if( !std::isfinite( compressedSample.b.x ) )
 		{
-			throw IECore::Exception( "BAD XBACK" );
+			throw IECore::Exception( "NON FINITE XBACK" );
 		}
 		compressedSamples.push_back( compressedSample );
 
@@ -1272,7 +1277,7 @@ void integratedPointSamplesForPixel(
 
 		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
 
-		if( deepSamples.size() )
+		if( deepSamples.size() && colorTolerance > 0.0f )
 		{
 			for( unsigned int c = 0; c < colorChannels.size(); c++ )
 			{
@@ -1388,6 +1393,28 @@ void linearConstraintsForPixel(
 		return;
 	}
 
+	for( unsigned int i = 1; i < deepSamples.size(); i++ )
+	{
+		if( !std::isfinite( deepSamples[i].x ) || !std::isfinite( deepSamples[i].y ) )
+		{
+			throw IECore::Exception( "NON-FINITE ACCUM" );
+		}
+		if( !( deepSamples[i].y >= 0 ) )
+		{
+			throw IECore::Exception( "NEGATIVE ACCUM" );
+		}
+
+		if( !( deepSamples[i].x >= deepSamples[i-1].x ) )
+		{
+			throw IECore::Exception( "DECREASING X ACCUM" );
+		}
+
+		if( !( deepSamples[i].y >= deepSamples[i-1].y ) )
+		{
+			throw IECore::Exception( "DECREASING Y ACCUM" );
+		}
+	}
+
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
 	//float lastValidMinY = 0;
@@ -1488,6 +1515,21 @@ void linearConstraintsForPixel(
 			throw IECore::Exception( "what?" );
 		}
 
+		if( !( nextAlpha >= prevAlpha ) )
+		{
+			std::cerr << "CCCCCCCC\n";
+			std::cerr << prevAlpha << " -> " << nextAlpha << "\n";
+			if( j > 0 )
+			{
+				std::cerr << deepSamples[j-1].y << " -> " << deepSamples[j].y << "\n";
+				std::cerr << deepSamples[j-1].y - aTol << " -> " << deepSamples[j].y - aTol << "\n";
+			}
+			else
+			{
+				std::cerr << "HUWAHHH???\n";
+			}
+			throw IECore::Exception( "CCCCCCCCCCCCCCCCCCc" );
+		}
 		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
 
 		float nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
@@ -1529,13 +1571,18 @@ void linearConstraintsForPixel(
 				throw IECore::Exception( "HOOWWWWW??" );
 			}
 
-			if( !lowerConstraints.size() || (
+			/*if( !lowerConstraints.size() || (
 				intersectionX >= lowerConstraints.back().x && 
 				nextCurveSample >= lowerConstraints.back().y
 			) )
 			{
 				lowerConstraints.push_back( { intersectionX, nextCurveSample } );
+			}*/
+			if( lowerConstraints.size() && !( nextCurveSample >= lowerConstraints.back().y ) )
+			{
+				throw IECore::Exception( "AAAAAAAAAAAAAAAAAA" );
 			}
+			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
 			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
@@ -1546,17 +1593,28 @@ void linearConstraintsForPixel(
 		{
 			throw IECore::Exception( "BLAH" );
 		}
-		if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
+		/*if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
 		if( !lowerConstraints.size() || (
 			nextLower.x >= lowerConstraints.back().x && 
 			nextLower.y >= lowerConstraints.back().y
 		) )
 		{
 			lowerConstraints.push_back( nextLower );
+		}*/
+		if( lowerConstraints.size() && !( nextLower.y >= lowerConstraints.back().y ) )
+		{
+			throw IECore::Exception( "BBBBBBBBBBBBBBBBBB" );
 		}
+		
+		lowerConstraints.push_back( nextLower );
 		prevLower = nextLower;
 		prevAlpha = nextAlpha;
 		
+	}
+
+	if( !lowerConstraints.size() )
+	{
+		throw IECore::Exception( "Empty lower constraints" );
 	}
 
 	unsigned int matchingLowerIndex = 0;
@@ -1636,19 +1694,19 @@ void linearConstraintsForPixel(
 					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 				}
 
-				// TODO - function call?
-				SimplePoint intermediatePoint = {
-					( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) ) *
-					( nextUpper.x - prevUpper.x ) + prevUpper.x,
-					yValueToInsert };
 
-				if( !upperConstraints.size() || (
-					intermediatePoint.x >= upperConstraints.back().x && 
-					intermediatePoint.y >= upperConstraints.back().y
-				) )
+				float fraction = ( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) );
+				// TODO - clamp upper as well?
+				float upperConstraintX = std::max( fraction, 0.0f ) * ( nextUpper.x - prevUpper.x ) + prevUpper.x;
+				if( upperConstraints.size() && upperConstraintX < upperConstraints.back().x )
 				{
-					upperConstraints.push_back( intermediatePoint );
+					std::cerr.precision( 20 );
+					std::cerr << "A: " << exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) << "\n";
+					std::cerr << "B: " << exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) << "\n";
+					std::cerr << "BLEH: " << upperConstraints.back().x << " : " << upperConstraintX << "\n";
+					throw IECore::Exception( "EXPECTED !!" );
 				}
+				upperConstraints.push_back( { upperConstraintX, yValueToInsert } );
 			}
 		}
 
@@ -1660,13 +1718,18 @@ void linearConstraintsForPixel(
 		}
 
 		assert( !isinf( nextUpper.x ) );
-		if( !upperConstraints.size() || (
+		/*if( !upperConstraints.size() || (
 			nextUpper.x >= upperConstraints.back().x && 
 			nextUpper.y >= upperConstraints.back().y
 		) )
 		{
 			upperConstraints.push_back( nextUpper );
+		}*/
+		if( upperConstraints.size() && nextUpper.x < upperConstraints.back().x )
+		{
+			throw IECore::Exception( "NOT EXPECTED" );
 		}
+		upperConstraints.push_back( nextUpper );
 
 		if( lowerConstraints[matchingLowerIndex].y == nextUpper.y )
 		{
@@ -1701,6 +1764,41 @@ void linearConstraintsForPixel(
 		prev = i;
 	}
 
+	for( unsigned int i = 1; i < lowerConstraints.size(); i++ )
+	{
+		if( !std::isfinite( lowerConstraints[i].x ) || !std::isfinite( lowerConstraints[i].y ) )
+		{
+			throw IECore::Exception( "NON-FINITE LOWER CONSTRAINT" );
+		}
+
+		if( !( lowerConstraints[i].x >= lowerConstraints[i-1].x ) )
+		{
+			throw IECore::Exception( "DECREASING X LOWER CONSTRAINT" );
+		}
+
+		if( !( lowerConstraints[i].y >= lowerConstraints[i-1].y ) )
+		{
+			throw IECore::Exception( "DECREASING Y LOWER CONSTRAINT" );
+		}
+	}
+
+	for( unsigned int i = 1; i < upperConstraints.size(); i++ )
+	{
+		/*if( !std::isfinite( upperConstraints[i].x ) || !std::isfinite( upperConstraints[i].y ) )
+		{
+			throw IECore::Exception( "NON-FINITE UPPER CONSTRAINT" );
+		}*/
+
+		if( !( upperConstraints[i].x >= upperConstraints[i-1].x ) )
+		{
+			throw IECore::Exception( "DECREASING X UPPER CONSTRAINT" );
+		}
+
+		if( !( upperConstraints[i].y >= upperConstraints[i-1].y ) )
+		{
+			throw IECore::Exception( "DECREASING Y UPPER CONSTRAINT" );
+		}
+	}
 }
 
 }
@@ -1777,6 +1875,14 @@ void resampleDeepPixel(
 		alphaTolerance, colorTolerance, zTolerance, silhouetteDepth,
 		constraintsLower, constraintsUpper
 	);
+
+	if( !constraintsLower.size() )
+	{
+		// If there are no lower constraints, then an empty curve is valid.
+		// This only happens when the input segments all have 0 alpha.
+		outSamples = 0;
+		return;
+	}
 
 	if( debug )
 	{

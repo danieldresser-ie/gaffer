@@ -379,6 +379,8 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 			prev = index;
 		}
 
+		// TODO - images with no ZBack
+
 		// TODO	- this is too late to reliably avoid crash
 		if( outSampleOffsets.back() > (int)(alpha.size() + sampleOffsets.size()) )
 		{
