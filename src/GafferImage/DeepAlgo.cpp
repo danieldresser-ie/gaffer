@@ -1697,7 +1697,7 @@ void linearConstraintsForPixel(
 
 				float fraction = ( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / ( exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) );
 				// TODO - clamp upper as well?
-				float upperConstraintX = std::max( fraction, 0.0f ) * ( nextUpper.x - prevUpper.x ) + prevUpper.x;
+				float upperConstraintX = std::min( std::max( fraction, 0.0f ) * ( nextUpper.x - prevUpper.x ) + prevUpper.x, nextUpper.x );
 				if( upperConstraints.size() && upperConstraintX < upperConstraints.back().x )
 				{
 					std::cerr.precision( 20 );
@@ -1727,7 +1727,7 @@ void linearConstraintsForPixel(
 		}*/
 		if( upperConstraints.size() && nextUpper.x < upperConstraints.back().x )
 		{
-			throw IECore::Exception( "NOT EXPECTED" );
+			throw IECore::Exception( "NOT EXPECTED : ARRGGGGGHGHHH! " );
 		}
 		upperConstraints.push_back( nextUpper );
 
