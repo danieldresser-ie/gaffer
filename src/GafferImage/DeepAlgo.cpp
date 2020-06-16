@@ -1473,11 +1473,11 @@ void linearConstraintsForPixel(
 					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
 						( exponentialToLinear(deepSamples[j+1].y) - exponentialToLinear(deepSamples[j].y ) );
 
-					if( !lerp >= 0.0f )
+					if( ! (lerp >= 0.0f ) )
 					{
 						lerp = 0.0f;
 					}
-					else if( !lerp <= 1.0f )
+					else if( !( lerp <= 1.0f ) )
 					{
 						lerp = 1.0f;
 					}
