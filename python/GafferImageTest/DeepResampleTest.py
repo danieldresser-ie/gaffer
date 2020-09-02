@@ -91,7 +91,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertImagesEqual( origFlatPremult["out"], resampleFlatPremult["out"], maxDifference = flatZError )
 
 		dw = toResample.dataWindow()
-	
+
 		origSampleCounts = GafferImage.DeepSampleCounts()
 		origSampleCounts["in"].setInput( toResample )
 
@@ -117,7 +117,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		if resampleCountResult != resampleCount:
 			print "SAMPLE COUNT MISMATCH : ", resampleCountResult, " ", resampleCount
 
-	
+
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( toCompare )
 
@@ -128,7 +128,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 			for y in range( dw.size()[1] ):
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
-	
+
 				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ) + extraAlphaTolerance, depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 	def testRepresentative( self ) :
@@ -214,8 +214,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy = GafferImage.DeepTidy()
 		deepTidy["in"].setInput( oslImage["out"] )
 
-		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 ) 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 126099 ) 
+		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 126099 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68995 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
@@ -223,15 +223,34 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
 
 		oslCode["parameters"]["maxAlpha"].setValue( 0.01 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 52291 ) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 52291 )
 		oslCode["parameters"]["maxAlpha"].setValue( 1 )
 		oslCode["parameters"]["minAlpha"].setValue( 0.99 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.007, 526233, 51832, extraAlphaTolerance = 0.000055) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.007, 526233, 51832, extraAlphaTolerance = 0.000055)
 		oslCode["parameters"]["minAlpha"].setValue( 0.0 )
 		oslCode["parameters"]["maxDepth"].setValue( 1000000 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1100, 526233, 125857 ) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1100, 526233, 125857 )
 		oslCode["parameters"]["minDepth"].setValue( 999999 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1001, 252101, 16384 ) 
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 1001, 252101, 16384 )
+
+		midRangeConstant = GafferImage.Constant()
+		midRangeConstant["format"].setValue( GafferImage.Format( 128, 128, 1.000 ) )
+		midRangeConstant["color"]["a"].setValue( 0.39772754907608032227 )
+
+		midRangeToDeep = GafferImage.FlatToDeep()
+		midRangeToDeep["in"].setInput( midRangeConstant["out"] )
+
+		mergeMidRange = GafferImage.DeepMerge()
+		mergeMidRange["in"][0].setInput( oslImage["out"] )
+		mergeMidRange["in"][-1].setInput( midRangeToDeep["out"] )
+
+		deepTidy["in"].setInput( mergeMidRange["out"] )
+
+		oslCode["parameters"]["minDepth"].setValue( 0 )
+		oslCode["parameters"]["maxDepth"].setValue( 1 )
+		oslCode["parameters"]["minAlpha"].setValue( 0 )
+		oslCode["parameters"]["maxAlpha"].setValue( 1e-6 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 1.0e-6, 0.002, 0.002, 252101, 16384 )
 
 	"""
 	def testRepresentative( self ) :
@@ -282,7 +301,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 
 		dw = representativeImage["out"].dataWindow()
-	
+
 		origSampleCounts = GafferImage.DeepSampleCounts()
 		origSampleCounts["in"].setInput( representativeImage["out"] )
 
@@ -308,7 +327,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# Make sure we substantially reduce the sample count
 		#self.assertLess( resampleCount, 53250 ) # TODO
 		self.assertLess( resampleCount, 53500 ) # TODO
-	
+
 		origSampler = GafferImage.DeepSampler()
 		origSampler["image"].setInput( representativeImage["out"] )
 
@@ -319,7 +338,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 			for y in range( dw.size()[1] ):
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
-	
+
 				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001001, 0.00100, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 		# Now a much more aggressive resample
@@ -335,15 +354,15 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 			for y in range( dw.size()[1] ):
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
-	
+
 				#GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y )  )
 				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y )  )
 
 		# TODO - does 0 tolerance result in crash?
 	"""
-		
 
-"""	
+
+"""
 	@staticmethod
 	def __createDepthGrade():
 		# \todo - this is simple and generally useful node
@@ -1228,7 +1247,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		deleteChannels = GafferImage.DeleteChannels()
 		deleteChannels["in"].setInput( deepMerge["out"] )
-	
+
 		self.__assertDeepStateProcessing( deleteChannels["out"], referenceFlatten["out"], [ 0, 0, 0, 0 ], [ 0, 0, 0, 0 ], 100, 0.45 )
 
 		# Having no ZBack should be equivalent to having ZBack = Z
