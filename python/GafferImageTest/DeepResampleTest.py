@@ -135,7 +135,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		representativeImage = GafferImage.ImageReader()
 		representativeImage["fileName"].setValue( self.representativeImagePath )
 
-		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53530 )
+		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53396 )
 		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 22372 )
 
 		oversample = GafferImageTest.DeepOversample()
@@ -215,7 +215,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		deepTidy["in"].setInput( oslImage["out"] )
 
 		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 126099 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125857 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68995 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
@@ -250,7 +250,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oslCode["parameters"]["maxDepth"].setValue( 1 )
 		oslCode["parameters"]["minAlpha"].setValue( 0 )
 		oslCode["parameters"]["maxAlpha"].setValue( 1e-6 )
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 1.0e-6, 0.002, 0.002, 252101, 16384 )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 1.0e-6, 0.002, 0.002, 542617, 24757, extraAlphaTolerance = 1e-7 )
 
 	"""
 	def testRepresentative( self ) :
