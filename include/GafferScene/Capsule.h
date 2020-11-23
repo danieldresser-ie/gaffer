@@ -65,7 +65,7 @@ class GAFFERSCENE_API Capsule : public IECoreScenePreview::Procedural
 		Capsule(
 			const ScenePlug *scene,
 			const ScenePlug::ScenePath &root,
-			const Gaffer::Context &context,
+			Gaffer::ContextPtr &&context,
 			const IECore::MurmurHash &hash,
 			const Imath::Box3f &bound
 		);
