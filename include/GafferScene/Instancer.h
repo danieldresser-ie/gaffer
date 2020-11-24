@@ -96,7 +96,14 @@ class GAFFERSCENE_API Instancer : public BranchCreator
 		Gaffer::StringPlug *attributePrefixPlug();
 		const Gaffer::StringPlug *attributePrefixPlug() const;
 
+		Gaffer::BoolPlug *encapsulateInstanceGroupsPlug();
+		const Gaffer::BoolPlug *encapsulateInstanceGroupsPlug() const;
+
+		Gaffer::BoolPlug *encapsulatePrototypesPlug();
+		const Gaffer::BoolPlug *encapsulatePrototypesPlug() const;
+
 		void affects( const Gaffer::Plug *input, AffectedPlugsContainer &outputs ) const override;
+
 
 	protected :
 
@@ -149,10 +156,14 @@ class GAFFERSCENE_API Instancer : public BranchCreator
 		IECore::ConstCompoundDataPtr prototypeChildNames( const ScenePath &parentPath, const Gaffer::Context *context ) const;
 		void prototypeChildNamesHash( const ScenePath &parentPath, const Gaffer::Context *context, IECore::MurmurHash &h ) const;
 
+		void plugDirtied( const Gaffer::Plug *plug );
+
 		struct PrototypeScope : public Gaffer::Context::EditableScope
 		{
 			PrototypeScope( const Gaffer::ObjectPlug *enginePlug, const Gaffer::Context *context, const ScenePath &parentPath, const ScenePath &branchPath );
 		};
+
+		uint64_t m_dirtyCount;
 
 		static size_t g_firstPlugIndex;
 

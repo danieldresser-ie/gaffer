@@ -37,6 +37,7 @@
 
 #include "GafferScene/Instancer.h"
 
+#include "GafferScene/Capsule.h"
 #include "GafferScene/SceneAlgo.h"
 
 #include "GafferScene/Private/ChildNamesMap.h"
@@ -73,6 +74,7 @@ namespace
 {
 
 InternedString g_prototypeRootName( "root" );
+InternedString g_insideCapsuleContext( "instancer:insideCapsule" );
 ConstInternedStringVectorDataPtr g_emptyNames = new InternedStringVectorData();
 
 }
@@ -498,7 +500,7 @@ size_t Instancer::g_firstPlugIndex = 0;
 static const IECore::InternedString idContextName( "instancer:id" );
 
 Instancer::Instancer( const std::string &name )
-	:	BranchCreator( name )
+	:	BranchCreator( name ), m_dirtyCount( 0 )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild( new StringPlug( "name", Plug::In, "instances" ) );
@@ -513,8 +515,12 @@ Instancer::Instancer( const std::string &name )
 	addChild( new StringPlug( "scale", Plug::In ) );
 	addChild( new StringPlug( "attributes", Plug::In ) );
 	addChild( new StringPlug( "attributePrefix", Plug::In ) );
+	addChild( new BoolPlug( "encapsulateInstanceGroups", Plug::In ) );
+	addChild( new BoolPlug( "encapsulatePrototypes", Plug::In ) );
 	addChild( new ObjectPlug( "__engine", Plug::Out, NullObject::defaultNullObject() ) );
 	addChild( new AtomicCompoundDataPlug( "__prototypeChildNames", Plug::Out, new CompoundData ) );
+
+	//plugDirtiedSignal().connect( 0, boost::bind( &Encapsulate::plugDirtied, this, ::_1 ) );
 }
 
 Instancer::~Instancer()
@@ -641,24 +647,44 @@ const Gaffer::StringPlug *Instancer::attributePrefixPlug() const
 	return getChild<StringPlug>( g_firstPlugIndex + 11 );
 }
 
+Gaffer::BoolPlug *Instancer::encapsulateInstanceGroupsPlug()
+{
+	return getChild<BoolPlug>( g_firstPlugIndex + 12 );
+}
+
+const Gaffer::BoolPlug *Instancer::encapsulateInstanceGroupsPlug() const
+{
+	return getChild<BoolPlug>( g_firstPlugIndex + 12 );
+}
+
+Gaffer::BoolPlug *Instancer::encapsulatePrototypesPlug()
+{
+	return getChild<BoolPlug>( g_firstPlugIndex + 13 );
+}
+
+const Gaffer::BoolPlug *Instancer::encapsulatePrototypesPlug() const
+{
+	return getChild<BoolPlug>( g_firstPlugIndex + 13 );
+}
+
 Gaffer::ObjectPlug *Instancer::enginePlug()
 {
-	return getChild<ObjectPlug>( g_firstPlugIndex + 12 );
+	return getChild<ObjectPlug>( g_firstPlugIndex + 14 );
 }
 
 const Gaffer::ObjectPlug *Instancer::enginePlug() const
 {
-	return getChild<ObjectPlug>( g_firstPlugIndex + 12 );
+	return getChild<ObjectPlug>( g_firstPlugIndex + 14 );
 }
 
 Gaffer::AtomicCompoundDataPlug *Instancer::prototypeChildNamesPlug()
 {
-	return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 13 );
+	return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 15 );
 }
 
 const Gaffer::AtomicCompoundDataPlug *Instancer::prototypeChildNamesPlug() const
 {
-	return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 13 );
+	return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 15 );
 }
 
 void Instancer::affects( const Plug *input, AffectedPlugsContainer &outputs ) const
@@ -1076,6 +1102,17 @@ void Instancer::hashBranchObject( const ScenePath &parentPath, const ScenePath &
 {
 	if( branchPath.size() <= 2 )
 	{
+		if( branchPath.size() == 2 && encapsulateInstanceGroupsPlug()->getValue() &&
+			!context->get<bool>( g_insideCapsuleContext, false )
+		)
+		{
+			BranchCreator::hashBranchObject( parentPath, branchPath, context, h );
+			h.append( reinterpret_cast<uint64_t>( this ) );
+			h.append( m_dirtyCount );
+			h.append( context->hash() );
+			outPlug()->boundPlug()->hash( h );
+			return;
+		}
 		// "/" or "/instances" or "/instances/<prototypeName>"
 		h = outPlug()->objectPlug()->defaultValue()->Object::hash();
 	}
@@ -1091,6 +1128,23 @@ IECore::ConstObjectPtr Instancer::computeBranchObject( const ScenePath &parentPa
 {
 	if( branchPath.size() <= 2 )
 	{
+		if( branchPath.size() == 2 && encapsulateInstanceGroupsPlug()->getValue() &&
+			!context->get<bool>( g_insideCapsuleContext, false )
+		)
+		{
+			Gaffer::ContextPtr capsuleContext = new Context( *context );
+			capsuleContext->remove( ScenePlug::scenePathContextName );
+			capsuleContext->set( g_insideCapsuleContext, true );
+
+			return new Capsule(
+				outPlug(),
+				parentPath,
+				std::move( capsuleContext ),
+				outPlug()->objectPlug()->hash(),
+				outPlug()->boundPlug()->getValue()
+			);
+
+		}
 		// "/" or "/instances" or "/instances/<prototypeName>"
 		return outPlug()->objectPlug()->defaultValue();
 	}
@@ -1128,6 +1182,12 @@ void Instancer::hashBranchChildNames( const ScenePath &parentPath, const ScenePa
 	else if( branchPath.size() == 2 )
 	{
 		// "/instances/<prototypeName>"
+		if( encapsulateInstanceGroupsPlug()->getValue() && !context->get<bool>( g_insideCapsuleContext, false ) )
+		{
+			h = outPlug()->childNamesPlug()->defaultValue()->Object::hash();
+			return;
+		}
+
 		BranchCreator::hashBranchChildNames( parentPath, branchPath, context, h );
 		prototypeChildNamesHash( parentPath, context, h );
 		h.append( branchPath.back() );
@@ -1162,6 +1222,11 @@ IECore::ConstInternedStringVectorDataPtr Instancer::computeBranchChildNames( con
 	else if( branchPath.size() == 2 )
 	{
 		// "/instances/<prototypeName>"
+		if( encapsulateInstanceGroupsPlug()->getValue() && !context->get<bool>( g_insideCapsuleContext, false ) )
+		{
+			return outPlug()->childNamesPlug()->defaultValue();
+		}
+
 		IECore::ConstCompoundDataPtr ic = prototypeChildNames( parentPath, context );
 		return ic->member<InternedStringVectorData>( branchPath.back() );
 	}
@@ -1284,5 +1349,13 @@ Instancer::PrototypeScope::PrototypeScope( const Gaffer::ObjectPlug *enginePlug,
 	else
 	{
 		set( ScenePlug::scenePathContextName, prototypeRoot );
+	}
+}
+
+void Instancer::plugDirtied( const Gaffer::Plug *plug )
+{
+	if( plug->parent() == outPlug() )
+	{
+		++m_dirtyCount;
 	}
 }
