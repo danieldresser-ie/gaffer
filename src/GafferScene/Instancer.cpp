@@ -520,7 +520,7 @@ Instancer::Instancer( const std::string &name )
 	addChild( new ObjectPlug( "__engine", Plug::Out, NullObject::defaultNullObject() ) );
 	addChild( new AtomicCompoundDataPlug( "__prototypeChildNames", Plug::Out, new CompoundData ) );
 
-	//plugDirtiedSignal().connect( 0, boost::bind( &Encapsulate::plugDirtied, this, ::_1 ) );
+	plugDirtiedSignal().connect( 0, std::bind( &Instancer::plugDirtied, this, _1 ) );
 }
 
 Instancer::~Instancer()
@@ -1094,7 +1094,8 @@ bool Instancer::affectsBranchObject( const Gaffer::Plug *input ) const
 {
 	return
 		input == prototypesPlug()->objectPlug() ||
-		input == enginePlug()
+		input == enginePlug() ||
+		input == encapsulateInstanceGroupsPlug()
 	;
 }
 
@@ -1138,7 +1139,7 @@ IECore::ConstObjectPtr Instancer::computeBranchObject( const ScenePath &parentPa
 
 			return new Capsule(
 				outPlug(),
-				parentPath,
+				context->get<ScenePlug::ScenePath>( ScenePlug::scenePathContextName ) ,
 				std::move( capsuleContext ),
 				outPlug()->objectPlug()->hash(),
 				outPlug()->boundPlug()->getValue()
@@ -1161,7 +1162,8 @@ bool Instancer::affectsBranchChildNames( const Gaffer::Plug *input ) const
 	return
 		input == namePlug() ||
 		input == prototypeChildNamesPlug() ||
-		input == enginePlug()
+		input == enginePlug() ||
+		input == encapsulateInstanceGroupsPlug()
 	;
 }
 
@@ -1261,12 +1263,19 @@ bool Instancer::affectsBranchSet( const Gaffer::Plug *input ) const
 		input == enginePlug() ||
 		input == prototypesPlug()->setPlug() ||
 		input == prototypeChildNamesPlug() ||
-		input == namePlug()
+		input == namePlug() ||
+		input == encapsulateInstanceGroupsPlug()
 	;
 }
 
 void Instancer::hashBranchSet( const ScenePath &parentPath, const IECore::InternedString &setName, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
+	if( encapsulateInstanceGroupsPlug()->getValue() && !context->get<bool>( g_insideCapsuleContext, false ) )
+	{
+		h = outPlug()->setPlug()->defaultValue()->Object::hash();
+		return;
+	}
+
 	BranchCreator::hashBranchSet( parentPath, setName, context, h );
 
 	engineHash( parentPath, context, h );
@@ -1277,6 +1286,11 @@ void Instancer::hashBranchSet( const ScenePath &parentPath, const IECore::Intern
 
 IECore::ConstPathMatcherDataPtr Instancer::computeBranchSet( const ScenePath &parentPath, const IECore::InternedString &setName, const Gaffer::Context *context ) const
 {
+	if( encapsulateInstanceGroupsPlug()->getValue() && !context->get<bool>( g_insideCapsuleContext, false ) )
+	{
+		return outPlug()->setPlug()->defaultValue();
+	}
+
 	IECore::ConstCompoundDataPtr prototypeChildNames = this->prototypeChildNames( parentPath, context );
 	ConstPathMatcherDataPtr inputSet = prototypesPlug()->setPlug()->getValue();
 
@@ -1350,6 +1364,8 @@ Instancer::PrototypeScope::PrototypeScope( const Gaffer::ObjectPlug *enginePlug,
 	{
 		set( ScenePlug::scenePathContextName, prototypeRoot );
 	}
+
+	remove( g_insideCapsuleContext );
 }
 
 void Instancer::plugDirtied( const Gaffer::Plug *plug )
