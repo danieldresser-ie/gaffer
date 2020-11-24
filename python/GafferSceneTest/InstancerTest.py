@@ -125,6 +125,21 @@ class InstancerTest( GafferSceneTest.SceneTestCase ) :
 			self.assertEqual( instancer["out"].bound( instancePath ), sphere.bound() )
 			self.assertEqual( instancer["out"].childNames( instancePath ), IECore.InternedStringVectorData() )
 
+		encapInstancer = GafferScene.Instancer()
+		encapInstancer["in"].setInput( seedsInput["out"] )
+		encapInstancer["prototypes"].setInput( instanceInput["out"] )
+		encapInstancer["parent"].setValue( "/seeds" )
+		encapInstancer["name"].setValue( "instances" )
+
+		unencapFilter = GafferScene.PathFilter()
+		unencapFilter["paths"].setValue( IECore.StringVectorData( [ "/..." ] ) )
+
+		unencap = GafferScene.Unencapsulate()
+		unencap["in"] = encapInstancer["out"]
+		unencap["filter"].setInput( unencapFilter["out"] )
+
+		self.assertScenesEqual( unencap["out"], instancer["out"] )
+
 	def testThreading( self ) :
 
 		sphere = IECoreScene.SpherePrimitive()
