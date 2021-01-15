@@ -87,6 +87,7 @@ class GAFFERUI_API StandardStyle : public Style
 		void renderHorizontalRule( const Imath::V2f &center, float length, State state = NormalState ) const override;
 
 		void renderNodeFrame( const Imath::Box2f &contents, float borderWidth, State state = NormalState, const Imath::Color3f *userColor = nullptr ) const override;
+		void renderNodeFocusRegion( const Imath::Box2f &contents, float borderWidth, State state = NormalState ) const override;
 		void renderNodule( float radius, State state = NormalState, const Imath::Color3f *userColor = nullptr ) const override;
 		void renderConnection( const Imath::V3f &srcPosition, const Imath::V3f &srcTangent, const Imath::V3f &dstPosition, const Imath::V3f &dstTangent, State state = NormalState, const Imath::Color3f *userColor = nullptr ) const override;
 		Imath::V3f closestPointOnConnection( const Imath::V3f &p, const Imath::V3f &srcPosition, const Imath::V3f &srcTangent, const Imath::V3f &dstPosition, const Imath::V3f &dstTangent ) const override;
@@ -134,6 +135,8 @@ class GAFFERUI_API StandardStyle : public Style
 		void renderFrameInternal( const Imath::Box2f &contents, float padding, float borderWidth, const Imath::Color3f &userColor ) const;
 
 		static IECoreGL::Shader *shader();
+		static int g_glowParameter;
+		static int g_glowStrengthParameter;
 		static int g_borderParameter;
 		static int g_borderRadiusParameter;
 		static int g_borderWidthParameter;

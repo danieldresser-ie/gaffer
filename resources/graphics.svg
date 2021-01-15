@@ -21,6 +21,14 @@
   <defs
      id="defs4">
     <linearGradient
+       id="nodeBorder"
+       osb:paint="solid">
+      <stop
+         style="stop-color:#262626;stop-opacity:1;"
+         offset="0"
+         id="stop2049" />
+    </linearGradient>
+    <linearGradient
        id="linearGradient5870"
        osb:paint="solid">
       <stop
@@ -4865,29 +4873,6 @@
          y="607.36218" />
     </g>
     <g
-       transform="translate(-5.0000019,3.8586102e-4)"
-       inkscape:label="#g4200"
-       id="g4630">
-      <path
-         sodipodi:nodetypes="cccccc"
-         id="path4632"
-         d="m 360,722.3618 h 15 V 572.36178 H 225 V 722.3618 h 15"
-         style="fill:none;stroke:#e5e5e5;stroke-width:19.99999428;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:142.99989319;stroke-opacity:1"
-         inkscape:connector-curvature="0" />
-      <path
-         id="path4634"
-         d="m 260,687.36218 h 80 l -40,60 z"
-         style="fill:#e5e5e5;fill-opacity:1;stroke:#e5e5e5;stroke-width:10;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-         inkscape:connector-curvature="0" />
-      <rect
-         y="607.36218"
-         x="285"
-         height="75"
-         width="30"
-         id="rect4636"
-         style="fill:#e5e5e5;fill-opacity:1;stroke:#e5e5e5;stroke-width:10;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:142.99989319;stroke-opacity:1" />
-    </g>
-    <g
        id="export"
        inkscape:label="#g4666">
       <path
@@ -7965,6 +7950,86 @@
          id="path5688"
          d="m 15,2349.3622 h 8"
          style="fill:none;stroke:#535353;stroke-width:2;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
+    </g>
+    <g
+       id="focusOn"
+       inkscape:label="focusOn"
+       transform="translate(0,208)">
+      <circle
+         r="84"
+         cy="440.36218"
+         cx="492"
+         id="path2019"
+         style="fill:url(#foreground);fill-opacity:1;stroke:none;stroke-width:8;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+      <path
+         inkscape:connector-curvature="0"
+         id="circle2027"
+         d="M 492,400.76746 A 99.190254,95.190254 0 0 0 411.61719,440.33777 99.190254,95.190254 0 0 0 492,479.95691 99.190254,95.190254 0 0 0 572.38281,440.38855 99.190254,95.190254 0 0 0 492,400.76746 Z"
+         style="fill:url(#nodeBorder);fill-opacity:1;stroke:none;stroke-width:1.61949456;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+      <circle
+         r="32"
+         cy="440.36218"
+         cx="492"
+         id="path2041"
+         style="fill:url(#foreground);fill-opacity:1;stroke:none;stroke-width:2;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+    </g>
+    <g
+       id="focusOnHover"
+       inkscape:label="focusOnHover"
+       transform="translate(-4,208)">
+      <g
+         transform="translate(404)"
+         id="g2066">
+        <circle
+           r="84"
+           cy="440.36218"
+           cx="492"
+           id="circle2060"
+           style="fill:url(#foreground);fill-opacity:1;stroke:none;stroke-width:8;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+        <path
+           inkscape:connector-curvature="0"
+           id="path2062"
+           d="M 492,400.76746 A 99.190254,95.190254 0 0 0 411.61719,440.33777 99.190254,95.190254 0 0 0 492,479.95691 99.190254,95.190254 0 0 0 572.38281,440.38855 99.190254,95.190254 0 0 0 492,400.76746 Z"
+           style="fill:url(#brightColor);fill-opacity:1;stroke:none;stroke-width:1.61949456;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+        <circle
+           r="32"
+           cy="440.36218"
+           cx="492"
+           id="circle2064"
+           style="fill:url(#foreground);fill-opacity:1;stroke:none;stroke-width:2;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+      </g>
+    </g>
+    <g
+       id="focusOff"
+       inkscape:label="focusOff"
+       transform="translate(-4,208)">
+      <circle
+         r="82.046509"
+         cy="440.36218"
+         cx="696"
+         id="circle2090"
+         style="fill:none;fill-opacity:1;stroke:url(#nodeBorder);stroke-width:3.90700006;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+      <path
+         inkscape:connector-curvature="0"
+         id="path2092"
+         d="M 696,400.76843 A 99.190254,95.190254 0 0 0 615.61719,440.33874 99.190254,95.190254 0 0 0 696,479.95788 99.190254,95.190254 0 0 0 776.38281,440.38757 99.190254,95.190254 0 0 0 696,400.76843 Z m 0,7.59375 a 32,32 0 0 1 32,32 32,32 0 0 1 -32,32 32,32 0 0 1 -32,-32 32,32 0 0 1 32,-32 z"
+         style="fill:url(#nodeBorder);fill-opacity:1.0;stroke:none;stroke-width:1.61949456;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill" />
+    </g>
+    <g
+       id="focusOffHover"
+       inkscape:label="focusOffHover"
+       transform="translate(4,208)">
+      <circle
+         style="fill:none;fill-opacity:1;stroke:url(#brightColor);stroke-width:3.9069767;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+         id="circle2115"
+         cx="1088"
+         cy="440.36218"
+         r="82.046509" />
+      <path
+         inkscape:connector-curvature="0"
+         style="fill:url(#brightColor);fill-opacity:1;stroke:none;stroke-width:1.61949456;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;paint-order:markers stroke fill"
+         d="M 1088,400.76843 A 99.190254,95.190254 0 0 0 1007.6172,440.33874 99.190254,95.190254 0 0 0 1088,479.95788 99.190254,95.190254 0 0 0 1168.3828,440.38757 99.190254,95.190254 0 0 0 1088,400.76843 Z m 0,7.59375 a 32,32 0 0 1 32,32 32,32 0 0 1 -32,32 32,32 0 0 1 -32,-32 32,32 0 0 1 32,-32 z"
+         id="path2117" />
     </g>
   </g>
 </svg>

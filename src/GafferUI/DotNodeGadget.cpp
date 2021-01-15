@@ -90,16 +90,29 @@ DotNodeGadget::~DotNodeGadget()
 
 void DotNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 {
-	if( layer != GraphLayer::Nodes )
+	NodeGadget::doRenderLayer( layer, style );
+
+	if( layer != GraphLayer::Nodes && layer != GraphLayer::OverBackdrops )
 	{
-		return NodeGadget::doRenderLayer( layer, style );
+		return;
 	}
 
-	Style::State state = getHighlighted() ? Style::HighlightedState : Style::NormalState;
 
 	const Box3f b = bound();
 	const V3f s = b.size();
-	style->renderNodeFrame( Box2f( V2f( 0 ), V2f( 0 ) ), std::min( s.x, s.y ) / 2.0f, state, userColor() );
+	const float radius = std::min( s.x, s.y ) / 2.0f;
+
+	if( layer == GraphLayer::OverBackdrops )
+	{
+		if( node()->ancestor<ScriptNode>()->getFocus() == node() )
+		{
+			style->renderNodeFocusRegion( Box2f( V2f( 0 ), V2f( 0 ) ), radius + 0.75f );
+		}
+		return;
+	}
+
+	Style::State state = getHighlighted() ? Style::HighlightedState : Style::NormalState;
+	style->renderNodeFrame( Box2f( V2f( 0 ), V2f( 0 ) ), radius, state, userColor() );
 
 	if( !m_label.empty() && !IECoreGL::Selector::currentSelector() )
 	{
@@ -109,7 +122,6 @@ void DotNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 		glPopMatrix();
 	}
 
-	NodeGadget::doRenderLayer( layer, style );
 }
 
 Gaffer::Dot *DotNodeGadget::dotNode()
