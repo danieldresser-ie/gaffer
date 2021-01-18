@@ -317,6 +317,7 @@
 		'nodeSetDrivertestMode',
 		'nodeSetNumericBookmarkSet',
 		'nodeSetStandardSet',
+		'nodeSetDriverFocusNode',
 		'plugAdder',
 		'plugAdderHighlighted',
 		'plus',
