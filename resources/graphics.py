@@ -323,6 +323,10 @@
 		'lutCPU',
 		'editDisabled',
 		'editOff',
-		'editOn'
+		'editOn',
+		'focusOn',
+		'focusOff',
+		'focusOnHover',
+		'focusOffHover'
 	]
 }
