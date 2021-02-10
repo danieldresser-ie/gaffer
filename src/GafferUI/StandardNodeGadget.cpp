@@ -75,6 +75,29 @@ namespace {
 
 static const float g_borderWidth = 0.5f;
 
+IECoreGL::Texture *focusIconTexture( bool focus, bool hover )
+{
+    static IECoreGL::TexturePtr focusIconTextures[4] = {};
+
+    if( !focusIconTextures[0] )
+    {
+        focusIconTextures[0] = ImageGadget::textureLoader()->load( "focusOff.png" );
+        focusIconTextures[1] = ImageGadget::textureLoader()->load( "focusOn.png" );
+        focusIconTextures[2] = ImageGadget::textureLoader()->load( "focusOffHover.png" );
+        focusIconTextures[3] = ImageGadget::textureLoader()->load( "focusOnHover.png" );
+
+		for( int i = 0; i < 4; i++ )
+		{
+			IECoreGL::Texture::ScopedBinding binding( *focusIconTextures[i] );
+			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+		}
+    }
+    return focusIconTextures[focus + 2 * hover].get();
+}
+
 //////////////////////////////////////////////////////////////////////////
 // FocusGadget
 //////////////////////////////////////////////////////////////////////////
@@ -83,14 +106,17 @@ class FocusGadget : public NodeGadget
 {
 	public :
 
-		FocusGadget( Gaffer::NodePtr node )
+		FocusGadget( Gaffer::NodePtr node, StandardNodeGadget* parent )
 			: NodeGadget( node ),
 				m_oval( false ),
-				m_mouseOver( false )
+				m_mouseOver( false ),
+				m_nodeMouseOver( false )
 		{
 			buttonPressSignal().connect( boost::bind( &FocusGadget::buttonPressed, this, ::_1,  ::_2 ) );
 			enterSignal().connect( boost::bind( &FocusGadget::mouseEntered, this, ::_1,  ::_2 ) );
 			leaveSignal().connect( boost::bind( &FocusGadget::mouseLeft, this, ::_1,  ::_2 ) );
+			parent->enterSignal().connect( boost::bind( &FocusGadget::nodeMouseEntered, this, ::_1,  ::_2 ) );
+			parent->leaveSignal().connect( boost::bind( &FocusGadget::nodeMouseLeft, this, ::_1,  ::_2 ) );
 		}
 
 		~FocusGadget()
@@ -133,6 +159,20 @@ class FocusGadget : public NodeGadget
 			return false;
 		}
 
+		bool nodeMouseEntered( GadgetPtr gadget, const ButtonEvent &event )
+		{
+			m_nodeMouseOver = true;
+			dirty( DirtyType::Render );
+			return false;
+		}
+
+		bool nodeMouseLeft( GadgetPtr gadget, const ButtonEvent &event )
+		{
+			m_nodeMouseOver = false;
+			dirty( DirtyType::Render );
+			return false;
+		}
+
 
 		Imath::Box3f bound() const override
 		{
@@ -154,18 +194,22 @@ class FocusGadget : public NodeGadget
 				borderWidth = std::min( s.x, s.y ) / 2.0f;
 			}
 
-			Style::State state = m_mouseOver ? Style::HighlightedState : Style::DisabledState;
-			if( node()->ancestor<ScriptNode>()->getFocus() == node() )
+			bool focussed = node()->ancestor<ScriptNode>()->getFocus() == node();
+
+			if( focussed || m_nodeMouseOver || IECoreGL::Selector::currentSelector() )
 			{
-				state = Style::NormalState;
+				style->renderImage( Box2f( V2f( b.max.x - 1.5, b.max.y - 1.5 ), V2f( b.max.x + 2.5, b.max.y + 2.5 ) ), focusIconTexture( focussed, m_mouseOver) );
 			}
 
-			style->renderNodeFocusRegion(
-				Box2f( V2f( b.min.x, b.min.y ), V2f( b.max.x, b.max.y ) ),
-				borderWidth,
-				state,
-				nullptr
-			);
+			if( !IECoreGL::Selector::currentSelector() && focussed )
+			{
+				style->renderNodeFocusRegion(
+					Box2f( V2f( b.min.x, b.min.y ), V2f( b.max.x, b.max.y ) ),
+					borderWidth,
+					Style::NormalState,
+					nullptr
+				);
+			}
 		}
 
 		bool hasLayer( Layer layer ) const override
@@ -177,6 +221,7 @@ class FocusGadget : public NodeGadget
 
 		bool m_oval;
 		bool m_mouseOver;
+		bool m_nodeMouseOver;
 
 		bool buttonPress( GadgetPtr gadget, const ButtonEvent &event );
 
@@ -338,7 +383,7 @@ StandardNodeGadget::StandardNodeGadget( Gaffer::NodePtr node )
 		m_dragDestination( nullptr ),
 		m_userColor( 0 ),
 		m_oval( false ),
-		m_focusGadget( new FocusGadget( node ) )
+		m_focusGadget( new FocusGadget( node, this ) )
 {
 
 	// build our ui structure
