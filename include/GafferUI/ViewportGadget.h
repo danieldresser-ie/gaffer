@@ -131,9 +131,16 @@ class GAFFERUI_API ViewportGadget : public Gadget
 		void setCenterOfInterest( float centerOfInterest );
 		float getCenterOfInterest();
 
+		// The camera will not be allowed to zoom in too close to allow
+		// a bounding box of this size at the center of interest to be visible.
+		// This prevents zooming in so close that you can't make out anything
+		void setMinimumViewSize( const Imath::V3f &box );
+		Imath::V3f getMinimumViewSize();
+
 		void frame( const Imath::Box3f &box );
 		void frame( const Imath::Box3f &box, const Imath::V3f &viewDirection,
 			const Imath::V3f &upVector = Imath::V3f( 0, 1, 0 ) );
+
 
 		void fitClippingPlanes( const Imath::Box3f &box );
 

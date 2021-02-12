@@ -115,7 +115,7 @@ class ViewportGadget::CameraController : public boost::noncopyable
 	public :
 
 		CameraController()
-			:	m_planarMovement( true ), m_sourceCamera( new IECoreScene::Camera() ), m_viewportResolution( 640, 480 ), m_planarScale( 1.0f ), m_clippingPlanes( 0.01f, 100000.0f ), m_centerOfInterest( 1.0f )
+			:	m_planarMovement( true ), m_minimumViewSize( 0.0f ), m_sourceCamera( new IECoreScene::Camera() ), m_viewportResolution( 640, 480 ), m_planarScale( 1.0f ), m_clippingPlanes( 0.01f, 100000.0f ), m_centerOfInterest( 1.0f )
 		{
 		}
 
@@ -175,6 +175,16 @@ class ViewportGadget::CameraController : public boost::noncopyable
 		float getCenterOfInterest()
 		{
 			return m_centerOfInterest;
+		}
+
+		Imath::V3f getMinimumViewSize()
+		{
+			return m_minimumViewSize;
+		}
+
+		void setMinimumViewSize( const Imath::V3f &box )
+		{
+			m_minimumViewSize = box;
 		}
 
 		/// Set the resolution of the viewport we are working in
@@ -539,11 +549,15 @@ class ViewportGadget::CameraController : public boost::noncopyable
 
 			if( m_planarMovement )
 			{
+				// Adjust the planar scale so the entire bound can be seen.
+				V2f minimumPlanarScale( m_minimumViewSize.x / m_viewportResolution[0], m_minimumViewSize.y / m_viewportResolution[1] );
+
 				V2f mult;
 				if( !variableAspect )
 				{
 					mult = V2f( expf( -1.9f * d ) );
 					Pointer::setCurrent( "" );
+					minimumPlanarScale = V2f( std::max( minimumPlanarScale.x, minimumPlanarScale.y ) );
 				}
 				else
 				{
@@ -562,6 +576,11 @@ class ViewportGadget::CameraController : public boost::noncopyable
 				}
 				m_planarScale = m_motionPlanarScale * mult;
 
+				m_planarScale = V2f(
+					std::max( m_planarScale.x, minimumPlanarScale.x ),
+					std::max( m_planarScale.y, minimumPlanarScale.y )
+				);
+
 				// Also apply a transform to keep the origin of the scale centered on the
 				// starting cursor position
 				V2f offset = V2f( -1, 1 ) * ( m_planarScale - m_motionPlanarScale ) *
@@ -572,7 +591,20 @@ class ViewportGadget::CameraController : public boost::noncopyable
 			}
 			else
 			{
-				m_centerOfInterest = m_motionCenterOfInterest * expf( -1.9f * d );
+				float minDist = 0;
+				// If minimumViewSize is set, don't let a perspctive camera get too close
+				if( m_sourceCamera->getProjection()=="perspective" && m_minimumViewSize != V3f( 0.0f ) )
+				{
+					const Box2f &normalizedScreenWindow = m_sourceCamera->frustum(
+						m_sourceCamera->getFilmFit(),
+						( (float)m_viewportResolution.x ) / m_viewportResolution.y
+					);
+
+					// Compute a distance for z in order to see the whole width and height of minimumViewsize
+					minDist = std::max( m_minimumViewSize.x, std::max( m_minimumViewSize.y, m_minimumViewSize.z ) ) / std::min( normalizedScreenWindow.size().x, normalizedScreenWindow.size().y );
+				}
+
+				m_centerOfInterest = std::max( minDist, m_motionCenterOfInterest * expf( -1.9f * d ) );
 
 				M44f t = m_motionMatrix;
 				t.translate( V3f( 0, 0, m_centerOfInterest - m_motionCenterOfInterest ) );
@@ -585,6 +617,8 @@ class ViewportGadget::CameraController : public boost::noncopyable
 		// between world units and pixels, independ of viewport resolution
 		// ( and m_sourceCamera will be null ).
 		bool m_planarMovement;
+
+		Imath::V3f m_minimumViewSize;
 
 		// m_sourceCamera provides the values for any camera properties
 		// which we don't override
@@ -817,6 +851,16 @@ void ViewportGadget::setCenterOfInterest( float centerOfInterest )
 float ViewportGadget::getCenterOfInterest()
 {
 	return m_cameraController->getCenterOfInterest();
+}
+
+void ViewportGadget::setMinimumViewSize( const Imath::V3f &box )
+{
+	m_cameraController->setMinimumViewSize( box );
+}
+
+Imath::V3f ViewportGadget::getMinimumViewSize()
+{
+	return m_cameraController->getMinimumViewSize();
 }
 
 void ViewportGadget::frame( const Imath::Box3f &box )
