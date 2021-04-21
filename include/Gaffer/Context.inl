@@ -151,11 +151,13 @@ void Context::set( const IECore::InternedString &name, const T &value )
 	// and call internalSet to reference it in the main m_map
 	typedef typename Gaffer::Detail::DataTraits<T>::DataType DataType;
 	typename DataType::Ptr d = new DataType( value );
-	m_allocMap[name] = d;
-	internalSet( name, Value( name, &d->readable() ) );
+	if( internalSet( name, Value( name, &d->readable() ) ) )
+	{
+		m_allocMap[name] = d;
+	}
 }
 
-void Context::internalSet( const IECore::InternedString &name, const Value &value )
+bool Context::internalSet( const IECore::InternedString &name, const Value &value )
 {
 	if( !m_changedSignal )
 	{
@@ -164,6 +166,7 @@ void Context::internalSet( const IECore::InternedString &name, const Value &valu
 		// expense of checking.
 		m_map[name] = value;
 		m_hashValid = false;
+		return true;
 	}
 	else
 	{
@@ -176,6 +179,11 @@ void Context::internalSet( const IECore::InternedString &name, const Value &valu
 			v = value;
 			m_hashValid = false;
 			(*m_changedSignal)( this, name );
+			return true;
+		}
+		else
+		{
+			return false;
 		}
 	}
 }
