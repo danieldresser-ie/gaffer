@@ -136,6 +136,11 @@ bool Context::Value::operator == ( const Value &rhs ) const
 	return typeFunctions( m_typeId ).isEqual( *this, rhs );
 }
 
+bool Context::Value::operator != ( const Value &rhs ) const
+{
+	return !(*this == rhs);
+}
+
 bool Context::Value::references( const IECore::Data *value ) const
 {
 	if( m_typeId != value->typeId() )

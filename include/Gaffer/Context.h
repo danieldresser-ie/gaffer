@@ -295,6 +295,7 @@ class GAFFER_API Context : public IECore::RefCounted
 		struct Value
 		{
 
+			inline Value();
 			template<typename T>
 			Value( const IECore::InternedString &name, const T *value );
 			Value( const IECore::InternedString &name, const IECore::Data *value );
@@ -311,6 +312,7 @@ class GAFFER_API Context : public IECore::RefCounted
 			const IECore::MurmurHash &hash() const { return m_hash; }
 
 			bool operator == ( const Value &rhs ) const;
+			bool operator != ( const Value &rhs ) const;
 			bool references( const IECore::Data *value ) const;
 
 			IECore::DataPtr makeData() const;
