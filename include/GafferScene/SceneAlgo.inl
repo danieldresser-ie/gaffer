@@ -45,7 +45,7 @@ namespace Detail
 {
 
 template<typename ThreadableFunctor>
-void parallelProcessLocationsWalk( const GafferScene::ScenePlug *scene, const Gaffer::ThreadState &threadState, const ScenePlug::ScenePath &path, ThreadableFunctor &f, tbb::task_group_context &taskGroupContext )
+void parallelProcessLocationsWalk( const GafferScene::ScenePlug *scene, const Gaffer::ThreadState &threadState, const ScenePlug::ScenePath &path, ThreadableFunctor &f, tbb::task_group_context &taskGroupContext, std::atomic_int &count )
 {
 	ScenePlug::PathScope pathScope( threadState, &path );
 
@@ -65,24 +65,34 @@ void parallelProcessLocationsWalk( const GafferScene::ScenePlug *scene, const Ga
 	const ChildNameRange loopRange( childNames.begin(), childNames.end() );
 
 	auto loopBody = [&] ( const ChildNameRange &range ) {
+		bool first = range.begin() == loopRange.begin();
+		if( !first ) count++;
 		ScenePlug::ScenePath childPath = path;
 		childPath.push_back( IECore::InternedString() ); // Space for the child name
 		for( auto &childName : range )
 		{
 			ThreadableFunctor childFunctor( f );
 			childPath.back() = childName;
-			parallelProcessLocationsWalk( scene, threadState, childPath, childFunctor, taskGroupContext );
+			parallelProcessLocationsWalk( scene, threadState, childPath, childFunctor, taskGroupContext, count );
 		}
+		if( !first ) count--;
 	};
 
-	if( childNames.size() > 1 )
+	if( childNames.size() > 1 && count < 100 )
 	{
 		tbb::parallel_for( loopRange, loopBody, taskGroupContext );
 	}
 	else
 	{
 		// Serial execution
-		loopBody( loopRange );
+		ScenePlug::ScenePath childPath = path;
+		childPath.push_back( IECore::InternedString() ); // Space for the child name
+		for( auto &childName : loopRange )
+		{
+			ThreadableFunctor childFunctor( f );
+			childPath.back() = childName;
+			parallelProcessLocationsWalk( scene, threadState, childPath, childFunctor, taskGroupContext, count );
+		}
 	}
 }
 
@@ -150,7 +160,8 @@ template <class ThreadableFunctor>
 void parallelProcessLocations( const GafferScene::ScenePlug *scene, ThreadableFunctor &f, const ScenePlug::ScenePath &root )
 {
 	tbb::task_group_context taskGroupContext( tbb::task_group_context::isolated ); // Prevents outer tasks silently cancelling our tasks
-	Detail::parallelProcessLocationsWalk( scene, Gaffer::ThreadState::current(), root, f, taskGroupContext );
+	std::atomic_int count( 0 );
+	Detail::parallelProcessLocationsWalk( scene, Gaffer::ThreadState::current(), root, f, taskGroupContext, count );
 }
 
 template <class ThreadableFunctor>
