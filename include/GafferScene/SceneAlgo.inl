@@ -37,6 +37,7 @@
 #include "Gaffer/Context.h"
 
 #include "tbb/parallel_for.h"
+#include "tbb/parallel_do.h"
 
 namespace GafferScene
 {
@@ -85,6 +86,41 @@ void parallelProcessLocationsWalk( const GafferScene::ScenePlug *scene, const Ga
 		loopBody( loopRange );
 	}
 }
+
+template <class ThreadableFunctor>
+struct FunctorWrapper
+{
+	FunctorWrapper( ThreadableFunctor &f, const Gaffer::ThreadState &threadState, const GafferScene::ScenePlug *scene ): m_f( f ), m_threadState( threadState ), m_scene( scene ){}
+
+	void operator()( const GafferScene::ScenePlug::ScenePath &path, tbb::parallel_do_feeder< GafferScene::ScenePlug::ScenePath > &feeder ) const
+	{
+		ScenePlug::PathScope pathScope( m_threadState, &path );
+		if( !m_f( m_scene, path ) )
+		{
+			return;
+		}
+
+		IECore::ConstInternedStringVectorDataPtr childNamesData = m_scene->childNamesPlug()->getValue();
+		const std::vector<IECore::InternedString> &childNames = childNamesData->readable();
+		if( childNames.empty() )
+		{
+			return;
+		}
+
+		for( auto &childName : childNames )
+		{
+			ScenePlug::ScenePath childPath;
+			childPath.reserve( path.size() + 1 );
+			childPath = path;
+			childPath.push_back( childName );
+			feeder.add( std::move( childPath ) );
+		}
+	}
+
+	ThreadableFunctor &m_f;
+	const Gaffer::ThreadState &m_threadState;
+	const GafferScene::ScenePlug *m_scene;
+};
 
 template <class ThreadableFunctor>
 struct ThreadableFilteredFunctor
@@ -157,12 +193,10 @@ template <class ThreadableFunctor>
 void parallelTraverse( const ScenePlug *scene, ThreadableFunctor &f, const ScenePlug::ScenePath &root )
 {
 	// `parallelProcessLocations()` takes a copy of the functor at each location, whereas
-	// `parallelTraverse()` is intended to use the same functor for all locations. Wrap the
-	// functor in a cheap-to-copy lambda, so that the functor itself won't be copied.
-	auto reference = [&f] ( const ScenePlug *scene, const ScenePlug::ScenePath &path ) {
-		return f( scene, path );
-	};
-	parallelProcessLocations( scene, reference, root );
+	// `parallelTraverse()` is intended to use the same functor for all locations.
+	tbb::task_group_context taskGroupContext( tbb::task_group_context::isolated ); // Prevents outer tasks silently cancelling our tasks
+	std::vector<ScenePlug::ScenePath> rootVector = { root };
+	tbb::parallel_do( rootVector, GafferScene::Detail::FunctorWrapper<ThreadableFunctor>( f, Gaffer::ThreadState::current(), scene ), taskGroupContext );
 }
 
 template <class ThreadableFunctor>
