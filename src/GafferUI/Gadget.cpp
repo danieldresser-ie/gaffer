@@ -211,11 +211,6 @@ void Gadget::emitDescendantVisibilityChanged()
 	}
 }
 
-bool Gadget::getVisible() const
-{
-	return m_visible;
-}
-
 bool Gadget::visible( Gadget *relativeTo ) const
 {
 	const Gadget *g = this;
