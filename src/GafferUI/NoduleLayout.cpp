@@ -465,7 +465,7 @@ void NoduleLayout::registerCustomGadget( const std::string &gadgetType, CustomGa
 
 bool NoduleLayout::hasLayer( Layer layer ) const
 {
-	return layer != GraphLayer::Backdrops;
+	return layer == GraphLayer::Connections || layer == GraphLayer::Nodes || layer == GraphLayer::Highlighting || layer == GraphLayer::Overlay;
 }
 
 LinearContainer *NoduleLayout::noduleContainer()

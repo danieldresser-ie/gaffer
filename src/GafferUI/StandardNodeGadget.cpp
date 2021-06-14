@@ -417,7 +417,7 @@ void StandardNodeGadget::doRenderLayer( Layer layer, const Style *style ) const
 
 bool StandardNodeGadget::hasLayer( Layer layer ) const
 {
-	return layer != GraphLayer::Backdrops;
+	return layer == GraphLayer::Connections || layer == GraphLayer::Nodes || layer == GraphLayer::Highlighting || layer == GraphLayer::Overlay;
 }
 
 const Imath::Color3f *StandardNodeGadget::userColor() const
