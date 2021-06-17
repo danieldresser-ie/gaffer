@@ -997,6 +997,9 @@ Imath::V2f ViewportGadget::worldToRasterSpace( const Imath::V3f &worldPosition )
 
 void ViewportGadget::render() const
 {
+	static std::chrono::steady_clock::time_point prevTime;
+	std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
+
 	const_cast<ViewportGadget *>( this )->preRenderSignal()(
 		const_cast<ViewportGadget *>( this )
 	);
@@ -1024,6 +1027,12 @@ void ViewportGadget::render() const
 	glMatrixMode( GL_MODELVIEW );
 
 	renderInternal();
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	std::chrono::duration<float> between = startTime - prevTime;
+	std::chrono::duration<float> dur = now - startTime;
+	std::cerr << "SPF: " << between.count() << " : " << dur.count() << "\n";
+	prevTime = startTime;
 }
 
 void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
