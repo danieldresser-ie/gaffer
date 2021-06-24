@@ -1035,6 +1035,10 @@ void ViewportGadget::render() const
 	prevTime = startTime;
 }
 
+void ViewportGadget::dirtyLayout()
+{
+}
+
 void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 {
 

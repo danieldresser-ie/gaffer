@@ -326,6 +326,10 @@ void Gadget::dirty( DirtyType dirtyType )
 			if( viewportGadget )
 			{
 				viewportGadget->renderRequestSignal()( viewportGadget );
+				if( dirtyType == DirtyType::Layout )
+				{
+					viewportGadget->dirtyLayout();
+				}
 			}
 		}
 		g = p;

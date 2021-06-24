@@ -248,6 +248,12 @@ class GAFFERUI_API ViewportGadget : public Gadget
 
 	private :
 
+		// Gadget has a special relationship to ViewportGadget, which renders the Gadgets that are its
+		// children, so Gadgets specifically notify their ancestor ViewportGadget when the layout is dirtied
+		void dirtyLayout();
+
+		friend class Gadget;
+
 		void renderInternal( Layer filterLayer = Layer::None ) const;
 
 		// Sets the GL state up with the name attribute and transform for
