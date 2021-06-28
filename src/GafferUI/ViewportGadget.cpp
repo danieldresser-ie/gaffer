@@ -1057,7 +1057,7 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 
 	if( !m_renderItems.size() )
 	{
-		getRenderItems( this, M44f(), m_renderItems );
+		getRenderItems( this, M44f(), nullptr, m_renderItems );
 	}
 
 	M44f viewTransform;
@@ -1093,28 +1093,46 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 			{
 				selector->loadName( renderItem.gadget->m_glName );
 			}
-			renderItem.gadget->doRenderLayer( layer, currentStyle );
+
+			if( renderItem.style )
+			{
+				renderItem.style->bind();
+				renderItem.gadget->doRenderLayer( layer, renderItem.style );
+				currentStyle->bind();
+			}
+			else
+			{
+				renderItem.gadget->doRenderLayer( layer, currentStyle );
+			}
 		}
 	}
 	glLoadMatrixf( viewTransform.getValue() );
 }
 
-void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform, std::vector<RenderItem> &renderItems )
+void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform, const Style *parentStyle, std::vector<RenderItem> &renderItems )
 {
 	const Box3f bound = gadget->bound();
 	bool boundDefault = bound == Box3f();
+
+	const Style *style = parentStyle;
+	if( gadget->getStyle() )
+	{
+		// Actually overriding the style per Gadget is quite bad for performance, we're hoping this branch will
+		// never trigger, and style will be left at nullptr
+		style = gadget->getStyle();
+	}
 	if( gadget->m_transform != M44f() )
 	{
 		M44f combined = gadget->m_transform * transform;
 		renderItems.push_back( {
-			gadget, combined,
+			gadget, style, combined,
 			boundDefault ? g_infiniteBox : Imath::transform( bound, combined )
 		} );
 	}
 	else
 	{
 		renderItems.push_back( {
-			gadget, transform,
+			gadget, style, transform,
 			boundDefault ? g_infiniteBox : Imath::transform( bound, transform )
 		} );
 	}
@@ -1128,7 +1146,7 @@ void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform
 		{
 			continue;
 		}
-		getRenderItems( c, inheritTransform, renderItems );
+		getRenderItems( c, inheritTransform, style, renderItems );
 	}
 }
 

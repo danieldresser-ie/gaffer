@@ -114,7 +114,8 @@ class GAFFERUI_API Gadget : public Gaffer::GraphComponent
 		////////////////////////////////////////////////////////////////////
 		//{@
 		/// Explicitly sets the Style for this Gadget, overriding any inherited
-		/// Style.
+		/// Style.  Note that this is currently not used in Gaffer, and making heavy
+		/// use of it may have a negative impact on performance
 		void setStyle( ConstStylePtr style );
 		/// Returns any Style explicitly applied to this Gadget using setStyle().
 		/// Note that this may return 0, meaning that the Gadget is inheriting the
