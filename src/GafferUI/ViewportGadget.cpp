@@ -945,13 +945,14 @@ std::vector< Gadget* > ViewportGadget::gadgetsAt( const Imath::Box2f &rasterRegi
 	}
 
 	std::vector< Gadget* > gadgets;
-	for( std::vector<HitRecord>::const_iterator it = selection.begin(); it!= selection.end(); it++ )
+	for( const HitRecord &it : selection )
 	{
-		GadgetPtr gadget = Gadget::select( it->name );
-		if( gadget )
-		{
-			gadgets.push_back( gadget.get() );
-		}
+		// We can assume that renderInternal has populated m_renderItem, so we can just index into it
+		// using the index passed to loadName
+
+		// Hmmm, should I store the Gadget as non-const in m_renderItems for this purpose?  I guess the
+		// const cast is fine
+		gadgets.push_back( const_cast<Gadget*>( m_renderItems[ it.name ].gadget ) );
 	}
 
 	if( !gadgets.size() )
@@ -1081,8 +1082,9 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 			continue;
 		}
 
-		for( const RenderItem &renderItem : m_renderItems )
+		for( unsigned int i = 0; i < m_renderItems.size(); i++ )
 		{
+			const RenderItem &renderItem = m_renderItems[i];
 			if( !( renderItem.layerMask & layerIndex ) )
 			{
 				continue;
@@ -1097,7 +1099,7 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 			glMultMatrixf( renderItem.transform.getValue() );
 			if( selector )
 			{
-				selector->loadName( renderItem.gadget->m_glName );
+				selector->loadName( i );
 			}
 			
 			if( renderItem.style != currentStyle )
