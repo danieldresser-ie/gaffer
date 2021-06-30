@@ -103,6 +103,8 @@ V2f planarScaleFromCameraAndRes( const IECoreScene::Camera *cam, const V2i &res 
 	return V2f( cam->getAperture()[0] / ((float)res[0] ), cam->getAperture()[1] / ((float)res[1] ) );
 }
 
+M44f g_identityMatrix;
+
 const Box3f initInfiniteBox()
 {
 	Box3f r;
@@ -1109,7 +1111,7 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 	glLoadMatrixf( viewTransform.getValue() );
 }
 
-void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform, const Style *parentStyle, std::vector<RenderItem> &renderItems )
+void ViewportGadget::getRenderItems( const Gadget *gadget, M44f transform, const Style *parentStyle, std::vector<RenderItem> &renderItems )
 {
 	const Box3f bound = gadget->bound();
 	bool boundDefault = bound == Box3f();
@@ -1121,22 +1123,16 @@ void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform
 		// never trigger, and style will be left at nullptr
 		style = gadget->getStyle();
 	}
-	if( gadget->m_transform != M44f() )
+
+	if( gadget->m_transform != g_identityMatrix )
 	{
-		M44f combined = gadget->m_transform * transform;
-		renderItems.push_back( {
-			gadget, style, combined,
-			boundDefault ? g_infiniteBox : Imath::transform( bound, combined )
-		} );
+		transform = gadget->m_transform * transform;
 	}
-	else
-	{
-		renderItems.push_back( {
-			gadget, style, transform,
-			boundDefault ? g_infiniteBox : Imath::transform( bound, transform )
-		} );
-	}
-	const M44f &inheritTransform = renderItems.back().transform;
+
+	renderItems.push_back( {
+		gadget, style, transform,
+		boundDefault ? g_infiniteBox : Imath::transform( bound, transform )
+	} );
 
 	for( const auto &i : gadget->children() )
 	{
@@ -1146,7 +1142,7 @@ void ViewportGadget::getRenderItems( const Gadget *gadget, const M44f &transform
 		{
 			continue;
 		}
-		getRenderItems( c, inheritTransform, style, renderItems );
+		getRenderItems( c, transform, style, renderItems );
 	}
 }
 

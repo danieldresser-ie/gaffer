@@ -263,7 +263,7 @@ class GAFFERUI_API ViewportGadget : public Gadget
 		};
 		mutable std::vector<RenderItem> m_renderItems;
 
-		static void getRenderItems( const Gadget *gadget,  const Imath::M44f &transform, const Style *parentStyle, std::vector<RenderItem> &renderItems );
+		static void getRenderItems( const Gadget *gadget,  Imath::M44f transform, const Style *parentStyle, std::vector<RenderItem> &renderItems );
 
 		void renderInternal( Layer filterLayer = Layer::None ) const;
 
