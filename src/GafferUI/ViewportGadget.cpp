@@ -1059,7 +1059,7 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 
 	if( !m_renderItems.size() )
 	{
-		getRenderItems( this, M44f(), nullptr, m_renderItems );
+		getRenderItems( this, M44f(), style(), m_renderItems );
 	}
 
 	M44f viewTransform;
@@ -1071,8 +1071,7 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 	Box3f bound = transform( Box3f( V3f( -1 ), V3f( 1 ) ), combinedInverse );
 	IECoreGL::Selector *selector = IECoreGL::Selector::currentSelector();
 
-	const Style *currentStyle = style();
-	currentStyle->bind();
+	const Style *currentStyle = nullptr;
 
 	for( int layerIndex = (int)Layer::Back; layerIndex <= (int)Layer::Front; ++layerIndex )
 	{
@@ -1095,32 +1094,26 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 			{
 				selector->loadName( renderItem.gadget->m_glName );
 			}
+			
+			if( renderItem.style != currentStyle )
+			{
+				renderItem.style->bind( currentStyle );
+				currentStyle = renderItem.style;
+			}
 
-			if( renderItem.style )
-			{
-				renderItem.style->bind();
-				renderItem.gadget->doRenderLayer( layer, renderItem.style );
-				currentStyle->bind();
-			}
-			else
-			{
-				renderItem.gadget->doRenderLayer( layer, currentStyle );
-			}
+			renderItem.gadget->doRenderLayer( layer, currentStyle );
 		}
 	}
 	glLoadMatrixf( viewTransform.getValue() );
 }
 
-void ViewportGadget::getRenderItems( const Gadget *gadget, M44f transform, const Style *parentStyle, std::vector<RenderItem> &renderItems )
+void ViewportGadget::getRenderItems( const Gadget *gadget, M44f transform, const Style *style, std::vector<RenderItem> &renderItems )
 {
 	const Box3f bound = gadget->bound();
 	bool boundDefault = bound == Box3f();
 
-	const Style *style = parentStyle;
 	if( gadget->getStyle() )
 	{
-		// Actually overriding the style per Gadget is quite bad for performance, we're hoping this branch will
-		// never trigger, and style will be left at nullptr
 		style = gadget->getStyle();
 	}
 
