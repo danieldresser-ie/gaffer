@@ -78,6 +78,7 @@ class GadgetTest( GafferUITest.TestCase ) :
 
 	def testDerivationInPython( self ) :
 
+		b = imath.Box3f( imath.V3f( -20, 10, 2 ), imath.V3f( 10, 15, 5 ) )
 		layers = [ GafferUI.Gadget.Layer.Main, GafferUI.Gadget.Layer.MidBack, GafferUI.Gadget.Layer.Front ]
 		class MyGadget( GafferUI.Gadget ) :
 
@@ -89,7 +90,7 @@ class GadgetTest( GafferUITest.TestCase ) :
 
 			def bound( self ) :
 
-				return imath.Box3f( imath.V3f( -20, 10, 2 ), imath.V3f( 10, 15, 5 ) )
+				return b
 
 			def doRenderLayer( self, layer, style ) :
 
@@ -112,7 +113,8 @@ class GadgetTest( GafferUITest.TestCase ) :
 		self.assertEqual( c.bound().size(), mg.bound().size() )
 
 		with GafferUI.Window() as w :
-			GafferUI.GadgetWidget( c )
+			gw = GafferUI.GadgetWidget( c )
+			gw.getViewportGadget().frame( b )
 
 		w.setVisible( True )
 		self.waitForIdle( 1000 )
