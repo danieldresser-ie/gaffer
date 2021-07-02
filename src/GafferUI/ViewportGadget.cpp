@@ -948,11 +948,9 @@ std::vector< Gadget* > ViewportGadget::gadgetsAt( const Imath::Box2f &rasterRegi
 	for( const HitRecord &it : selection )
 	{
 		// We can assume that renderInternal has populated m_renderItem, so we can just index into it
-		// using the index passed to loadName
-
-		// Hmmm, should I store the Gadget as non-const in m_renderItems for this purpose?  I guess the
-		// const cast is fine
-		gadgets.push_back( const_cast<Gadget*>( m_renderItems[ it.name ].gadget ) );
+		// using the index passed to loadName ( reversing the increment-by-one used to avoid the reserved
+		// name "0" )
+		gadgets.push_back( const_cast<Gadget*>( m_renderItems[ it.name - 1 ].gadget ) );
 	}
 
 	if( !gadgets.size() )
@@ -1099,7 +1097,8 @@ void ViewportGadget::renderInternal( Gadget::Layer filterLayer ) const
 			glMultMatrixf( renderItem.transform.getValue() );
 			if( selector )
 			{
-				selector->loadName( i );
+				// 0 is a reserved name for when nothing is selected, so start at 1
+				selector->loadName( i + 1 );
 			}
 			
 			if( renderItem.style != currentStyle )
@@ -1129,11 +1128,15 @@ void ViewportGadget::getRenderItems( const Gadget *gadget, M44f transform, const
 		transform = gadget->m_transform * transform;
 	}
 
-	renderItems.push_back( {
-		gadget, style, transform,
-		boundDefault ? g_infiniteBox : Imath::transform( bound, transform ),
-		gadget->layerMask()
-	} );
+	unsigned layerMask = gadget->layerMask();
+	if( layerMask )
+	{
+		renderItems.push_back( {
+			gadget, style, transform,
+			boundDefault ? g_infiniteBox : Imath::transform( bound, transform ),
+			gadget->layerMask()
+		} );
+	}
 
 	for( const auto &i : gadget->children() )
 	{
