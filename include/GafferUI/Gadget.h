@@ -180,7 +180,19 @@ class GAFFERUI_API Gadget : public Gaffer::GraphComponent
 		/// The bounding box of the Gadget before transformation. The default
 		/// implementation returns the union of the transformed bounding boxes
 		/// of all the children.
-		virtual Imath::Box3f bound() const;
+		enum class BoundType
+		{
+			/// The layout bound is used by parent Gadget's to position things,
+			/// and when the viewport is positioned to frame the Gadget. 
+			Layout,
+			/// The render bound is the bound of everything drawn by doRenderLayer.
+			/// This can include additional elements extending beyond the Gadget
+			/// ( a frustum visualization is not part of the logical size of a
+			/// camera, but it still needs to be rendered ), or could be smaller
+			/// than the layout bound if the layout bound includes children,
+			/// but this Gadget only actually renders to a small region.
+		};
+		virtual Imath::Box3f bound( BoundType boundType ) const;
 		/// The bounding box transformed by the result of getTransform().
 		Imath::Box3f transformedBound() const;
 		/// The bounding box transformed by the result of fullTransform( ancestor ).
@@ -271,10 +283,14 @@ class GAFFERUI_API Gadget : public Gaffer::GraphComponent
 			/// A re-render is needed, but the bounding box
 			/// and layout remain the same.
 			Render,
-			/// The bounding box has changed. Implies Render.
+			/// The render bounds have changed, but the layout bounds have not.
+			/// Internal render caches which depend on the render bounds need to be rebuilt,
+			/// but we don't need to re-layout
+			RenderBound,
+			/// The layout bounding box has changed. Implies RenderBound and Render.
 			Bound,
 			/// Parameters used by `updateLayout()` have changed.
-			/// Implies Bound and Render.
+			/// Implies Bound, RenderBound and Render.
 			Layout,
 		};
 
