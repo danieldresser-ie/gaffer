@@ -305,7 +305,7 @@ class Parallel
 
 		typedef typename LRUCache::CacheEntry CacheEntry;
 		typedef typename LRUCache::KeyType Key;
-		typedef tbb::atomic<typename LRUCache::Cost> AtomicCost;
+		typedef std::atomic<typename LRUCache::Cost> AtomicCost;
 
 		struct Item
 		{
@@ -318,7 +318,7 @@ class Parallel
 			typedef tbb::spin_rw_mutex Mutex;
 			mutable Mutex mutex;
 			// Flag used in second-chance algorithm.
-			mutable tbb::atomic<bool> recentlyUsed;
+			mutable std::atomic_bool recentlyUsed;
 		};
 
 		// We would love to use one of TBB's concurrent containers as
@@ -651,7 +651,7 @@ class TaskParallel
 
 		typedef typename LRUCache::CacheEntry CacheEntry;
 		typedef typename LRUCache::KeyType Key;
-		typedef tbb::atomic<typename LRUCache::Cost> AtomicCost;
+		typedef std::atomic<typename LRUCache::Cost> AtomicCost;
 
 		struct Item
 		{
@@ -664,7 +664,7 @@ class TaskParallel
 			typedef TaskMutex Mutex;
 			mutable Mutex mutex;
 			// Flag used in second-chance algorithm.
-			mutable tbb::atomic<bool> recentlyUsed;
+			mutable std::atomic_bool recentlyUsed;
 		};
 
 		// We would love to use one of TBB's concurrent containers as
