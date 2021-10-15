@@ -61,6 +61,8 @@
 #include "tbb/concurrent_unordered_map.h"
 #include "tbb/spin_mutex.h"
 
+#include "boost/functional/hash.hpp"
+
 #include <array>
 
 #include <chrono>
