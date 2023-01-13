@@ -752,7 +752,7 @@ baseLibEnv.Append(
 		"boost_chrono$BOOST_LIB_SUFFIX",
 		"tbb",
 		"Imath$OPENEXR_LIB_SUFFIX",
-		"IlmImf$OPENEXR_LIB_SUFFIX",
+		"OpenEXR$OPENEXR_LIB_SUFFIX",
 		"IECore$CORTEX_LIB_SUFFIX",
 	],
 
