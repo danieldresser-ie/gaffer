@@ -40,10 +40,10 @@
 #include "IECore/Export.h"
 
 IECORE_PUSH_DEFAULT_VISIBILITY
-#include "OpenEXR/ImathEuler.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
-#include "OpenEXR/ImathSphere.h"
-#include "OpenEXR/ImathQuat.h"
+#include "Imath/ImathEuler.h"
+#include "Imath/ImathMatrixAlgo.h"
+#include "Imath/ImathSphere.h"
+#include "Imath/ImathQuat.h"
 IECORE_POP_DEFAULT_VISIBILITY
 
 #include "boost/bind/bind.hpp"

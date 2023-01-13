@@ -51,8 +51,8 @@
 #include "IECore/NullObject.h"
 #include "IECore/SimpleTypedData.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/bind/bind.hpp"
 #include "boost/bind/placeholders.hpp"

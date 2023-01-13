@@ -60,7 +60,7 @@
 
 #include "IECore/Math.h"
 
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathFun.h"
 
 #include "boost/algorithm/string/replace.hpp"
 #include "boost/bind/bind.hpp"

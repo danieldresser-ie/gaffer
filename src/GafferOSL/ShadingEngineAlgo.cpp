@@ -41,7 +41,7 @@
 #include "IECore/SimpleTypedData.h"
 #include "IECore/VectorTypedData.h"
 
-#include "OpenEXR/ImathBox.h"
+#include "Imath/ImathBox.h"
 
 using namespace Imath;
 using namespace IECore;

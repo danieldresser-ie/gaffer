@@ -61,7 +61,7 @@
 
 #include "IECore/MessageHandler.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 // Don't include Qt macros that stomp over common names like "signals"
 #define QT_NO_KEYWORDS

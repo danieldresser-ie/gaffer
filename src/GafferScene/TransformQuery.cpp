@@ -36,8 +36,8 @@
 
 #include "GafferScene/TransformQuery.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
-#include "OpenEXR/ImathEuler.h"
+#include "Imath/ImathMatrixAlgo.h"
+#include "Imath/ImathEuler.h"
 
 #include <cassert>
 #include <cmath>

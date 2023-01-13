@@ -44,7 +44,7 @@
 
 #include "IECoreScene/CurvesPrimitive.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 using namespace IECore;
 using namespace IECoreScene;

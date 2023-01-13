@@ -41,7 +41,7 @@
 #include "IECoreScene/Shader.h"
 #include "IECoreScene/ShaderNetwork.h"
 
-#include "OpenEXR/ImathRandom.h"
+#include "Imath/ImathRandom.h"
 
 using namespace Imath;
 using namespace IECore;

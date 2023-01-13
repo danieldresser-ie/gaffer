@@ -62,7 +62,7 @@
 #include "IECore/StringAlgo.h"
 #include "IECore/VectorTypedData.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/algorithm/string.hpp"
 #include "boost/algorithm/string/predicate.hpp"

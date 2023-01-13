@@ -68,8 +68,8 @@
 #include "IECore/StringAlgo.h"
 #include "IECore/Writer.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 #include "boost/format.hpp"

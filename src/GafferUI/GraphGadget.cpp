@@ -72,7 +72,7 @@
 #include "IECore/NullObject.h"
 
 IECORE_PUSH_DEFAULT_VISIBILITY
-#include "OpenEXR/ImathPlane.h"
+#include "Imath/ImathPlane.h"
 IECORE_POP_DEFAULT_VISIBILITY
 
 #include "boost/bind/bind.hpp"

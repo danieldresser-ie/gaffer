@@ -43,7 +43,7 @@
 
 #include "IECore/AngleConversion.h"
 
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathFun.h"
 
 using namespace std;
 using namespace Imath;

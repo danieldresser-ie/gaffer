@@ -54,7 +54,7 @@
 #include "IECore/AngleConversion.h"
 #include "IECore/CamelCase.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 #include "boost/algorithm/string/replace.hpp"

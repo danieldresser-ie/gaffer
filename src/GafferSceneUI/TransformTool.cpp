@@ -55,7 +55,7 @@
 
 #include "IECore/AngleConversion.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 #include "boost/bind/bind.hpp"

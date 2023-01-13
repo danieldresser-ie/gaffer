@@ -48,8 +48,8 @@
 
 #include "IECore/AngleConversion.h"
 
-#include "OpenEXR/ImathEuler.h"
-#include "OpenEXR/ImathMatrix.h"
+#include "Imath/ImathEuler.h"
+#include "Imath/ImathMatrix.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 #include "boost/bind/bind.hpp"

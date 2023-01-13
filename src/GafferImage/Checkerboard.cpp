@@ -42,8 +42,8 @@
 #include "Gaffer/Context.h"
 #include "Gaffer/Transform2DPlug.h"
 
-#include "OpenEXR/ImathFun.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathFun.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 using namespace std;
 using namespace Imath;

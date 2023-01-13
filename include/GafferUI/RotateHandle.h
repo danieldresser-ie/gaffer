@@ -40,7 +40,7 @@
 #include "GafferUI/Handle.h"
 
 IECORE_PUSH_DEFAULT_VISIBILITY
-#include "OpenEXR/ImathEuler.h"
+#include "Imath/ImathEuler.h"
 IECORE_POP_DEFAULT_VISIBILITY
 
 namespace GafferUI

@@ -57,8 +57,8 @@
 #include "IECoreScene/Font.h"
 #include "IECoreScene/MeshPrimitive.h"
 
-#include "OpenEXR/ImathVecAlgo.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathVecAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 #include "boost/container/flat_map.hpp"
 #include "boost/tokenizer.hpp"

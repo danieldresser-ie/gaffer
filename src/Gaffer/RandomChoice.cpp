@@ -44,7 +44,7 @@
 
 #include "IECore/TypeTraits.h"
 
-#include "OpenEXR/ImathRandom.h"
+#include "Imath/ImathRandom.h"
 
 #include <numeric>
 

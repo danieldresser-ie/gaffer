@@ -49,8 +49,8 @@
 #include "Gaffer/StandardSet.h"
 #include "Gaffer/UndoScope.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathBoxAlgo.h"
+#include "Imath/ImathFun.h"
 
 #include "boost/bind/bind.hpp"
 #include "boost/bind/placeholders.hpp"

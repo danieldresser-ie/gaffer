@@ -44,12 +44,12 @@
 #include "IECore/NullObject.h"
 
 IECORE_PUSH_DEFAULT_VISIBILITY
-#include "OpenEXR/ImathLine.h"
-#include "OpenEXR/ImathPlane.h"
+#include "Imath/ImathLine.h"
+#include "Imath/ImathPlane.h"
 IECORE_POP_DEFAULT_VISIBILITY
 
-#include "OpenEXR/ImathMatrixAlgo.h"
-#include "OpenEXR/ImathVecAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
+#include "Imath/ImathVecAlgo.h"
 
 #include "boost/bind/bind.hpp"
 #include "boost/bind/placeholders.hpp"

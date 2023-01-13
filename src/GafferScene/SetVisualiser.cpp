@@ -45,8 +45,8 @@
 #include "IECoreScene/ShaderNetwork.h"
 #include "IECore/StringAlgo.h"
 
-#include "OpenEXR/ImathColorAlgo.h"
-#include "OpenEXR/ImathRandom.h"
+#include "Imath/ImathColorAlgo.h"
+#include "Imath/ImathRandom.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 

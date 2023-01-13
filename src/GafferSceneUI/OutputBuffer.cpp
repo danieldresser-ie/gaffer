@@ -38,7 +38,7 @@
 
 #include "IECoreImage/DisplayDriver.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 #include "boost/lexical_cast.hpp"
 

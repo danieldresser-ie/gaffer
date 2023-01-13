@@ -44,8 +44,8 @@
 #include "IECore/GeometricTypedData.h"
 
 IECORE_PUSH_DEFAULT_VISIBILITY
-#include "OpenEXR/ImathColor.h"
-#include "OpenEXR/ImathVec.h"
+#include "Imath/ImathColor.h"
+#include "Imath/ImathVec.h"
 IECORE_POP_DEFAULT_VISIBILITY
 
 namespace Gaffer

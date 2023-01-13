@@ -40,7 +40,7 @@
 #include "Gaffer/Context.h"
 #include "Gaffer/Private/ScopedAssignment.h"
 
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathFun.h"
 
 #include <algorithm>
 #include <cassert>

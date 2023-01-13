@@ -44,7 +44,7 @@
 #include "IECore/NullObject.h"
 #include "IECore/StringAlgo.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 using namespace GafferScene;
 

@@ -44,7 +44,7 @@
 #include "IECore/StringAlgo.h"
 #include "IECore/TypeIds.h"
 
-#include "OpenEXR/ImathColor.h"
+#include "Imath/ImathColor.h"
 
 #include <vector>
 

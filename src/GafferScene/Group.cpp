@@ -46,7 +46,7 @@
 
 #include "IECore/NullObject.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 using namespace std;
 using namespace Imath;

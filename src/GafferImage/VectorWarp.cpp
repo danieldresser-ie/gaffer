@@ -41,7 +41,7 @@
 
 #include "Gaffer/Context.h"
 
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathFun.h"
 
 #include <cmath>
 

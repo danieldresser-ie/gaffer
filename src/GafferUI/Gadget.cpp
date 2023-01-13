@@ -45,7 +45,7 @@
 
 #include "IECore/SimpleTypedData.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 #include "boost/bind/bind.hpp"
 #include "boost/lexical_cast.hpp"

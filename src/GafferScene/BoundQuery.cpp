@@ -36,7 +36,7 @@
 
 #include "GafferScene/BoundQuery.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 #include <cassert>
 #include <cmath>

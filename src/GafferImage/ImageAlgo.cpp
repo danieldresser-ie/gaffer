@@ -38,7 +38,7 @@
 
 #include "IECore/CompoundData.h"
 
-#include "OpenEXR/ImathBox.h"
+#include "Imath/ImathBox.h"
 
 #include <set>
 #include <regex>

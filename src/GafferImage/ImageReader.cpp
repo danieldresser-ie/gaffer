@@ -41,7 +41,7 @@
 
 #include "Gaffer/StringPlug.h"
 
-#include "OpenEXR/ImathFun.h"
+#include "Imath/ImathFun.h"
 
 #include "OpenColorIO/OpenColorIO.h"
 

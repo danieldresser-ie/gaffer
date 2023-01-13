@@ -49,9 +49,9 @@
 #include "IECore/AngleConversion.h"
 #include "IECore/MatrixAlgo.h"
 
-#include "OpenEXR/ImathEuler.h"
-#include "OpenEXR/ImathMatrixAlgo.h"
-#include "OpenEXR/ImathRandom.h"
+#include "Imath/ImathEuler.h"
+#include "Imath/ImathMatrixAlgo.h"
+#include "Imath/ImathRandom.h"
 
 #include <random>
 

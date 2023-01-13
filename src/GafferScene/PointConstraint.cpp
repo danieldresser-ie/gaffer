@@ -36,7 +36,7 @@
 
 #include "GafferScene/PointConstraint.h"
 
-#include "OpenEXR/ImathMatrixAlgo.h"
+#include "Imath/ImathMatrixAlgo.h"
 
 using namespace Imath;
 using namespace Gaffer;

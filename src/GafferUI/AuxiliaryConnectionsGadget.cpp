@@ -46,7 +46,7 @@
 
 #include "IECoreGL/Selector.h"
 
-#include "OpenEXR/ImathBoxAlgo.h"
+#include "Imath/ImathBoxAlgo.h"
 
 #include "boost/algorithm/string/predicate.hpp"
 #include "boost/bind/bind.hpp"
