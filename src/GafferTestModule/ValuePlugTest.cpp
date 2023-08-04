@@ -112,12 +112,15 @@ void parallelGetValueWithVar( const T *plug, int iterations, const IECore::Inter
 void GafferTestModule::bindValuePlugTest()
 {
 	def( "repeatGetValue", &repeatGetValue<IntPlug> );
+	def( "repeatGetValue", &repeatGetValue<FloatPlug> );
 	def( "repeatGetValue", &repeatGetValue<ObjectPlug> );
 	def( "repeatGetValue", &repeatGetValue<PathMatcherDataPlug> );
 	def( "parallelGetValue", &parallelGetValue<IntPlug> );
+	def( "parallelGetValue", &parallelGetValue<FloatPlug> );
 	def( "parallelGetValue", &parallelGetValue<ObjectPlug> );
 	def( "parallelGetValue", &parallelGetValue<PathMatcherDataPlug> );
 	def( "parallelGetValue", &parallelGetValueWithVar<IntPlug> );
+	def( "parallelGetValue", &parallelGetValueWithVar<FloatPlug> );
 	def( "parallelGetValue", &parallelGetValueWithVar<ObjectPlug> );
 	def( "parallelGetValue", &parallelGetValueWithVar<PathMatcherDataPlug> );
 }
