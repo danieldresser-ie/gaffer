@@ -1088,42 +1088,44 @@ class ParentTest( GafferSceneTest.SceneTestCase ) :
 		#         / \
 		#  parentA1  parentC
 
-		infiniteScene = GafferScene.ScenePlug()
-		infiniteScene["childNames"].setValue( IECore.InternedStringVectorData( [ "one", "two" ] ) )
+		script = Gaffer.ScriptNode()
 
-		filterA = GafferScene.PathFilter()
-		filterA["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/*thisDoesntExist" ] ) )
+		script["infiniteScene"] = GafferScene.ScenePlug()
+		script["infiniteScene"]["childNames"].setValue( IECore.InternedStringVectorData( [ "one", "two" ] ) )
 
-		filterB = GafferScene.PathFilter()
-		filterB["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/one" ] ) )
+		script["filterA"] = GafferScene.PathFilter()
+		script["filterA"]["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/*thisDoesntExist" ] ) )
 
-		filterC = GafferScene.PathFilter()
-		filterC["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/two" ] ) )
+		script["filterB"] = GafferScene.PathFilter()
+		script["filterB"]["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/one" ] ) )
 
-		parentA2 = GafferScene.Parent()
-		parentA2["in"].setInput( infiniteScene )
-		parentA2["filter"].setInput( filterA["out"] )
+		script["filterC"] = GafferScene.PathFilter()
+		script["filterC"]["paths"].setValue( IECore.StringVectorData( [ "/*/*/*/*/*/*/two" ] ) )
 
-		parentB = GafferScene.Parent()
-		parentB["in"].setInput( parentA2["out"] )
-		parentB["filter"].setInput( filterB["out"] )
+		script["parentA2"] = GafferScene.Parent()
+		script["parentA2"]["in"].setInput( script["infiniteScene"] )
+		script["parentA2"]["filter"].setInput( script["filterA"]["out"] )
 
-		parentA1 = GafferScene.Parent()
-		parentA1["in"].setInput( parentB["out"] )
-		parentA1["filter"].setInput( filterA["out"] )
+		script["parentB"] = GafferScene.Parent()
+		script["parentB"]["in"].setInput( script["parentA2"]["out"] )
+		script["parentB"]["filter"].setInput( script["filterB"]["out"] )
 
-		parentC = GafferScene.Parent()
-		parentC["in"].setInput( parentB["out"] )
-		parentC["filter"].setInput( filterC["out"] )
+		script["parentA1"] = GafferScene.Parent()
+		script["parentA1"]["in"].setInput( script["parentB"]["out"] )
+		script["parentA1"]["filter"].setInput( script["filterA"]["out"] )
+
+		script["parentC"] = GafferScene.Parent()
+		script["parentC"]["in"].setInput( script["parentB"]["out"] )
+		script["parentC"]["filter"].setInput( script["filterC"]["out"] )
 
 		merge = GafferScene.MergeScenes()
-		merge["in"][0].setInput( parentA1["out"] )
-		merge["in"][1].setInput( parentC["out"] )
+		merge["in"][0].setInput( script["parentA1"]["out"] )
+		merge["in"][1].setInput( script["parentC"]["out"] )
 
-		self.assertEqual( parentA1["__branches"].hash(), parentA2["__branches"].hash() )
-		self.assertNotEqual( parentA1["__branches"].hash(), parentB["__branches"].hash() )
-		self.assertNotEqual( parentA1["__branches"].hash(), parentC["__branches"].hash() )
-		self.assertNotEqual( parentB["__branches"].hash(), parentC["__branches"].hash() )
+		self.assertEqual( script["parentA1"]["__branches"].hash(), script["parentA2"]["__branches"].hash() )
+		self.assertNotEqual( script["parentA1"]["__branches"].hash(), script["parentB"]["__branches"].hash() )
+		self.assertNotEqual( script["parentA1"]["__branches"].hash(), script["parentC"]["__branches"].hash() )
+		self.assertNotEqual( script["parentB"]["__branches"].hash(), script["parentC"]["__branches"].hash() )
 
 		# Repeat this one, because it is more sensitive to specific task timings.
 		for i in range( 0, 10 ) :
@@ -1131,8 +1133,8 @@ class ParentTest( GafferSceneTest.SceneTestCase ) :
 			# Simulate the effects of a previous computation being evicted
 			# from the cache.
 
-			parentA1["__branches"].getValue()
-			parentC["__branches"].getValue()
+			script["parentA1"]["__branches"].getValue()
+			script["parentC"]["__branches"].getValue()
 			Gaffer.ValuePlug.clearCache()
 
 			# Trigger a bunch of parallel computes on both `parentA1` and `parentC`.
@@ -1142,8 +1144,8 @@ class ParentTest( GafferSceneTest.SceneTestCase ) :
 				paths = IECore.PathMatcher()
 				GafferScene.SceneAlgo.matchingPaths( IECore.PathMatcher( [ "/*/*/*/*/*/*/*/*/*" ] ), scene, paths )
 
-			parentA1Task = Gaffer.ParallelAlgo.callOnBackgroundThread( parentA1["out"], functools.partial( evaluateScene, parentA1["out"] ) )
-			parentCTask = Gaffer.ParallelAlgo.callOnBackgroundThread( parentC["out"], functools.partial( evaluateScene, parentC["out"] ) )
+			parentA1Task = Gaffer.ParallelAlgo.callOnBackgroundThread( script["parentA1"]["out"], functools.partial( evaluateScene, script["parentA1"]["out"] ) )
+			parentCTask = Gaffer.ParallelAlgo.callOnBackgroundThread( script["parentC"]["out"], functools.partial( evaluateScene, script["parentC"]["out"] ) )
 
 			parentA1Task.wait()
 			parentCTask.wait()
