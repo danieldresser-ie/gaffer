@@ -113,8 +113,11 @@ void GafferTestModule::bindValuePlugTest()
 {
 	def( "repeatGetValue", &repeatGetValue<IntPlug> );
 	def( "repeatGetValue", &repeatGetValue<ObjectPlug> );
+	def( "repeatGetValue", &repeatGetValue<PathMatcherDataPlug> );
 	def( "parallelGetValue", &parallelGetValue<IntPlug> );
 	def( "parallelGetValue", &parallelGetValue<ObjectPlug> );
+	def( "parallelGetValue", &parallelGetValue<PathMatcherDataPlug> );
 	def( "parallelGetValue", &parallelGetValueWithVar<IntPlug> );
 	def( "parallelGetValue", &parallelGetValueWithVar<ObjectPlug> );
+	def( "parallelGetValue", &parallelGetValueWithVar<PathMatcherDataPlug> );
 }

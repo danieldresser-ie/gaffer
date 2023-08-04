@@ -253,6 +253,23 @@ class FilterResultsTest( GafferSceneTest.SceneTestCase ) :
 		pathFilter["paths"].setValue( IECore.StringVectorData( [ "/" ] ) )
 		self.assertEqual( filterResults["outStrings"].getValue(), IECore.StringVectorData( [ "/" ] ) )
 
+	def testTaskCollaboration( self ) :
+
+		infiniteScene = GafferScene.ScenePlug()
+		infiniteScene["childNames"].setValue( IECore.InternedStringVectorData( [ "one", "two" ] ) )
+
+		pathFilter = GafferScene.PathFilter()
+		pathFilter["paths"].setValue( IECore.StringVectorData( [ "/*" * 12 ] ) )
+
+		filterResults = GafferScene.FilterResults()
+		filterResults["scene"].setInput( infiniteScene )
+		filterResults["filter"].setInput( pathFilter["out"] )
+
+		with Gaffer.PerformanceMonitor() as pm :
+			GafferTest.parallelGetValue( filterResults["out"], 10000 )
+
+		self.assertEqual( pm.plugStatistics( filterResults["__internalOut"] ).computeCount, 1 )
+
 	@unittest.skipIf( GafferTest.inCI(), "Performance not relevant on CI platform" )
 	@GafferTest.TestRunner.PerformanceTestMethod()
 	def testHashPerformance( self ):
