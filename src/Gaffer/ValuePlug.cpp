@@ -559,12 +559,6 @@ struct ComputeProcessKey
 
 };
 
-// Avoids LRUCache overhead for non-collaborative policies.
-bool spawnsTasks( const ComputeProcessKey &key )
-{
-	return key.cachePolicy == ValuePlug::CachePolicy::TaskCollaboration;
-}
-
 } // namespace
 
 class ValuePlug::ComputeProcess : public Process
@@ -612,7 +606,7 @@ class ValuePlug::ComputeProcess : public Process
 			// it with a ComputeProcess.
 
 			const ThreadState &threadState = ThreadState::current();
-			const Context *currentContext = threadState.context();
+			//const Context *currentContext = threadState.context();
 
 			const ComputeNode *computeNode = IECore::runTimeCast<const ComputeNode>( p->node() );
 			const ComputeProcessKey processKey( p, plug, computeNode, computeNode ? computeNode->computeCachePolicy( p ) : CachePolicy::Uncached, precomputedHash );
@@ -621,49 +615,36 @@ class ValuePlug::ComputeProcess : public Process
 			{
 				return ComputeProcess( processKey ).m_result;
 			}
-			else if( Process::forceMonitoring( threadState, plug, ValuePlug::ComputeProcess::staticType ) )
+
+			// Check for an already-cached value and return it if we have one.
+
+			if( !Process::forceMonitoring( threadState, plug, ValuePlug::ComputeProcess::staticType ) )
 			{
-				ComputeProcess process( processKey );
-				g_cache.setIfUncached(
-					processKey, process.m_result,
-					[]( const IECore::ConstObjectPtr &v ) { return v->memoryUsage(); }
-				);
-				return process.m_result;
-			}
-			else if( processKey.cachePolicy == CachePolicy::Legacy )
-			{
-				// Legacy code path, necessary until all task-spawning computes
-				// have declared an appropriate cache policy. We can't perform
-				// the compute inside `cacheGetter()` because that is called
-				// from inside a lock. If tasks were spawned without being
-				// isolated, TBB could steal an outer task which tries to get
-				// the same item from the cache, leading to deadlock.
 				if( auto result = g_cache.getIfCached( processKey ) )
 				{
 					return *result;
 				}
-				ComputeProcess process( processKey );
-				// Store the value in the cache, but only if it isn't there
-				// already. The check is useful because it's common for an
-				// upstream compute triggered by us to have already done the
-				// work, and calling `memoryUsage()` can be very expensive for
-				// some datatypes. A prime example of this is the attribute
-				// state passed around in GafferScene - it's common for a
-				// selective filter to mean that the attribute compute is
-				// implemented as a pass-through (thus an upstream node will
-				// already have computed the same result) and the attribute data
-				// itself consists of many small objects for which computing
-				// memory usage is slow.
-				g_cache.setIfUncached(
-					processKey, process.m_result,
-					[]( const IECore::ConstObjectPtr &v ) { return v->memoryUsage(); }
-				);
-				return process.m_result;
 			}
-			else
-			{
-				return g_cache.get( processKey, currentContext->canceller() );
-			}
+
+			std::cerr << "MAKING PROCESS" << std::endl;
+			ComputeProcess process( processKey );
+
+			// Store the value in the cache, but only if it isn't there already.
+			// The check is useful because it's common for an upstream compute
+			// triggered by us to have already done the work, and calling
+			// `memoryUsage()` can be very expensive for some datatypes. A prime
+			// example of this is the attribute state passed around in
+			// GafferScene - it's common for a selective filter to mean that the
+			// attribute compute is implemented as a pass-through (thus an
+			// upstream node will already have computed the same result) and the
+			// attribute data itself consists of many small objects for which
+			// computing memory usage is slow.
+			g_cache.setIfUncached(
+				processKey, process.m_result,
+				[]( const IECore::ConstObjectPtr &v ) { return v->memoryUsage(); }
+			);
+
+			return process.m_result;
 		}
 
 		static void receiveResult( const ValuePlug *plug, IECore::ConstObjectPtr result )
@@ -724,43 +705,9 @@ class ValuePlug::ComputeProcess : public Process
 
 		static IECore::ConstObjectPtr cacheGetter( const ComputeProcessKey &key, size_t &cost, const IECore::Canceller *canceller )
 		{
-			// Canceller will be passed to `ComputeNode::hash()` implicitly
-			// via the context.
-			assert( canceller == Context::current()->canceller() );
-			IECore::ConstObjectPtr result;
-			switch( key.cachePolicy )
-			{
-				case CachePolicy::Standard :
-				{
-					ComputeProcess process( key );
-					result = process.m_result;
-					break;
-				}
-				case CachePolicy::TaskCollaboration :
-				{
-					ComputeProcess process( key );
-					result = process.m_result;
-					break;
-				}
-				case CachePolicy::TaskIsolation :
-				{
-					tbb::this_task_arena::isolate(
-						[&result, &key] {
-							ComputeProcess process( key );
-							result = process.m_result;
-						}
-					);
-					break;
-				}
-				default :
-					// Should not get here, because these cases are
-					// dealt with directly in `ComputeProcess::value()`.
-					assert( false );
-					break;
-			}
-
-			cost = result->memoryUsage();
-			return result;
+			// We only use `getIfCached()` and `setIfUncached()`, so the getter should never be called.
+			assert( 0 );
+			return nullptr;
 		}
 
 		// A cache mapping from ValuePlug::hash() to the result of the previous computation
