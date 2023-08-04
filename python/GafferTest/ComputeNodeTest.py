@@ -711,5 +711,56 @@ class ComputeNodeTest( GafferTest.TestCase ) :
 
 		self.assertEqual( raised.exception.plug(), thrower["out"] )
 
+	def testUsePlugNameInCompute( self ) :
+
+		class NameSensitiveComputeNode( Gaffer.ComputeNode ) :
+
+			def __init__( self, name="PassThrough" ) :
+
+				Gaffer.ComputeNode.__init__( self, name )
+
+				self.plug = Gaffer.StringPlug( "out", Gaffer.Plug.Direction.Out )
+				self.addChild( self.plug )
+
+			# No need to override `hash()`, because the base class includes
+			# the plug name in the hash anyway.
+
+			def compute( self, plug, context ) :
+
+				plug.setValue( plug.getName() )
+
+		IECore.registerRunTimeTyped( NameSensitiveComputeNode )
+
+		n = NameSensitiveComputeNode()
+		h1 = n.plug.hash()
+		self.assertEqual( n.plug.getValue(), "out" )
+
+		n.plug.setName( "out2" )
+		h2 = n.plug.hash()
+		self.assertNotEqual( h2, h1 )
+		self.assertEqual( n.plug.getValue(), "out2" )
+
+	def testInterleavedEditsAndComputes( self ) :
+
+		n = GafferTest.AddNode()
+
+		with Gaffer.DirtyPropagationScope() :
+			for i in range( 0, 100 ) :
+				n["op1"].setValue( i )
+				self.assertEqual( n["sum"].getValue(), i )
+
+	def testCacheSharedBetweenNodes( self ) :
+
+		n1 = GafferTest.AddNode()
+		n2 = GafferTest.AddNode()
+
+		with Gaffer.PerformanceMonitor() as pm :
+
+			self.assertEqual( n1["sum"].getValue(), 0 )
+			self.assertEqual( n2["sum"].getValue(), 0 )
+
+		self.assertEqual( pm.plugStatistics( n1["sum"] ).computeCount, 1 )
+		self.assertEqual( pm.plugStatistics( n2["sum"] ).computeCount, 0 )
+
 if __name__ == "__main__":
 	unittest.main()
