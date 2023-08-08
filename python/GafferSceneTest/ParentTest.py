@@ -1128,7 +1128,7 @@ class ParentTest( GafferSceneTest.SceneTestCase ) :
 		self.assertNotEqual( script["parentB"]["__branches"].hash(), script["parentC"]["__branches"].hash() )
 
 		# Repeat this one, because it is more sensitive to specific task timings.
-		for i in range( 0, 10 ) :
+		for i in range( 0, 100 ) :
 
 			# Simulate the effects of a previous computation being evicted
 			# from the cache.

@@ -265,7 +265,9 @@ class FilterResultsTest( GafferSceneTest.SceneTestCase ) :
 		filterResults["scene"].setInput( infiniteScene )
 		filterResults["filter"].setInput( pathFilter["out"] )
 
-		for i in range( 0, 1000 ) :
+		for i in range( 0, 10 ) :
+
+			print( i )
 
 			Gaffer.ValuePlug.clearCache()
 

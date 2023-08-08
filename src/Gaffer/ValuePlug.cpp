@@ -52,6 +52,7 @@
 #include "fmt/format.h"
 
 #include <atomic>
+#include <unordered_set>
 
 using namespace Gaffer;
 
@@ -626,8 +627,97 @@ class ValuePlug::ComputeProcess : public Process
 				}
 			}
 
-			std::cerr << "MAKING PROCESS" << std::endl;
-			ComputeProcess process( processKey );
+			// Check for a suitable in-flight process, and if there is one, wait for it
+			// and return the result from that.
+
+			IECore::ConstObjectPtr result;
+			if( processKey.cachePolicy == CachePolicy::Legacy )
+			{
+				result = ComputeProcess( processKey ).m_result;
+			}
+			else
+			{
+				const PendingSet *currentPendingSet = findPendingSet( Process::current() );
+
+				tbb::spin_mutex::scoped_lock pendingResultsLock( g_pendingResultsMutex );
+				auto it = g_pendingResults.find( processKey );
+				if( it != g_pendingResults.end() )
+				{
+					for( const auto pendingResult : it->second ) // NOTE : COPY NEEDED BECAUSE VECTOR MAY CHANGE AFTER RELEASE
+					{
+						if( currentPendingSet->find( pendingResult.get() ) == currentPendingSet->end() )
+						{
+							std::cerr << "Collaborating on " << pendingResult->name << std::endl;
+							pendingResult->pendingSet.insert( currentPendingSet->begin(), currentPendingSet->end() );
+							pendingResultsLock.release();
+
+							pendingResult->arena.execute(
+								[&]{ pendingResult->taskGroup.wait(); }
+							);
+							if( pendingResult->result )
+							{
+								return pendingResult->result;
+							}
+							else
+							{
+								throw IECore::Exception( "Collaboration ended with null value" ); // TODO : BETTER WORDING
+							}
+						}
+						else
+						{
+							std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
+						}
+					}
+				}
+
+				// TODO : BRING OVER FIDDLY BITS OF TASKMUTEX
+				PendingResultPtr pendingResult = new PendingResult;
+				pendingResult->pendingSet = *currentPendingSet;
+				pendingResult->pendingSet.insert( pendingResult.get() );
+
+				pendingResult->name = processKey.plug->fullName(); // TODO : REMOVE
+
+				std::exception_ptr exception;
+
+				auto status = pendingResult->arena.execute(
+					[&] {
+						return pendingResult->taskGroup.run_and_wait(
+							[&] {
+								g_pendingResults[processKey].push_back( pendingResult );
+								pendingResultsLock.release(); // NOTE : ONLY ADVERTISING AFTER RUN_AND_WAIT, WHEN THERE IS SOMETHING TO WAIT FOR
+								try
+								{
+									ComputeProcess process( processKey, &pendingResult->pendingSet );
+									pendingResult->result = process.m_result;
+								}
+								catch( ... )
+								{
+									// TODO : SEE NOTES IN TASKMUTEX
+									exception = std::current_exception();
+								}
+							}
+						);
+					}
+				);
+
+				pendingResultsLock.acquire( g_pendingResultsMutex );
+				g_pendingResults.erase( processKey );
+
+				if( exception )
+				{
+					std::rethrow_exception( exception );
+				}
+				else if( status == tbb::task_group_status::canceled )
+				{
+					throw IECore::Cancelled();
+				}
+
+				result = pendingResult->result;
+
+			}
+
+			// TODO NEED TO MAKE SURE WE STORE THE RESULT BEFORE REMOVING THE PENDING RESULT,
+			// OTHERWISE WE CAN END UP DOING THE WORK ALL OVER AGAIN.
 
 			// Store the value in the cache, but only if it isn't there already.
 			// The check is useful because it's common for an upstream compute
@@ -640,11 +730,11 @@ class ValuePlug::ComputeProcess : public Process
 			// attribute data itself consists of many small objects for which
 			// computing memory usage is slow.
 			g_cache.setIfUncached(
-				processKey, process.m_result,
+				processKey, result,
 				[]( const IECore::ConstObjectPtr &v ) { return v->memoryUsage(); }
 			);
 
-			return process.m_result;
+			return result;
 		}
 
 		static void receiveResult( const ValuePlug *plug, IECore::ConstObjectPtr result )
@@ -668,8 +758,10 @@ class ValuePlug::ComputeProcess : public Process
 
 	private :
 
-		ComputeProcess( const ComputeProcessKey &key )
-			:	Process( staticType, key.plug, key.destinationPlug )
+		class PendingResult; // TODO : REARRANGE
+
+		ComputeProcess( const ComputeProcessKey &key, const std::unordered_set<const PendingResult *> *pendingSet = nullptr )
+			:	Process( staticType, key.plug, key.destinationPlug ), pendingSet( pendingSet ? pendingSet : findPendingSet( parent() ) )
 		{
 			try
 			{
@@ -703,6 +795,41 @@ class ValuePlug::ComputeProcess : public Process
 			}
 		}
 
+		IECore::ConstObjectPtr m_result;
+
+		struct PendingResult : public IECore::RefCounted
+		{
+			// Work around https://bugs.llvm.org/show_bug.cgi?id=32978
+			~PendingResult() noexcept( true ) override
+			{
+			}
+			std::string name;
+			// Arena and task group used to allow waiting threads to participate
+			// in work.
+			tbb::task_arena arena;
+			tbb::task_group taskGroup;
+			IECore::ConstObjectPtr result;
+			std::unordered_set<const PendingResult *> pendingSet;
+		};
+		IE_CORE_DECLAREPTR( PendingResult );
+
+		using PendingSet = std::unordered_set<const PendingResult *>;
+		static const PendingSet g_emptyPendingSet;
+		const PendingSet *pendingSet; // TODO : REARRANGE
+
+		static const PendingSet *findPendingSet( const Process *process )
+		{
+			while( process && process->type() != staticType )
+			{
+				process = process->parent();
+			}
+			return process ? static_cast<const ComputeProcess *>( process )->pendingSet : &g_emptyPendingSet;
+		}
+
+		using PendingResults = std::map<IECore::MurmurHash, std::vector<PendingResultPtr>>; // TODO : UNORDERED, SOME SORT OF SHARDING, VECTOR OR FLAT_SET OR SOMETHING
+		static PendingResults g_pendingResults;
+		static tbb::spin_mutex g_pendingResultsMutex;
+
 		static IECore::ConstObjectPtr cacheGetter( const ComputeProcessKey &key, size_t &cost, const IECore::Canceller *canceller )
 		{
 			// We only use `getIfCached()` and `setIfUncached()`, so the getter should never be called.
@@ -715,9 +842,11 @@ class ValuePlug::ComputeProcess : public Process
 		using Cache = IECorePreview::LRUCache<IECore::MurmurHash, IECore::ConstObjectPtr, IECorePreview::LRUCachePolicy::TaskParallel, ComputeProcessKey>;
 		static Cache g_cache;
 
-		IECore::ConstObjectPtr m_result;
-
 };
+
+ValuePlug::ComputeProcess::PendingResults ValuePlug::ComputeProcess::g_pendingResults;
+tbb::spin_mutex ValuePlug::ComputeProcess::g_pendingResultsMutex;
+const ValuePlug::ComputeProcess::PendingSet ValuePlug::ComputeProcess::g_emptyPendingSet;
 
 const IECore::InternedString ValuePlug::ComputeProcess::staticType( ValuePlug::computeProcessType() );
 ValuePlug::ComputeProcess::Cache ValuePlug::ComputeProcess::g_cache( cacheGetter, 1024 * 1024 * 1024 * 1, ValuePlug::ComputeProcess::Cache::RemovalCallback(), /* cacheErrors = */ false ); // 1 gig
