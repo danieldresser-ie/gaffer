@@ -640,33 +640,31 @@ class ValuePlug::ComputeProcess : public Process
 				const PendingSet *currentPendingSet = findPendingSet( Process::current() );
 
 				tbb::spin_mutex::scoped_lock pendingResultsLock( g_pendingResultsMutex );
-				auto it = g_pendingResults.find( processKey );
-				if( it != g_pendingResults.end() )
-				{
-					for( const auto pendingResult : it->second ) // NOTE : COPY NEEDED BECAUSE VECTOR MAY CHANGE AFTER RELEASE
-					{
-						if( currentPendingSet->find( pendingResult.get() ) == currentPendingSet->end() )
-						{
-							//std::cerr << "Collaborating on " << pendingResult->name << std::endl;
-							pendingResult->pendingSet.insert( currentPendingSet->begin(), currentPendingSet->end() );
-							pendingResultsLock.release();
+				auto &pendingResults = g_pendingResults[processKey];
 
-							pendingResult->arena.execute(
-								[&]{ pendingResult->taskGroup.wait(); }
-							);
-							if( pendingResult->result )
-							{
-								return pendingResult->result;
-							}
-							else
-							{
-								throw IECore::Exception( "Collaboration ended with null value" ); // TODO : BETTER WORDING
-							}
+				for( const auto pendingResult : pendingResults ) // NOTE : COPY NEEDED BECAUSE VECTOR MAY CHANGE AFTER RELEASE
+				{
+					if( currentPendingSet->find( pendingResult.get() ) == currentPendingSet->end() )
+					{
+						//std::cerr << "Collaborating on " << pendingResult->name << std::endl;
+						pendingResult->pendingSet.insert( currentPendingSet->begin(), currentPendingSet->end() );
+						pendingResultsLock.release();
+
+						pendingResult->arena.execute(
+							[&]{ pendingResult->taskGroup.wait(); }
+						);
+						if( pendingResult->result )
+						{
+							return pendingResult->result;
 						}
 						else
 						{
-							//std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
+							throw IECore::Exception( "Collaboration ended with null value" ); // TODO : BETTER WORDING
 						}
+					}
+					else
+					{
+						//std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
 					}
 				}
 
@@ -679,12 +677,14 @@ class ValuePlug::ComputeProcess : public Process
 
 				std::exception_ptr exception;
 
+				bool released = false;
 				auto status = pendingResult->arena.execute(
 					[&] {
 						return pendingResult->taskGroup.run_and_wait(
 							[&] {
-								g_pendingResults[processKey].push_back( pendingResult );
+								pendingResults.insert( pendingResult );
 								pendingResultsLock.release(); // NOTE : ONLY ADVERTISING AFTER RUN_AND_WAIT, WHEN THERE IS SOMETHING TO WAIT FOR
+								released = true;
 								try
 								{
 									ComputeProcess process( processKey, &pendingResult->pendingSet );
@@ -700,8 +700,14 @@ class ValuePlug::ComputeProcess : public Process
 					}
 				);
 
-				pendingResultsLock.acquire( g_pendingResultsMutex );
-				g_pendingResults.erase( processKey );
+				if( released ) // MIGHT NOT BE RELEASED IF RUN_AND_WAIT IS CANCELLED. MUST BE A BETTER WAY OF HANDLING THIS.
+				{
+					pendingResultsLock.acquire( g_pendingResultsMutex );
+				}
+				pendingResults.erase( pendingResult );
+				pendingResultsLock.release();
+
+				// TODO : ERASE WHOLE THING IF EMPTY. RELEASE BEFORE THE BELOW TOO?
 
 				if( exception )
 				{
@@ -826,7 +832,7 @@ class ValuePlug::ComputeProcess : public Process
 			return process ? static_cast<const ComputeProcess *>( process )->pendingSet : &g_emptyPendingSet;
 		}
 
-		using PendingResults = std::map<IECore::MurmurHash, std::vector<PendingResultPtr>>; // TODO : UNORDERED, SOME SORT OF SHARDING, VECTOR OR FLAT_SET OR SOMETHING
+		using PendingResults = std::map<IECore::MurmurHash, boost::container::flat_set<PendingResultPtr>>; // TODO : UNORDERED, SOME SORT OF SHARDING, VECTOR OR FLAT_SET OR SOMETHING
 		static PendingResults g_pendingResults;
 		static tbb::spin_mutex g_pendingResultsMutex;
 
