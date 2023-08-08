@@ -647,7 +647,7 @@ class ValuePlug::ComputeProcess : public Process
 					{
 						if( currentPendingSet->find( pendingResult.get() ) == currentPendingSet->end() )
 						{
-							std::cerr << "Collaborating on " << pendingResult->name << std::endl;
+							//std::cerr << "Collaborating on " << pendingResult->name << std::endl;
 							pendingResult->pendingSet.insert( currentPendingSet->begin(), currentPendingSet->end() );
 							pendingResultsLock.release();
 
@@ -665,7 +665,7 @@ class ValuePlug::ComputeProcess : public Process
 						}
 						else
 						{
-							std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
+							//std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
 						}
 					}
 				}
