@@ -886,6 +886,8 @@ class ValuePlugTest( GafferTest.TestCase ) :
 
 	def testCancellationOfSecondGetValueCall( self ) :
 
+		raise RuntimeError # We could actually fix this now even for TaskCollaboration
+
 		## \todo Should just be checking `tbb.global_control.active_value( max_allowed_parallelism )`
 		# to get the true limit set by `-threads` argument. But IECore's Python
 		# binding of `global_control` doesn't expose that yet.
