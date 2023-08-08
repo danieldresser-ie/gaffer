@@ -647,7 +647,7 @@ class ValuePlug::ComputeProcess : public Process
 					{
 						if( currentPendingSet->find( pendingResult.get() ) == currentPendingSet->end() )
 						{
-							std::cerr << "Collaborating on " << pendingResult->name << std::endl;
+							//std::cerr << "Collaborating on " << pendingResult->name << std::endl;
 							pendingResult->pendingSet.insert( currentPendingSet->begin(), currentPendingSet->end() );
 							pendingResultsLock.release();
 
@@ -665,7 +665,7 @@ class ValuePlug::ComputeProcess : public Process
 						}
 						else
 						{
-							std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
+							//std::cerr << "Avoiding collaboration on " << pendingResult->name << std::endl;
 						}
 					}
 				}
@@ -679,39 +679,15 @@ class ValuePlug::ComputeProcess : public Process
 
 				std::exception_ptr exception;
 
-				PendingResultPtr outerResult = findPendingResult( Process::current() );
-
 				auto status = pendingResult->arena.execute(
-					[&, pendingResult=pendingResult, outerResult=outerResult] {
+					[&] {
 						return pendingResult->taskGroup.run_and_wait(
-							[&, pendingResult=pendingResult, outerResult=outerResult] {
-								g_pendingResults[processKey].insert( pendingResult );
-								if( outerResult )
-								{
-									for( int i = 0; i < 1; ++i )
-									{
-										std::cerr << "Adding chaser from " << outerResult->name << " to " << pendingResult->name << std::endl;
-										outerResult->arena.enqueue(
-											[pendingResult=pendingResult, outerResult=outerResult] {
-												outerResult->taskGroup.run(
-													[&] {
-														std::cerr << "Running chaser from " << outerResult->name << " to " << pendingResult->name << " " << pendingResult << std::endl;
-														pendingResult->arena.execute(
-															[pendingResult=pendingResult]{ pendingResult->taskGroup.wait(); }
-														);
-													}
-												);
-											}
-										);//pendingResult->arena.execute(
-										//	[&]{ pendingResult->taskGroup.wait(); }
-										//);
-									}
-								}
+							[&] {
+								g_pendingResults[processKey].push_back( pendingResult );
 								pendingResultsLock.release(); // NOTE : ONLY ADVERTISING AFTER RUN_AND_WAIT, WHEN THERE IS SOMETHING TO WAIT FOR
-								std::cerr << "Launching compute on " << pendingResult->name << std::endl;
 								try
 								{
-									ComputeProcess process( processKey, &pendingResult->pendingSet, pendingResult.get() );
+									ComputeProcess process( processKey, &pendingResult->pendingSet );
 									pendingResult->result = process.m_result;
 								}
 								catch( ... )
@@ -725,9 +701,7 @@ class ValuePlug::ComputeProcess : public Process
 				);
 
 				pendingResultsLock.acquire( g_pendingResultsMutex );
-				std::cerr << "ERASING " << pendingResult->name << std::endl;
-				g_pendingResults[processKey].erase( pendingResult ); // NO NO NO!!!!!!!!!! YOU NEED TO JUST REMOVE THE ONE THING FROM THE VECTOR!
-																				// ^ DO NEED TO ERASE THE ITEM WHEN THE VECTOR IS EMPTY THOUGH
+				g_pendingResults.erase( processKey );
 
 				if( exception )
 				{
@@ -786,8 +760,8 @@ class ValuePlug::ComputeProcess : public Process
 
 		class PendingResult; // TODO : REARRANGE
 
-		ComputeProcess( const ComputeProcessKey &key, const std::unordered_set<const PendingResult *> *pendingSet = nullptr, PendingResult *pendingResult = nullptr )
-			:	Process( staticType, key.plug, key.destinationPlug ), pendingSet( pendingSet ? pendingSet : findPendingSet( parent() ) ), pendingResult( pendingResult ? pendingResult : findPendingResult( parent() ) )
+		ComputeProcess( const ComputeProcessKey &key, const std::unordered_set<const PendingResult *> *pendingSet = nullptr )
+			:	Process( staticType, key.plug, key.destinationPlug ), pendingSet( pendingSet ? pendingSet : findPendingSet( parent() ) )
 		{
 			try
 			{
@@ -828,7 +802,6 @@ class ValuePlug::ComputeProcess : public Process
 			// Work around https://bugs.llvm.org/show_bug.cgi?id=32978
 			~PendingResult() noexcept( true ) override
 			{
-				std::cerr << "~PendingResult for " << name << " " << this << std::endl;
 			}
 			std::string name;
 			// Arena and task group used to allow waiting threads to participate
@@ -843,7 +816,6 @@ class ValuePlug::ComputeProcess : public Process
 		using PendingSet = std::unordered_set<const PendingResult *>;
 		static const PendingSet g_emptyPendingSet;
 		const PendingSet *pendingSet; // TODO : REARRANGE
-		PendingResult *pendingResult;
 
 		static const PendingSet *findPendingSet( const Process *process )
 		{
@@ -854,16 +826,7 @@ class ValuePlug::ComputeProcess : public Process
 			return process ? static_cast<const ComputeProcess *>( process )->pendingSet : &g_emptyPendingSet;
 		}
 
-		static PendingResult *findPendingResult( const Process *process )
-		{
-			while( process && process->type() != staticType )
-			{
-				process = process->parent();
-			}
-			return process ? static_cast<const ComputeProcess *>( process )->pendingResult : nullptr;
-		}
-
-		using PendingResults = std::map<IECore::MurmurHash, std::set<PendingResultPtr>>; // TODO : UNORDERED, SOME SORT OF SHARDING, VECTOR OR FLAT_SET OR SOMETHING
+		using PendingResults = std::map<IECore::MurmurHash, std::vector<PendingResultPtr>>; // TODO : UNORDERED, SOME SORT OF SHARDING, VECTOR OR FLAT_SET OR SOMETHING
 		static PendingResults g_pendingResults;
 		static tbb::spin_mutex g_pendingResultsMutex;
 

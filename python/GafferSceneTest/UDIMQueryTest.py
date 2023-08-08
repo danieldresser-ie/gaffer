@@ -213,10 +213,10 @@ class UDIMQueryTest( GafferSceneTest.SceneTestCase ) :
 		query["outInt"] = Gaffer.IntPlug()
 		query["outIntExpression"] = Gaffer.Expression()
 
-		query["outIntExpression"].setExpression( 'parent["outInt"] = len( parent["out"] )' )# + context["iteration"]' )
+		query["outIntExpression"].setExpression( 'parent["outInt"] = len( parent["out"] ) + context["iteration"]' )
 
 		with GafferTest.TestRunner.PerformanceScope() :
-			GafferTest.parallelGetValue( query["outInt"], 400 )# "iteration" )
+			GafferTest.parallelGetValue( query["outInt"], 400, "iteration" )
 
 
 if __name__ == "__main__":
