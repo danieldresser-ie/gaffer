@@ -81,6 +81,10 @@ Gaffer.Metadata.registerNode(
 	"toolbarLayout:customWidget:BottomRightSpacer:section", "Bottom",
 	"toolbarLayout:customWidget:BottomRightSpacer:index", -1,
 
+	"toolbarLayout:customWidget:DeepInfo:widgetType", "GafferImageUI.ImageViewUI._DeepInfoButton",
+	"toolbarLayout:customWidget:DeepInfo:section", "Top",
+	#"toolbarLayout:customWidget:DeepInfo:index", -3,
+
 	plugs = {
 
 		"view" : [
@@ -1449,3 +1453,78 @@ class _CompareImageWidget( GafferUI.Frame ) :
 		)
 
 		return True
+
+class _DeepInfoWindow( GafferUI.Window ) :
+	def __init__( self, imageView ):
+		GafferUI.Window.__init__( self, title = "Deep Info" )
+		self.__imageView = imageView
+		with self:
+			with GafferUI.ListContainer() :
+				with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None_, borderWidth = 4 ) :
+					self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
+
+		self.__inputChangedConnection = imageView.plugInputChangedSignal().connect( Gaffer.WeakMethod( self.__plugInputChanged ), scoped = True )
+
+		self.__imagePlugs = []
+		self.__updateImagePlugs()
+		self.__plugInputChanged( imageView ) #TODO
+		print( "INITED" )
+
+	def __plugInputChanged( self, plug ):
+		if type(plug) != GafferImage.ImagePlug:
+			return
+		print( "PLUG INPUT CHANGED: ", plug.fullName() )
+		self.__updateImagePlugs()
+
+	def __updateImagePlugs( self ):
+		imagePlugs = [ self.__imageView["in"].getInput() ]
+		#imageNodes = self.__imageView.getNodeSet()
+		#print( "RAW SET : ", list( imageNodes ) )
+		#for i in imageNodes:
+			#for plug in Gaffer.Plug.RecursiveOutputRange( i ) :
+				#if not plug.getName().startswith( "__" ) :
+					#if type( plug ) == GafferImage.ImagePlug:
+						#if not plug in imagePlugs:
+							#imagePlugs.append( plug )
+						#break
+
+		if imagePlugs != self.__imagePlugs:
+			print( "IMAGEPLUGS:", [p.fullName() for p in imagePlugs ] )
+			self.__imagePlugs = imagePlugs
+			self.__deepPixelInfo.setImagePlugs( imagePlugs )
+
+class _DeepInfoButton( GafferUI.Widget ) :
+
+	def __init__( self, imageView, **kw ) :
+
+		self.__button = GafferUI.Button( hasFrame = False )
+		GafferUI.Widget.__init__( self, self.__button, **kw )
+
+		self.__imageView = imageView
+
+		#self.__imageGadget = imageView.viewportGadget().getPrimaryChild().inPlug()["deep"]
+
+		self.__button.clickedSignal().connect( Gaffer.WeakMethod( self.__buttonClick ), scoped = False )
+
+		self.__update()
+		self.__deepInfoWindow = None
+
+	def __buttonClick( self, button ) :
+		print( "IMAGEVIEW: ", type( self.__imageView ) )
+
+		if self.__deepInfoWindow is None :
+
+			self.__deepInfoWindow = _DeepInfoWindow( self.__imageView )
+
+			self.ancestor( GafferUI.Window ).addChildWindow( self.__deepInfoWindow )
+
+			#self.__deepInfoWindow.resizeToFitChild()
+
+		self.__deepInfoWindow.setVisible( True )
+
+	def __update( self ) :
+
+		#paused = self.__imageGadget.getPaused()
+		deep = True
+		self.__button.setImage( "gammaOn.png" if deep else "minus.png" )
+
