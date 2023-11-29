@@ -247,14 +247,14 @@ void filterWeights1D( const OIIO::Filter2D *filter, const float inputFilterScale
 // for all pixels. This means we don't loop over output pixels at all here - we just compute the weights
 // for one output pixel, and return one 2D support for this pixel - it just gets shifted for each adjacent
 // pixel.
-void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, const V2f filterRadius, const V2i p,  const V2f offset, Box2i &support, std::vector<float> &weights )
+void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, const V2f filterRadius, const V2i p, const V2f ratio, const V2f offset, Box2i &support, std::vector<float> &weights )
 {
 	weights.reserve( ( 2 * ceilf( filterRadius.x ) + 1 ) * ( 2 * ceilf( filterRadius.y ) + 1 )  );
 
 	const V2f filterCoordinateMult( 1.0f / inputFilterScale.x, 1.0f / inputFilterScale.y );
 
 	// input pixel position (floating point)
-	V2f i = V2f( p ) + V2f( 0.5 ) + offset;
+	V2f i = ( V2f( p ) + V2f( 0.5 ) ) / ratio + offset;
 
 	support = Box2i(
 		V2i( ceilf( i.x - 0.5f - filterRadius.x ), ceilf( i.y - 0.5f - filterRadius.y ) ),
@@ -660,7 +660,7 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 	{
 		Box2i support;
 		std::vector<float> weights;
-		filterWeights2D( filter, inputFilterScale, filterRadius, tileBound.min, offset, support, weights );
+		filterWeights2D( filter, inputFilterScale, filterRadius, tileBound.min, V2f( 1 ), offset, support, weights );
 
 		V2i oP; // output pixel position
 		V2i supportOffset;
