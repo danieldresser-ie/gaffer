@@ -288,6 +288,16 @@ Box2f transform( const Box2f &b, const M33f &m )
 	return r;
 }
 
+class DeepLinearCombiner
+{
+
+public:
+	DeepLinearCombiner( const std::vector<int> &counts, const std::vector< float *> alpha, const std::vector< float* > &z, const std::vector< float* > &zBack, const std::vector< float > weights )
+	{
+	}
+
+};
+
 } // namespace
 
 //////////////////////////////////////////////////////////////////////////
