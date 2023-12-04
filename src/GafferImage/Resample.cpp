@@ -306,7 +306,7 @@ public:
 	DeepLinearCombiner( const std::vector<unsigned int> &countStreams, const std::vector< const float *> &alphaStreams, const std::vector< const float* > &zStreams, const std::vector< const float* > &zBackStreams, const std::vector< float > &weights ) :
 		m_countStreams( countStreams ), m_alphaStreams( alphaStreams ), m_zStreams( zStreams ), m_zBackStreams( zBackStreams ), m_weights( weights )
 	{
-		std::cerr << "\nSTART PIXEL\n";
+		//std::cerr << "\nSTART PIXEL\n";
 		m_streamSampleIndex.resize( countStreams.size(), -1 );
 		m_alphaAccumStreams.resize( countStreams.size(), 0.0f );
 
@@ -319,6 +319,7 @@ public:
 		}
 
 		m_totalAccumAlpha = 0;
+		m_totalClosedSegmentAccumAlpha = 0;
 		nextSegment();
 	}
 
@@ -358,16 +359,18 @@ public:
 			int sampleIndex = m_streamSampleIndex[stream];
 			if( m_zBackStreams[stream][sampleIndex] <= m_z )
 			{
-				m_alphaAccumStreams[stream] += ( 1 - m_alphaAccumStreams[stream] ) * m_alphaStreams[stream][sampleIndex];
+				float inc = ( 1 - m_alphaAccumStreams[stream] ) * m_alphaStreams[stream][sampleIndex];
+				m_alphaAccumStreams[stream] += inc;
+				m_totalClosedSegmentAccumAlpha += inc * m_weights[stream];
 				m_openSegments.erase( m_openSegments.begin() + i );
 			}
 			else
 			{
 				m_openSegments[i].prevAlpha = m_openSegments[i].alpha;
-				if( m_zBackStreams[stream][sampleIndex] < m_zBack )
+				/*if( m_zBackStreams[stream][sampleIndex] < m_zBack )
 				{
 					std::cerr << "TRIMMING ALREADY OPEN : " << m_zBackStreams[stream][sampleIndex] << "\n";
-				}
+				}*/
 				m_zBack = std::min( m_zBackStreams[stream][sampleIndex], m_zBack );
 			}
 		}
@@ -382,23 +385,28 @@ public:
 
 			while( m_heap.size() && m_heap.top().first <= m_z )
 			{
-				float tempTest = m_heap.top().first;
-				auto beginIt = m_heap.begin();
-				std::cerr << "Begin:Top" << beginIt->first << " : " << tempTest << "\n";
-				int stream = beginIt->second;
+				//float tempTest = m_heap.top().first;
+				//auto beginIt = m_heap.begin();
+				//std::cerr << "Begin:Top" << beginIt->first << " : " << tempTest << "\n";
+				int stream = m_heap.top().second;
 				m_openSegments.push_back( { stream, 0.0f, 0.0f } );
 				m_streamSampleIndex[stream]++;
 				if( m_zBackStreams[stream][ m_streamSampleIndex[stream] ] < m_z )
 				{
-					std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << tempTest << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
+					std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << m_heap.top().first << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
 				}
 				m_zBack = std::min( m_zBack, m_zBackStreams[stream][ m_streamSampleIndex[stream] ] );
 				if( m_streamSampleIndex[stream] < m_countStreams[stream] - 1 )
 				{
 					// Put this stream back in the heap, ready to find the next sample when it's needed.
 					// TODO update -> decrease ( note reversal of order )
-					m_heap.update(
+					/*m_heap.update(
 						Heap::s_handle_from_iterator( beginIt ),
+						std::make_pair( m_zStreams[stream][ m_streamSampleIndex[stream] + 1 ], stream )
+					);*/
+					// TODO - performance : Try : std::priority_queue, single op
+					m_heap.pop();
+					m_heap.push(
 						std::make_pair( m_zStreams[stream][ m_streamSampleIndex[stream] + 1 ], stream )
 					);
 				}
@@ -411,22 +419,22 @@ public:
 
 			if( m_heap.size() )
 			{
-				if( m_heap.top().first < m_zBack )
+				/*if( m_heap.top().first < m_zBack )
 				{
 					std::cerr << "TRIMMING TO NEXT START : " << m_zBack << " : " << m_heap.top().first << "\n";
-				}
+				}*/
 				m_zBack = std::min( m_zBack, m_heap.top().first );
 			}
 		}
 
 		
-		if( m_openSegments.size() )
+		/*if( m_openSegments.size() )
 		{
 			std::cerr << "SEGMENT : " << m_z << " -> " << m_zBack << "\n";
-		}
+		}*/
 
 		float prevTotalAccumAlpha = m_totalAccumAlpha;
-		m_totalAccumAlpha = 0;
+		m_totalAccumAlpha = m_totalClosedSegmentAccumAlpha;
 		for( OpenSegment &i : m_openSegments )
 		{
 			int sampleIndex = m_streamSampleIndex[i.stream];
@@ -451,7 +459,7 @@ public:
 				i.alpha = -expm1( ( ( m_zBack - sampleZ ) / ( sampleZBack - sampleZ ) ) * log1p( -sampleAlpha ) );
 				//std::cerr << "ALPHA FRAC : " << ( m_zBack - sampleZ ) / ( sampleZBack - sampleZ ) << " : " << i.alpha << "\n";
 			}
-			m_totalAccumAlpha += m_alphaAccumStreams[i.stream] + ( 1 - m_alphaAccumStreams[i.stream] ) * i.alpha;
+			m_totalAccumAlpha += ( 1 - m_alphaAccumStreams[i.stream] ) * i.alpha * m_weights[i.stream];
 		}
 		m_alpha = ( m_totalAccumAlpha - prevTotalAccumAlpha ) / ( 1 - prevTotalAccumAlpha );
 	}
@@ -492,6 +500,7 @@ private:
 	float m_alpha;
 	bool m_hasSegment;
 
+	float m_totalClosedSegmentAccumAlpha;
 	float m_totalAccumAlpha;
 
 
@@ -826,6 +835,17 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 	if( ratio == V2f(1) )
 	{
 		filterWeights2D( filter, inputFilterScale, filterRadius, tileBound.min, V2f( 1 ), offset, support, weights );
+		// TODO - why the heck isn't this being done in filterWeights*?
+		float total = 0;
+		for( float w : weights )
+		{
+			total += w;
+		}
+		// TODO w == 0, assert?
+		for( float &w : weights )
+		{
+			w /= total;
+		}
 	}
 
 	IntVectorDataPtr outputSampleOffsetsData = new IntVectorData();
@@ -852,6 +872,17 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 			if( ratio != V2f(1) )
 			{
 				filterWeights2D( filter, inputFilterScale, filterRadius, oP, ratio, offset, support, weights );
+				// TODO - why the heck isn't this being done in filterWeights*?
+				float total = 0;
+				for( float w : weights )
+				{
+					total += w;
+				}
+				// TODO w == 0, assert?
+				for( float &w : weights )
+				{
+					w /= total;
+				}
 			}
 			else
 			{
@@ -1120,7 +1151,7 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 
 		if( channelName == ImageAlgo::channelNameZ )
 		{
-			return deepResizeData->member<FloatVectorData>( g_ZBackName );
+			return deepResizeData->member<FloatVectorData>( g_ZName );
 		}
 		else if( channelName == ImageAlgo::channelNameZBack )
 		{
