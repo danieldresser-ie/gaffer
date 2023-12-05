@@ -253,7 +253,7 @@ void filterWeights1D( const OIIO::Filter2D *filter, const float inputFilterScale
 // pixel.
 void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, const V2f filterRadius, const V2i p, const V2f ratio, const V2f offset, Box2i &support, std::vector<float> &weights )
 {
-	weights.reserve( ( 2 * ceilf( filterRadius.x ) + 1 ) * ( 2 * ceilf( filterRadius.y ) + 1 )  );
+	weights.reserve( ( 2 * ceilf( filterRadius.x ) + 1 ) * ( 2 * ceilf( filterRadius.y ) + 1 ) );
 	weights.resize( 0 );
 
 	const V2f filterCoordinateMult( 1.0f / inputFilterScale.x, 1.0f / inputFilterScale.y );
@@ -314,7 +314,7 @@ public:
 		{
 			if( countStreams[i] )
 			{
-				m_heap.push( std::make_pair( zStreams[i][0], i ) );
+				m_heap.push( { zStreams[i][0], zBackStreams[i][0], i } );
 			}
 		}
 
@@ -380,20 +380,29 @@ public:
 			if( !m_openSegments.size() )
 			{
 				assert( m_zBack == std::numeric_limits<float>::infinity() );
-				m_z = m_heap.top().first;
+				m_z = m_heap.top().z;
 			}
 
-			while( m_heap.size() && m_heap.top().first <= m_z )
+			while(
+				// Basic criteria, we want any segments that have started at the depth we're starting at
+				m_heap.size() && m_heap.top().z <= m_z &&
+				// And a kinda tricky criteria: if we're not making a volume sample ( ie. it's a point sample ),
+				// we're only interested in inputs that are also point samples. Volume samples starting at this
+				// depth will end up in the next sample we output, but don't open them yet, because that
+				// could result in two open segments from the same stream, which our data structures don't support.
+				( ( m_zBack > m_z ) || ( m_heap.top().zBack == m_z ) )
+			)
 			{
 				//float tempTest = m_heap.top().first;
 				//auto beginIt = m_heap.begin();
 				//std::cerr << "Begin:Top" << beginIt->first << " : " << tempTest << "\n";
-				int stream = m_heap.top().second;
+				unsigned int stream = m_heap.top().stream;
+				// TODO - is there a good way to skip segments with 0 alpha without increasing complexity?
 				m_openSegments.push_back( { stream, 0.0f, 0.0f } );
 				m_streamSampleIndex[stream]++;
 				if( m_zBackStreams[stream][ m_streamSampleIndex[stream] ] < m_z )
 				{
-					std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << m_heap.top().first << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
+					std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << m_heap.top().z << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
 				}
 				m_zBack = std::min( m_zBack, m_zBackStreams[stream][ m_streamSampleIndex[stream] ] );
 				if( m_streamSampleIndex[stream] < m_countStreams[stream] - 1 )
@@ -406,8 +415,9 @@ public:
 					);*/
 					// TODO - performance : Try : std::priority_queue, single op
 					m_heap.pop();
+					int nextSampleIndex = m_streamSampleIndex[stream] + 1;
 					m_heap.push(
-						std::make_pair( m_zStreams[stream][ m_streamSampleIndex[stream] + 1 ], stream )
+						{ m_zStreams[stream][nextSampleIndex], m_zBackStreams[stream][nextSampleIndex], stream }
 					);
 				}
 				else
@@ -423,7 +433,7 @@ public:
 				{
 					std::cerr << "TRIMMING TO NEXT START : " << m_zBack << " : " << m_heap.top().first << "\n";
 				}*/
-				m_zBack = std::min( m_zBack, m_heap.top().first );
+				m_zBack = std::min( m_zBack, m_heap.top().z );
 			}
 		}
 
@@ -435,12 +445,31 @@ public:
 
 		float prevTotalAccumAlpha = m_totalAccumAlpha;
 		m_totalAccumAlpha = m_totalClosedSegmentAccumAlpha;
+		/*if( m_totalClosedSegmentAccumAlpha != 0.0f )
+		{
+			float resum = 0;
+			float resumWeights = 0;
+			for( unsigned int i = 0; i < m_alphaAccumStreams.size(); i++ )
+			{
+				resum += m_alphaAccumStreams[i] * m_weights[i];
+				resumWeights += m_weights[i];
+			}
+			std::cerr << "CLOSED SEGS : " << m_totalClosedSegmentAccumAlpha << " : " << resum << " ? " << resumWeights << "\n";
+			std::cerr << "SIZE : " << m_openSegments.size() << "\n";
+		}*/
+
 		for( OpenSegment &i : m_openSegments )
 		{
+			// TODO - we're not actually using stored i.alpha?
 			int sampleIndex = m_streamSampleIndex[i.stream];
 			float sampleZ = m_zStreams[i.stream][sampleIndex];
 			float sampleZBack = m_zBackStreams[i.stream][sampleIndex];
 			float sampleAlpha = m_alphaStreams[i.stream][sampleIndex];
+			if( sampleAlpha == 0.0f )
+			{
+				// We don't need to do anything with a sample with zero alpha
+				// TODO - how does this affect color channels?
+			}
 			if( sampleZ == m_z && sampleZBack == m_zBack )
 			{
 				i.alpha = sampleAlpha;
@@ -452,6 +481,10 @@ public:
 			else if( m_zBack == m_z )
 			{
 				i.alpha = i.prevAlpha;
+			}
+			else if( sampleAlpha == 1.0f )
+			{
+				i.alpha = 1.0f;
 			}
 			else
 			{
@@ -475,7 +508,7 @@ public:
 		{
 			streamIndex.push_back( i.stream );
 			sampleIndex.push_back( m_streamSampleIndex[i.stream] );
-			//weights.push_back( 1 - m_alphaAccum[i.stream]  );
+			//weights.push_back( 1 - m_alphaAccum[i.stream] );
 			weights.push_back( 1 );
 		}
 	}
@@ -504,23 +537,35 @@ private:
 	float m_totalAccumAlpha;
 
 
-    // Each entry in the heap stores a minimum depth, and a stream index.
-    using HeapEntry = std::pair<float, int>;
+	// Each entry in the heap stores a minimum depth, and a stream index.
+	struct HeapEntry
+	{
+		float z;
+		float zBack;
+		unsigned int stream;
+	};
 
-    // Compare based only on depth
-    struct Compare
-    {
-        bool operator()(const HeapEntry &a, const HeapEntry &b) const
-        {
-            return a.first > b.first;
-        }
-    };
-    using Heap = boost::heap::d_ary_heap< HeapEntry, boost::heap::arity<2>, boost::heap::mutable_<true>, boost::heap::compare<Compare> >;
-    Heap m_heap;
+	// Compare based on start depth, with ties broken by end depth
+	struct Compare
+	{
+		bool operator()(const HeapEntry &a, const HeapEntry &b) const
+		{
+			if( a.z != b.z )
+			{
+				return a.z > b.z;
+			}
+			else
+			{
+				return a.zBack > b.zBack;
+			}
+		}
+	};
+	using Heap = boost::heap::d_ary_heap< HeapEntry, boost::heap::arity<2>, boost::heap::mutable_<true>, boost::heap::compare<Compare> >;
+	Heap m_heap;
 
 	struct OpenSegment
 	{
-		int stream;
+		unsigned int stream;
 		float prevAlpha;
 		float alpha;
 	};
@@ -549,7 +594,7 @@ Resample::Resample( const std::string &name )
 	addChild( new BoolPlug( "expandDataWindow" ) );
 	addChild( new IntPlug( "debug", Plug::In, Off, Off, SinglePass ) );
 	addChild( new ImagePlug( "__horizontalPass", Plug::Out ) );
-    addChild( new CompoundObjectPlug( "__deepResizeData", Gaffer::Plug::Out, new IECore::CompoundObject ) );
+	addChild( new CompoundObjectPlug( "__deepResizeData", Gaffer::Plug::Out, new IECore::CompoundObject ) );
 
 
 	// We don't ever want to change these, so we make pass-through connections.
