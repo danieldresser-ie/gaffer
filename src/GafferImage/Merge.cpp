@@ -94,6 +94,10 @@ struct OpDivide
 			// input is a black tile.
 			return 0.0f;
 		}
+		if( B == 0.0f )
+		{
+			return A;
+		}
 		return A / B;
 	}
 #ifdef _MSC_VER
