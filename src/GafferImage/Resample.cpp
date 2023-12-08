@@ -297,7 +297,11 @@ const IECore::InternedString g_AName = "A";
 const IECore::InternedString g_ZName = "Z";
 const IECore::InternedString g_ZBackName = "ZBack";
 const IECore::InternedString g_sampleOffsetsName = "sampleOffsets";
-// contributionCounts, contributionStreams, contributionSampleIndices, contributionWeights
+const IECore::InternedString g_contributionSupportsName = "contributionSupports";
+const IECore::InternedString g_contributionCountsName = "contributionCounts";
+const IECore::InternedString g_contributionPixelIndicesName = "contributionPixelIndices";
+const IECore::InternedString g_contributionSampleIndicesName = "contributionSampleIndices";
+const IECore::InternedString g_contributionWeightsName = "contributionWeights";
 
 class DeepLinearCombiner
 {
@@ -319,6 +323,7 @@ public:
 		}
 
 		m_totalAccumAlpha = 0;
+		m_prevTotalAccumAlpha = 0;
 		m_totalClosedSegmentAccumAlpha = 0;
 		nextSegment();
 	}
@@ -443,7 +448,7 @@ public:
 			std::cerr << "SEGMENT : " << m_z << " -> " << m_zBack << "\n";
 		}*/
 
-		float prevTotalAccumAlpha = m_totalAccumAlpha;
+		m_prevTotalAccumAlpha = m_totalAccumAlpha;
 		m_totalAccumAlpha = m_totalClosedSegmentAccumAlpha;
 		/*if( m_totalClosedSegmentAccumAlpha != 0.0f )
 		{
@@ -494,22 +499,56 @@ public:
 			}
 			m_totalAccumAlpha += ( 1 - m_alphaAccumStreams[i.stream] ) * i.alpha * m_weights[i.stream];
 		}
-		m_alpha = ( m_totalAccumAlpha - prevTotalAccumAlpha ) / ( 1 - prevTotalAccumAlpha );
+		m_alpha = ( m_totalAccumAlpha - m_prevTotalAccumAlpha ) / ( 1 - m_prevTotalAccumAlpha );
 	}
 
-	/*void contributions( std::vector< int > &elementIndices, std::vector< int > &sampleIndices, std::vector< int > &sampleWeights )
-	{
-	}*/
-
-	void addSampleContributions( int &count, std::vector< int > &streamIndex, std::vector< int > &sampleIndex, std::vector< float > &weights )
+	void addSampleContributions( int &count, std::vector< int > &streamIndices, std::vector< int > &sampleIndices, std::vector< float > &weights )
 	{
 		count = m_openSegments.size();
 		for( OpenSegment &i : m_openSegments )
 		{
-			streamIndex.push_back( i.stream );
-			sampleIndex.push_back( m_streamSampleIndex[i.stream] );
-			//weights.push_back( 1 - m_alphaAccum[i.stream] );
-			weights.push_back( 1 );
+			unsigned int sampleIndex = m_streamSampleIndex[i.stream];
+			streamIndices.push_back( i.stream );
+			sampleIndices.push_back( sampleIndex );
+			float frac;
+			if( i.prevAlpha == 1.0f )
+			{
+				frac = 0.0f;
+			}
+			else if( i.alpha == 0.0f )
+			{
+				float sampleZ = m_zStreams[i.stream][ sampleIndex ];
+				float sampleZBack = m_zBackStreams[i.stream][ sampleIndex ];
+				if( sampleZ == sampleZBack )
+				{
+					if( sampleZ == m_z && sampleZBack == m_zBack )
+					{
+						frac = 1.0f;
+					}
+					else
+					{
+						frac = 0.0f;
+					}
+				}
+				else
+				{
+					// TODO - test this
+					frac = ( m_zBack - sampleZ ) / ( sampleZBack - sampleZ );
+				}
+			}
+			else
+			{
+				float accum = m_alphaAccumStreams[i.stream];
+				float prevAccum = accum + ( 1.0f - accum ) * i.prevAlpha;
+				//frac = ( ( i.alpha - i.prevAlpha ) / ( 1 - i.prevAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
+				//frac = i.alpha / m_alphaStreams[i.stream][ sampleIndex ];
+				//
+				//
+				frac = ( ( accum + ( 1.0f - accum ) * i.alpha - prevAccum ) / ( 1.0f - m_prevTotalAccumAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
+
+// / ( 1 - i.prevAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
+			}
+			weights.push_back( m_weights[i.stream] * frac );
 		}
 	}
 
@@ -535,6 +574,7 @@ private:
 
 	float m_totalClosedSegmentAccumAlpha;
 	float m_totalAccumAlpha;
+	float m_prevTotalAccumAlpha;
 
 
 	// Each entry in the heap stores a minimum depth, and a stream index.
@@ -730,9 +770,29 @@ void Resample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outpu
 	)
 	{
 		outputs.push_back( outPlug()->channelDataPlug() );
-		outputs.push_back( outPlug()->sampleOffsetsPlug() );
-		outputs.push_back( deepResizeDataPlug() );
 		outputs.push_back( horizontalPassPlug()->channelDataPlug() );
+	}
+
+	if(
+		input == inPlug()->channelNamesPlug() ||
+		input == inPlug()->dataWindowPlug() ||
+		input == matrixPlug() ||
+		input == filterPlug() ||
+		input->parent<V2fPlug>() == filterScalePlug() ||
+		input == inPlug()->channelDataPlug() ||
+		input == boundingModePlug()
+	)
+	{
+		outputs.push_back( deepResizeDataPlug() );
+	}
+
+	if(
+		input == inPlug()->deepPlug() ||
+		input == deepResizeDataPlug()
+	)
+	{	
+		outputs.push_back( outPlug()->channelDataPlug() );
+		outputs.push_back( outPlug()->sampleOffsetsPlug() );
 	}
 }
 
@@ -770,8 +830,31 @@ void Resample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context *con
 	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
 	Box2i ir = inputRegion( tileOrigin, Both, ratio, offset, filter, inputFilterScale );
 
-	const std::vector<std::string> &channelNames = channelNamesData->readable();
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZ ) )
+	bool hasA = false;
+	bool hasZ = false;
+	bool hasZBack = false;
+	bool hasArbitraryChannel = false;
+	for( const std::string &c : channelNamesData->readable() )
+	{
+		if( c == ImageAlgo::channelNameA )
+		{
+			hasA = true;
+		}
+		else if( c == ImageAlgo::channelNameZ )
+		{
+			hasZ = true;
+		}
+		else if( c == ImageAlgo::channelNameZBack )
+		{
+			hasZBack = true;
+		}
+		else
+		{
+			hasArbitraryChannel = true;
+		}
+	}
+
+	if( hasZ )
 	{
 		DeepTileAccessor( inPlug(), ImageAlgo::channelNameZ, ir, boundingMode ).hash( h );
 	}
@@ -779,7 +862,7 @@ void Resample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context *con
 	{
 		h.append( false );
 	}
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZBack ) )
+	if( hasZBack )
 	{
 		DeepTileAccessor( inPlug(), ImageAlgo::channelNameZBack, ir, boundingMode ).hash( h );
 	}
@@ -787,7 +870,7 @@ void Resample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context *con
 	{
 		h.append( false );
 	}
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
+	if( hasA )
 	{
 		DeepTileAccessor( inPlug(), ImageAlgo::channelNameA, ir, boundingMode ).hash( h );
 	}
@@ -795,6 +878,8 @@ void Resample::hash( const Gaffer::ValuePlug *output, const Gaffer::Context *con
 	{
 		h.append( false );
 	}
+
+	h.append( hasArbitraryChannel );
 
 	// Another tile might happen to need to filter over the same input
 	// tiles as this one, so we must include the tile origin to make sure
@@ -835,17 +920,39 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 	// empty channel name, but it should be good enough to get things working.
 	DeepTileAccessor sampleOffsetsSampler( inPlug(), "", ir, boundingMode );
 
+	bool hasA = false;
+	bool hasZ = false;
+	bool hasZBack = false;
+	bool hasArbitraryChannel = false;
+	for( const std::string &c : channelNamesData->readable() )
+	{
+		if( c == ImageAlgo::channelNameA )
+		{
+			hasA = true;
+		}
+		else if( c == ImageAlgo::channelNameZ )
+		{
+			hasZ = true;
+		}
+		else if( c == ImageAlgo::channelNameZBack )
+		{
+			hasZBack = true;
+		}
+		else
+		{
+			hasArbitraryChannel = true;
+		}
+	}
 	std::optional<DeepTileAccessor> zSampler, zBackSampler, alphaSampler;
-	const std::vector<std::string> &channelNames = channelNamesData->readable();
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZ ) )
+	if( hasZ )
 	{
 		zSampler.emplace( sampleOffsetsSampler, ImageAlgo::channelNameZ );
 	}
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZBack ) )
+	if( hasZBack )
 	{
 		zBackSampler.emplace( sampleOffsetsSampler, ImageAlgo::channelNameZBack );
 	}
-	if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
+	if( hasA )
 	{
 		alphaSampler.emplace( sampleOffsetsSampler, ImageAlgo::channelNameA );
 	}
@@ -894,14 +1001,40 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 	}
 
 	IntVectorDataPtr outputSampleOffsetsData = new IntVectorData();
-	FloatVectorDataPtr outputAlphaData = new FloatVectorData();
-	FloatVectorDataPtr outputZData = new FloatVectorData();
-	FloatVectorDataPtr outputZBackData = new FloatVectorData();
 	std::vector<int> &outputSampleOffsets = outputSampleOffsetsData->writable();
+	FloatVectorDataPtr outputAlphaData = new FloatVectorData();
 	std::vector<float> &outputAlpha = outputAlphaData->writable();
+	FloatVectorDataPtr outputZData = new FloatVectorData();
 	std::vector<float> &outputZ = outputZData->writable();
+	FloatVectorDataPtr outputZBackData = new FloatVectorData();
 	std::vector<float> &outputZBack = outputZBackData->writable();
 	unsigned int currentOutputSampleOffset = 0;
+
+	Box2iVectorDataPtr outputContributionSupportsData;
+	std::vector<Box2i> *outputContributionSupports = nullptr;
+	IntVectorDataPtr outputContributionCountsData;
+	std::vector<int> *outputContributionCounts = nullptr;
+	IntVectorDataPtr outputContributionPixelIndicesData;
+	std::vector<int> *outputContributionPixelIndices = nullptr;
+	IntVectorDataPtr outputContributionSampleIndicesData;
+	std::vector<int> *outputContributionSampleIndices = nullptr;
+	FloatVectorDataPtr outputContributionWeightsData;
+	std::vector<float> *outputContributionWeights = nullptr;
+
+	if( hasArbitraryChannel )
+	{	
+		outputContributionSupportsData = new Box2iVectorData();
+		outputContributionSupports = &outputContributionSupportsData->writable();
+		outputContributionSupports->reserve( ImagePlug::tilePixels() );
+		outputContributionCountsData = new IntVectorData();
+		outputContributionCounts = &outputContributionCountsData->writable();
+		outputContributionPixelIndicesData = new IntVectorData();
+		outputContributionPixelIndices = &outputContributionPixelIndicesData->writable();
+		outputContributionSampleIndicesData = new IntVectorData();
+		outputContributionSampleIndices = &outputContributionSampleIndicesData->writable();
+		outputContributionWeightsData = new FloatVectorData();
+		outputContributionWeights = &outputContributionWeightsData->writable();
+	}
 
 	std::vector<unsigned int> counts;
 	std::vector<const float *> alphaSamples;
@@ -941,6 +1074,11 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 			alphaSamples.resize( weights.size() );
 			zSamples.resize( weights.size() );
 			zBackSamples.resize( weights.size());
+
+			if( hasArbitraryChannel )
+			{	
+				outputContributionSupports->push_back( Imath::Box2i( support.min + supportOffset, support.max + supportOffset ) );
+			}
 
 			int i = 0;
 			for( int iy = support.min.y + supportOffset.y; iy < support.max.y + supportOffset.y; ++iy )
@@ -997,6 +1135,14 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 				outputAlpha.push_back( linearCombiner.alpha() );
 				outputZ.push_back( linearCombiner.z() );
 				outputZBack.push_back( linearCombiner.zBack() );
+
+				if( hasArbitraryChannel )
+				{
+					int contributionCount = 0;
+					linearCombiner.addSampleContributions( contributionCount, *outputContributionPixelIndices, *outputContributionSampleIndices, *outputContributionWeights );
+					outputContributionCounts->push_back( contributionCount );
+				}
+
 				linearCombiner.nextSegment();
 			}
 			outputSampleOffsets.push_back( currentOutputSampleOffset );
@@ -1008,6 +1154,15 @@ void Resample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *contex
 	result->members()[ g_AName ] = outputAlphaData;
 	result->members()[ g_ZName ] = outputZData;
 	result->members()[ g_ZBackName ] = outputZBackData;
+
+	if( hasArbitraryChannel )
+	{
+		result->members()[ g_contributionSupportsName ] = outputContributionSupportsData;
+		result->members()[ g_contributionCountsName ] = outputContributionCountsData;
+		result->members()[ g_contributionPixelIndicesName ] = outputContributionPixelIndicesData;
+		result->members()[ g_contributionSampleIndicesName ] = outputContributionSampleIndicesData;
+		result->members()[ g_contributionWeightsName ] = outputContributionWeightsData;
+	}
 	static_cast<CompoundObjectPlug *>( output )->setValue( result );
 }
 
@@ -1187,6 +1342,9 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 	const OIIO::Filter2D *filter = filterAndScale( filterPlug()->getValue(), ratio, inputFilterScale );
 	inputFilterScale *= filterScale;
 
+	Passes passes = requiredPasses( this, parent, filter, ratio );
+	Box2i ir = inputRegion( tileOrigin, deep ? Both : passes, ratio, offset, filter, inputFilterScale );
+
 	if( deep )
 	{
 		ImagePlug::ChannelDataScope deepResizeDataScope( Context::current() );
@@ -1207,15 +1365,65 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 			return deepResizeData->member<FloatVectorData>( g_AName );
 		}
 
-		return deepResizeData->member<FloatVectorData>( g_AName );
-	}
+		const std::vector<int> &outputSampleOffsets = deepResizeData->member<IntVectorData>( g_sampleOffsetsName )->readable();
+		const std::vector<Box2i> &contributionSupports = deepResizeData->member<Box2iVectorData>( g_contributionSupportsName )->readable();
+		const std::vector<int> &contributionCounts = deepResizeData->member<IntVectorData>( g_contributionCountsName )->readable();
+		const std::vector<int> &contributionPixelIndices = deepResizeData->member<IntVectorData>( g_contributionPixelIndicesName )->readable();
+		const std::vector<int> &contributionSampleIndices = deepResizeData->member<IntVectorData>( g_contributionSampleIndicesName )->readable();
+		const std::vector<float> &contributionWeights = deepResizeData->member<FloatVectorData>( g_contributionWeightsName )->readable();
 
-	const unsigned passes = requiredPasses( this, parent, filter, ratio );
+		DeepTileAccessor deepChannelSampler( inPlug(), channelName, ir, boundingMode );
+
+		std::vector<const float *> channelSamples;
+
+		FloatVectorDataPtr resultData = new FloatVectorData;
+		std::vector<float> &result = resultData->writable();
+		result.reserve( outputSampleOffsets.back() );
+
+		int contributionIndex = 0;
+		int prevOffset = 0;
+		for( int i = 0; i < ImagePlug::tilePixels(); i++ )
+		{
+			int offset = outputSampleOffsets[i];
+
+			const Box2i &support = contributionSupports[i];
+
+			channelSamples.reserve( support.size().x * support.size().y );
+			channelSamples.resize( 0 );
+			for( int iy = support.min.y; iy < support.max.y; ++iy )
+			{
+				for( int ix = support.min.x; ix < support.max.x; ++ix )
+				{
+					const float *pixelChannelSamples;
+					unsigned int unusedCount;
+					deepChannelSampler.sample( ix, iy, pixelChannelSamples, unusedCount );
+					channelSamples.push_back( pixelChannelSamples );
+				}
+			}
+
+			for( int i = prevOffset; i < offset; i++ )
+			{
+				float combinedChannelValue = 0;
+				for( int j = 0; j < contributionCounts[i]; j++ )
+				{
+					float contributionChannelValue = channelSamples[contributionPixelIndices[contributionIndex]]
+						[ contributionSampleIndices[contributionIndex] ];
+					combinedChannelValue += contributionWeights[contributionIndex] * contributionChannelValue;
+					contributionIndex++;
+				}
+				result.push_back( combinedChannelValue );
+			}
+
+			prevOffset = offset;
+		}
+
+		return resultData;
+	}
 
 	Sampler sampler(
 		passes == Vertical ? horizontalPassPlug() : inPlug(),
 		channelName,
-		inputRegion( tileOrigin, passes, ratio, offset, filter, inputFilterScale ),
+		ir,
 		boundingMode
 	);
 
@@ -1426,12 +1634,24 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 
 void Resample::hashSampleOffsets( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
+	if( !inPlug()->deep() )
+	{
+		h = ImagePlug::flatTileSampleOffsets()->Object::hash();
+	}
+
 	ImageProcessor::hashSampleOffsets( parent, context, h );
 	deepResizeDataPlug()->hash( h );
 }
 
 IECore::ConstIntVectorDataPtr Resample::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
 {
-	ConstCompoundObjectPtr deepResizeData = deepResizeDataPlug()->getValue();
-	return deepResizeData->member<IntVectorData>( g_sampleOffsetsName );
+	if( !inPlug()->deep() )
+	{
+		return ImagePlug::flatTileSampleOffsets();
+	}
+	else
+	{
+		ConstCompoundObjectPtr deepResizeData = deepResizeDataPlug()->getValue();
+		return deepResizeData->member<IntVectorData>( g_sampleOffsetsName );
+	}
 }
