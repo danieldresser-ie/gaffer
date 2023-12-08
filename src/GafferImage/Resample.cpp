@@ -538,15 +538,8 @@ public:
 			}
 			else
 			{
-				float accum = m_alphaAccumStreams[i.stream];
-				float prevAccum = accum + ( 1.0f - accum ) * i.prevAlpha;
-				//frac = ( ( i.alpha - i.prevAlpha ) / ( 1 - i.prevAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
-				//frac = i.alpha / m_alphaStreams[i.stream][ sampleIndex ];
-				//
-				//
-				frac = ( ( accum + ( 1.0f - accum ) * i.alpha - prevAccum ) / ( 1.0f - m_prevTotalAccumAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
-
-// / ( 1 - i.prevAlpha ) ) / m_alphaStreams[i.stream][ sampleIndex ];
+				frac = ( 1.0f - m_alphaAccumStreams[i.stream] ) * ( i.alpha - i.prevAlpha )
+					/ ( 1.0f - m_prevTotalAccumAlpha ) / m_alphaStreams[i.stream][ sampleIndex ];
 			}
 			weights.push_back( m_weights[i.stream] * frac );
 		}
