@@ -131,6 +131,7 @@ GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( GafferImageUI::DeepSampleGadget );
 DeepSampleGadget::DeepSampleGadget()
 	: m_visiblePlugs( new StandardSet() ), m_editablePlugs( new StandardSet() ), m_highlightedKey( -1 ), m_highlightedCurve( -1 ), m_keyPreview( false ), m_keyPreviewLocation( 0 ), m_xMargin( 60 ), m_yMargin( 20 ), m_textScale( 10 ), m_labelPadding( 5 ), m_frameIndicatorPreviewFrame( boost::none ), m_autoFrame( true ), m_logarithmic( false )
 {
+	m_deepSampleDicts = new CompoundData();
 	keyPressSignal().connect( boost::bind( &DeepSampleGadget::keyPress, this, ::_1,  ::_2 ) );
 	dirty( DirtyType::Render );
 }

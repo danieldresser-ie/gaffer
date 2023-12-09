@@ -81,10 +81,6 @@ Gaffer.Metadata.registerNode(
 	"toolbarLayout:customWidget:BottomRightSpacer:section", "Bottom",
 	"toolbarLayout:customWidget:BottomRightSpacer:index", -1,
 
-	"toolbarLayout:customWidget:DeepInfo:widgetType", "GafferImageUI.ImageViewUI._DeepInfoButton",
-	"toolbarLayout:customWidget:DeepInfo:section", "Top",
-	#"toolbarLayout:customWidget:DeepInfo:index", -3,
-
 	plugs = {
 
 		"view" : [
@@ -360,6 +356,13 @@ class _ColorInspectorPlugValueWidget( GafferUI.PlugValueWidget ) :
 
 			l.addChild( GafferUI.Spacer( size = imath.V2i( 0 ) ) )
 
+			self.__deepInfoWindow = None
+			self.__deepPixelInfo = None
+			self.__deepSamplesButton = GafferUI.Button( hasFrame = False )
+			self.__deepSamplesButton.setImage( "gammaOn.png" )
+
+			self.__deepSamplesButton.clickedSignal().connect( Gaffer.WeakMethod( self.__deepSamplesClicked ), scoped = False )
+
 			if mode == GafferImageUI.ImageView.ColorInspectorPlug.Mode.Cursor:
 				m = IECore.MenuDefinition()
 				m.append( "/Pixel Inspector",
@@ -419,6 +422,22 @@ class _ColorInspectorPlugValueWidget( GafferUI.PlugValueWidget ) :
 
 	def __deleteClick( self, button ):
 		self.getPlug().parent().removeChild( self.getPlug() )
+
+	def __deepSamplesClicked( self, button ):
+
+		if self.__deepInfoWindow is None :
+
+			self.__deepInfoWindow = GafferUI.Window( title = "Deep Info" )
+			with self.__deepInfoWindow:
+				with GafferUI.ListContainer() :
+					with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None_, borderWidth = 4 ) :
+						self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
+
+			self.ancestor( GafferUI.Window ).addChildWindow( self.__deepInfoWindow )
+
+			#self.__deepInfoWindow.resizeToFitChild()
+
+		self.__deepInfoWindow.setVisible( True )
 
 	def __updateFromImageNode( self, unused ):
 
@@ -541,6 +560,8 @@ class _ColorInspectorPlugValueWidget( GafferUI.PlugValueWidget ) :
 
 		with inputImagePlug.node().scriptNode().context() :
 			self.__updateInBackground( sources )
+			if self.__deepPixelInfo:
+				self.__updateDeepInBackground( sources )
 
 	def __evaluateColors( self, sources ):
 		colors = [ imath.Color4f( 0, 0, 0, 1 ) ] * 2
@@ -569,6 +590,30 @@ class _ColorInspectorPlugValueWidget( GafferUI.PlugValueWidget ) :
 				else:
 					raise Exception( "ColorInspector source must be V2i or Box2i, not " + str( type( sources[i] ) ) )
 		return colors
+
+	def __evaluateDeeps( self, sources ):
+		deeps = [ IECore.CompoundData() ] * 2
+		for i in range( 2 ):
+			if i == 0:
+				c = Gaffer.Context( Gaffer.Context.current() )
+			else:
+				if self.getPlug().node()["compare"]["mode"].getValue() == "":
+					# Don't bother computing a color sample for the comparison image if we aren't
+					# showing the comparison
+					continue
+
+				# We don't want to have to make a separate evaluator plug to evaluate the comparison
+				# image, but we do want to use the context created by the __comparisonSelect node.
+				# Just grab the context so we can do our own evaluation with it
+				c = Gaffer.Context( self.getPlug().node()["__comparisonSelect"].inPlugContext() )
+
+			with c :
+				if type( sources[i] ) == imath.V2i:
+					c["colorInspector:source"] = imath.V2i( sources[i] )
+					deeps[i] = self.getPlug().node()["colorInspector"]["evaluator"]["deepData"].getValue()
+				else:
+					raise Exception( "DeepInspector source must be V2i, not " + str( type( sources[i] ) ) )
+		return deeps
 
 	@GafferUI.BackgroundMethod()
 	def __updateInBackground( self, sources ) :
@@ -619,6 +664,60 @@ class _ColorInspectorPlugValueWidget( GafferUI.PlugValueWidget ) :
 
 			for c in self.__colorValueWidgets:
 				c.setBusy( False )
+
+	@GafferUI.BackgroundMethod()
+	def __updateDeepInBackground( self, sources ) :
+
+		try:
+			deeps = self.__evaluateDeeps( sources )
+		except Exception as e:
+			# TODO - maybe not necessary once things are working?
+			print( "Exception while trying to update deep pixel inspector: ", e )
+
+		# TODO : This is a pretty ugly way to find the input node connected to the colorInspector?
+		#samplerChannels = self.getPlug().node()["colorInspector"]["evaluator"]["pixelColor"].getInput().node()["channels"].getValue()
+		#image = self.getPlug().node().viewportGadget().getPrimaryChild().getImage()
+		#channelNames = image["channelNames"].getValue()
+
+		#if samplerChannels[3] not in channelNames :
+			#colors = [ imath.Color3f( color[0], color[1], color[2] ) for color in colors ]
+
+		return sources, deeps
+
+	@__updateDeepInBackground.preCall
+	def __updateDeepInBackgroundPreCall( self ) :
+
+		if self.__deepPixelInfo:
+			self.__deepPixelInfo.setBusy( True )
+
+	@__updateDeepInBackground.postCall
+	def __updateDeepInBackgroundPostCall( self, backgroundResult ) :
+
+		if isinstance( backgroundResult, IECore.Cancelled ) :
+			# Cancellation. This could be due to any of the
+			# following :
+			#
+			# - This widget being hidden.
+			# - A graph edit that will affect the image and will have
+			#   triggered a call to _updateFromPlug().
+			# - A graph edit that won't trigger a call to _updateFromPlug().
+			#
+			# LazyMethod takes care of all this for us. If we're hidden,
+			# it waits till we're visible. If `updateFromPlug()` has already
+			# called `__updateLazily()`, our call will just replace the
+			# pending call.
+			self.__updateLazily()
+			return
+		elif isinstance( backgroundResult, Exception ) :
+			# Computation error. This will be reported elsewhere
+			# in the UI.
+			if self.__deepPixelInfo:
+				self.__deepPixelInfo.updatePixelData( [{},{}] )
+		else :
+			# Success. We have valid infomation to display.
+			if self.__deepPixelInfo:
+				self.__deepPixelInfo.setBusy( False )
+				self.__deepPixelInfo.updatePixelData( backgroundResult[1] )
 
 	def __updateLabels( self, sources, colors ) :
 
@@ -1453,78 +1552,3 @@ class _CompareImageWidget( GafferUI.Frame ) :
 		)
 
 		return True
-
-class _DeepInfoWindow( GafferUI.Window ) :
-	def __init__( self, imageView ):
-		GafferUI.Window.__init__( self, title = "Deep Info" )
-		self.__imageView = imageView
-		with self:
-			with GafferUI.ListContainer() :
-				with GafferUI.Frame( borderStyle = GafferUI.Frame.BorderStyle.None_, borderWidth = 4 ) :
-					self.__deepPixelInfo = GafferImageUI.DeepPixelInfo()
-
-		self.__inputChangedConnection = imageView.plugInputChangedSignal().connect( Gaffer.WeakMethod( self.__plugInputChanged ), scoped = True )
-
-		self.__imagePlugs = []
-		self.__updateImagePlugs()
-		self.__plugInputChanged( imageView ) #TODO
-		print( "INITED" )
-
-	def __plugInputChanged( self, plug ):
-		if type(plug) != GafferImage.ImagePlug:
-			return
-		print( "PLUG INPUT CHANGED: ", plug.fullName() )
-		self.__updateImagePlugs()
-
-	def __updateImagePlugs( self ):
-		imagePlugs = [ self.__imageView["in"].getInput() ]
-		#imageNodes = self.__imageView.getNodeSet()
-		#print( "RAW SET : ", list( imageNodes ) )
-		#for i in imageNodes:
-			#for plug in Gaffer.Plug.RecursiveOutputRange( i ) :
-				#if not plug.getName().startswith( "__" ) :
-					#if type( plug ) == GafferImage.ImagePlug:
-						#if not plug in imagePlugs:
-							#imagePlugs.append( plug )
-						#break
-
-		if imagePlugs != self.__imagePlugs:
-			print( "IMAGEPLUGS:", [p.fullName() for p in imagePlugs ] )
-			self.__imagePlugs = imagePlugs
-			self.__deepPixelInfo.setImagePlugs( imagePlugs )
-
-class _DeepInfoButton( GafferUI.Widget ) :
-
-	def __init__( self, imageView, **kw ) :
-
-		self.__button = GafferUI.Button( hasFrame = False )
-		GafferUI.Widget.__init__( self, self.__button, **kw )
-
-		self.__imageView = imageView
-
-		#self.__imageGadget = imageView.viewportGadget().getPrimaryChild().inPlug()["deep"]
-
-		self.__button.clickedSignal().connect( Gaffer.WeakMethod( self.__buttonClick ), scoped = False )
-
-		self.__update()
-		self.__deepInfoWindow = None
-
-	def __buttonClick( self, button ) :
-		print( "IMAGEVIEW: ", type( self.__imageView ) )
-
-		if self.__deepInfoWindow is None :
-
-			self.__deepInfoWindow = _DeepInfoWindow( self.__imageView )
-
-			self.ancestor( GafferUI.Window ).addChildWindow( self.__deepInfoWindow )
-
-			#self.__deepInfoWindow.resizeToFitChild()
-
-		self.__deepInfoWindow.setVisible( True )
-
-	def __update( self ) :
-
-		#paused = self.__imageGadget.getPaused()
-		deep = True
-		self.__button.setImage( "gammaOn.png" if deep else "minus.png" )
-

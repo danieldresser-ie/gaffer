@@ -87,33 +87,34 @@ class DeepPixelInfo( GafferUI.Widget ) :
 		self.__imagePlugs = []
 
 	def __uiPlugDirtied( self, plug ):
-		if plug == self.__pixel or plug == self.__channelMask:
-			self.updatePixelData()
-		elif plug == self.__logarithmic:
+		#if plug == self.__pixel or plug == self.__channelMask:
+			#self.updatePixelData()
+		if plug == self.__logarithmic:
 			self.__deepSamplesGadget.setLogarithmic( plug.getValue() )
 		elif plug == self.__autoFrame:
 			self.__deepSamplesGadget.setAutoFrame( plug.getValue() )
 
-	def setImagePlugs( self, imagePlugs ):
-		self.__imagePlugs = imagePlugs
-		self.__imagePlugsDirtyConnections = [
-			p.node().plugDirtiedSignal().connect( self.__plugDirtied, scoped = True ) for p in imagePlugs
-		]
-		self.__inputPlugs.resize( len( imagePlugs ) )
-		for i in range( len( imagePlugs ) ):
-			self.__inputPlugs[i].setInput( imagePlugs[ i ] )
-		self.updatePixelData()
+	#def setImagePlugs( self, imagePlugs ):
+		#self.__imagePlugs = imagePlugs
+		#self.__imagePlugsDirtyConnections = [
+			#p.node().plugDirtiedSignal().connect( self.__plugDirtied, scoped = True ) for p in imagePlugs
+		#]
+		#self.__inputPlugs.resize( len( imagePlugs ) )
+		#for i in range( len( imagePlugs ) ):
+			#self.__inputPlugs[i].setInput( imagePlugs[ i ] )
+		#self.updatePixelData()
 
 	def setPixel( self, pixel ):
 		self.__pixel.setValue( pixel )
 
-	def __plugDirtied( self, plug ):
-		if type( plug ) == GafferImage.ImagePlug:
-			if plug.direction() == Gaffer.Plug.Direction.Out:
-				self.updatePixelData()
+	#def __plugDirtied( self, plug ):
+		#if type( plug ) == GafferImage.ImagePlug:
+			#if plug.direction() == Gaffer.Plug.Direction.Out:
+				#self.updatePixelData()
 
-	def updatePixelData( self ):
+	def updatePixelData( self, pixels ):
 
+		"""
 		allPixelDeepSamples = {}
 		#channelMask = self.__channelMask.getValue()
 		channelMask = "*"
@@ -134,5 +135,15 @@ class DeepPixelInfo( GafferUI.Widget ) :
 					maskedPixelData[name] = data 
 			allPixelDeepSamples[p.fullName()] = maskedPixelData
 
-		print( "DEEP SAMPLES: ", allPixelDeepSamples )
 		self.__deepSamplesGadget.setDeepSamples( IECore.CompoundData( allPixelDeepSamples ) )
+		"""
+
+		self.__deepSamplesGadget.setDeepSamples( IECore.CompoundData(
+			{
+				"A" : pixels[0],
+				"B" : pixels[1]
+			}
+		) )
+
+	def setBusy( self, busy ):
+		print( "TODO set busy state to ", busy )
