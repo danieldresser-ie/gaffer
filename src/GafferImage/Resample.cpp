@@ -231,12 +231,17 @@ void filterWeights1D( const OIIO::Filter2D *filter, const float inputFilterScale
 		supportRanges.push_back( minX );
 		supportRanges.push_back( maxX );
 
+		if( oX == x )std::cerr << "Weights:";
 		for( int fX = minX; fX < maxX; ++fX )
 		{
 			const float f = filterCoordinateMult * ( float( fX ) + 0.5f - iX );
+			// TODO - supportRanges should only include values != 0. Address at same time as
+			// moving normalization in here.
 			const float w = pass == Horizontal ? filter->xfilt( f ) : filter->yfilt( f );
 			weights.push_back( w );
+			if( oX == x )std::cerr << w << " ";
 		}
+		if( oX == x )std::cerr << "\n";
 
 	}
 }
@@ -266,6 +271,7 @@ void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, 
 		V2i( floorf( i.x + 0.5f + filterRadius.x ), floorf( i.y + 0.5f + filterRadius.y ) )
 	);
 
+	//std::cerr << "Weights:";
 	for( int fY = support.min.y; fY < support.max.y; ++fY )
 	{
 		const float fy = filterCoordinateMult.y * ( float( fY ) + 0.5 - i.y );
@@ -274,7 +280,9 @@ void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, 
 			const float fx = filterCoordinateMult.x * ( float( fX ) + 0.5f - i.x );
 			const float w = (*filter)( fx, fy );
 			weights.push_back( w );
+			//std::cerr << w << " ";
 		}
+		//std::cerr << "\n";
 	}
 }
 
