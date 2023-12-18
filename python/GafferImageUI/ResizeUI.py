@@ -123,6 +123,7 @@ Gaffer.Metadata.registerNode(
 			"plugValueWidget:type", "GafferUI.PresetsPlugValueWidget",
 
 			"preset:Default", "",
+			"preset:Nearest", "nearest",
 
 		] + list( itertools.chain(
 

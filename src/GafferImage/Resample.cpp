@@ -63,6 +63,8 @@ using namespace GafferImage;
 namespace
 {
 
+const std::string g_nearestString( "nearest" );
+
 // Used as a bitmask to say which filter pass(es) we're computing.
 enum Passes
 {
@@ -92,6 +94,11 @@ Passes requiredPasses( const Resample *resample, const ImagePlug *image, const O
 
 	if( image == image->parent<ImageNode>()->outPlug() )
 	{
+		if( !filter )
+		{
+			// For the nearest filter, we use a separate code path that doesn't consider RequiredPasses anyway.
+			return Both;
+		}
 		if( filter->separable() )
 		{
 			return Vertical;
@@ -127,6 +134,11 @@ void ratioAndOffset( const M33f &matrix, V2f &ratio, V2f &offset )
 // method returns it as a number of pixels in the input space.
 V2f inputFilterRadius( const OIIO::Filter2D *filter, const V2f &inputFilterScale )
 {
+	if( !filter )
+	{
+		return V2f( 0.0f );
+	}
+
 	return V2f(
 		filter->width() * inputFilterScale.x * 0.5f,
 		filter->height() * inputFilterScale.y * 0.5f
@@ -190,6 +202,11 @@ const OIIO::Filter2D *filterAndScale( const std::string &name, V2f ratio, V2f &i
 			// Downsizing
 			result = FilterAlgo::acquireFilter( "lanczos3" );
 		}
+	}
+	else if( name == g_nearestString )
+	{
+		inputFilterScale = V2f( 0 );
+		return nullptr;
 	}
 	else
 	{
@@ -283,6 +300,16 @@ void filterWeights2D( const OIIO::Filter2D *filter, const V2f inputFilterScale, 
 			//std::cerr << w << " ";
 		}
 		//std::cerr << "\n";
+	}
+}
+
+void nearestInputPixelX( const int x, const float ratio, const float offset, std::vector<int> &result )
+{
+	result.reserve( ImagePlug::tileSize() );
+
+	for( int oX = x, eX = x + ImagePlug::tileSize(); oX < eX; ++oX )
+	{
+		result.push_back( floorf( ( oX + 0.5 ) / ratio + offset ) );
 	}
 }
 
@@ -789,7 +816,10 @@ void Resample::affects( const Gaffer::Plug *input, AffectedPlugsContainer &outpu
 
 	if(
 		input == inPlug()->deepPlug() ||
-		input == deepResizeDataPlug()
+		input == deepResizeDataPlug() ||
+		input == matrixPlug() ||
+		input == filterPlug() ||
+		input == boundingModePlug()
 	)
 	{	
 		outputs.push_back( outPlug()->channelDataPlug() );
@@ -1277,10 +1307,21 @@ void Resample::hashChannelData( const GafferImage::ImagePlug *parent, const Gaff
 	if( deep )
 	{
 		ImagePlug::ChannelDataScope deepResizeDataScope( Context::current() );
-		deepResizeDataScope.remove( ImagePlug::channelNameContextName );
-		deepResizeDataPlug()->hash( h );
 
-		if( channelName == ImageAlgo::channelNameZ || channelName == ImageAlgo::channelNameZBack || channelName == ImageAlgo::channelNameA )
+		if( filter )
+		{
+			deepResizeDataScope.remove( ImagePlug::channelNameContextName );
+			deepResizeDataPlug()->hash( h );
+		}
+		else
+		{
+			h.append( inputFilterScale );
+			h.append( ratio );
+			h.append( offset );
+			outPlug()->sampleOffsetsPlug()->hash( h );
+		}
+
+		if( filter && ( channelName == ImageAlgo::channelNameZ || channelName == ImageAlgo::channelNameZBack || channelName == ImageAlgo::channelNameA ) )
 		{
 			h.append( channelName );
 		}
@@ -1346,10 +1387,55 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 	Passes passes = requiredPasses( this, parent, filter, ratio );
 	Box2i ir = inputRegion( tileOrigin, deep ? Both : passes, ratio, offset, filter, inputFilterScale );
 
+	const Box2i tileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+
 	if( deep )
 	{
 		ImagePlug::ChannelDataScope deepResizeDataScope( Context::current() );
 		deepResizeDataScope.remove( ImagePlug::channelNameContextName );
+
+		if( !filter )
+		{
+			// We only use the output sample offsets so that we know ahead of time how many points
+			// we're going to generate. Bit of a shame to add this complexity, but it does seem
+			// like a worthwhile win to not need to reallocate the output buffer.
+			ConstIntVectorDataPtr outputSampleOffsetsData = outPlug()->sampleOffsetsPlug()->getValue();
+			
+			FloatVectorDataPtr resultData = new FloatVectorData();
+			std::vector<float> &result = resultData->writable();
+			result.resize( outputSampleOffsetsData->readable().back() );
+
+			DeepTileAccessor sampleOffsetsSampler( inPlug(), channelName, ir, boundingMode );
+			
+			std::vector<int> iPx;
+			nearestInputPixelX( tileBound.min.x, ratio.x, offset.x, iPx );
+
+			V2i oP; // output pixel position
+			int iPy; // input pixel position Y
+
+			int outputSamplePosition = 0;
+
+			for( oP.y = tileBound.min.y; oP.y < tileBound.max.y; ++oP.y )
+			{
+				iPy = floorf( ( oP.y + 0.5 ) / ratio.y + offset.y );
+				std::vector<int>::const_iterator iPxIt = iPx.begin();
+
+				Canceller::check( context->canceller() );
+				for( oP.x = tileBound.min.x; oP.x < tileBound.max.x; ++oP.x )
+				{
+					const float *channelSamples;
+					unsigned int count;
+					sampleOffsetsSampler.sample( *iPxIt, iPy, channelSamples, count );
+					memcpy( &result[outputSamplePosition], channelSamples, count * sizeof( float ) );
+					outputSamplePosition += count;
+					++iPxIt;
+				}
+			}
+
+			return resultData;
+			
+		}
+
 
 		ConstCompoundObjectPtr deepResizeData = deepResizeDataPlug()->getValue();
 
@@ -1429,14 +1515,35 @@ IECore::ConstFloatVectorDataPtr Resample::computeChannelData( const std::string 
 	);
 
 	const V2f filterRadius = inputFilterRadius( filter, inputFilterScale );
-	const Box2i tileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
 
 	FloatVectorDataPtr resultData = new FloatVectorData;
 	std::vector<float> &result = resultData->writable();
 	result.resize( ImagePlug::tileSize() * ImagePlug::tileSize() );
 	std::vector<float>::iterator pIt = result.begin();
 
-	if( passes == Both )
+	if( !filter )
+	{
+		std::vector<int> iPx;
+		nearestInputPixelX( tileBound.min.x, ratio.x, offset.x, iPx );
+
+		V2i oP; // output pixel position
+		int iPy; // input pixel position Y
+
+		for( oP.y = tileBound.min.y; oP.y < tileBound.max.y; ++oP.y )
+		{
+			iPy = floorf( ( oP.y + 0.5 ) / ratio.y + offset.y );
+			std::vector<int>::const_iterator iPxIt = iPx.begin();
+
+			Canceller::check( context->canceller() );
+			for( oP.x = tileBound.min.x; oP.x < tileBound.max.x; ++oP.x )
+			{
+				*pIt = sampler.sample( *iPxIt, iPy );
+				++iPxIt;
+				++pIt;
+			}
+		}
+	}
+	else if( passes == Both )
 	{
 		// When the filter isn't separable we must perform all the
 		// filtering in a single pass. This version also provides
@@ -1641,7 +1748,35 @@ void Resample::hashSampleOffsets( const GafferImage::ImagePlug *parent, const Ga
 	}
 
 	ImageProcessor::hashSampleOffsets( parent, context, h );
-	deepResizeDataPlug()->hash( h );
+
+	bool nearest = false;
+	V2f ratio, offset;
+	V2f filterScale;
+	Sampler::BoundingMode boundingMode;
+	{
+		ImagePlug::GlobalScope c( context );
+		nearest = filterPlug()->getValue() == g_nearestString;
+	
+		if( nearest )	
+		{
+			ratioAndOffset( matrixPlug()->getValue(), ratio, offset );
+			boundingMode = (Sampler::BoundingMode)boundingModePlug()->getValue();
+		}
+	}
+
+	if( !nearest )
+	{
+		deepResizeDataPlug()->hash( h );
+		return;
+	}
+
+	h.append( ratio );
+	h.append( offset );
+	h.append( boundingMode );
+
+	const V2i tileOrigin = context->get<V2i>( ImagePlug::tileOriginContextName );
+	Box2i ir = inputRegion( tileOrigin, Both, ratio, offset, nullptr, V2f( 0.0f ) );
+	DeepTileAccessor( inPlug(), "", ir, boundingMode ).hash( h );
 }
 
 IECore::ConstIntVectorDataPtr Resample::computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const ImagePlug *parent ) const
@@ -1650,9 +1785,60 @@ IECore::ConstIntVectorDataPtr Resample::computeSampleOffsets( const Imath::V2i &
 	{
 		return ImagePlug::flatTileSampleOffsets();
 	}
-	else
+
+	bool nearest = false;
+	V2f ratio, offset;
+	V2f filterScale;
+	Sampler::BoundingMode boundingMode;
+	{
+		ImagePlug::GlobalScope c( context );
+		nearest = filterPlug()->getValue() == g_nearestString;
+	
+		if( nearest )	
+		{
+			ratioAndOffset( matrixPlug()->getValue(), ratio, offset );
+			boundingMode = (Sampler::BoundingMode)boundingModePlug()->getValue();
+		}
+	}
+
+	if( !nearest )
 	{
 		ConstCompoundObjectPtr deepResizeData = deepResizeDataPlug()->getValue();
 		return deepResizeData->member<IntVectorData>( g_sampleOffsetsName );
 	}
+
+	Box2i ir = inputRegion( tileOrigin, Both, ratio, offset, nullptr, V2f( 0.0f ) );
+	DeepTileAccessor sampleOffsetsSampler( inPlug(), "", ir, boundingMode );
+
+	IntVectorDataPtr outputSampleOffsetsData = new IntVectorData();
+	std::vector<int> &outputSampleOffsets = outputSampleOffsetsData->writable();
+	outputSampleOffsets.reserve( ImagePlug::tilePixels() );
+
+	const Box2i tileBound( tileOrigin, tileOrigin + V2i( ImagePlug::tileSize() ) );
+	
+	std::vector<int> iPx;
+	nearestInputPixelX( tileBound.min.x, ratio.x, offset.x, iPx );
+
+	V2i oP; // output pixel position
+	int iPy; // input pixel position Y
+
+	int sampleOffset = 0;	
+	for( oP.y = tileBound.min.y; oP.y < tileBound.max.y; ++oP.y )
+	{
+		iPy = floorf( ( oP.y + 0.5 ) / ratio.y + offset.y );
+		std::vector<int>::const_iterator iPxIt = iPx.begin();
+
+		Canceller::check( context->canceller() );
+		for( oP.x = tileBound.min.x; oP.x < tileBound.max.x; ++oP.x )
+		{
+			const float *unused;
+			unsigned int count;
+			sampleOffsetsSampler.sample( *iPxIt, iPy, unused, count );
+			sampleOffset += count;
+			++iPxIt;
+			outputSampleOffsets.push_back( sampleOffset );
+		}
+	}
+
+	return outputSampleOffsetsData;
 }
