@@ -106,11 +106,20 @@ void Premultiply::hashChannelData( const GafferImage::ImagePlug *output, const G
 
 	bool useDeepVisibility;
 
+	ConstStringVectorDataPtr inChannelNamesPtr;
 	{
 		ImagePlug::GlobalScope c( context );
-		inPlug()->channelNamesPlug()->hash( h );
+		inChannelNamesPtr = inPlug()->channelNamesPlug()->getValue();
 		useDeepVisibility = useDeepVisibilityPlug()->getValue();
 		inPlug()->deepPlug()->hash( h );
+	}
+
+	const std::vector<std::string> &inChannelNames = inChannelNamesPtr->readable();
+	if ( std::find( inChannelNames.begin(), inChannelNames.end(), alphaChannel ) == inChannelNames.end() )
+	{
+		std::ostringstream channelError;
+		channelError << "Channel '" << alphaChannel << "' does not exist";
+		throw( IECore::Exception( channelError.str() ) );
 	}
 
 	inPlug()->channelDataPlug()->hash( h );
