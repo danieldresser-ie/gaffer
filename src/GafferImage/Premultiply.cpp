@@ -100,19 +100,23 @@ void Premultiply::affects( const Gaffer::Plug *input, AffectedPlugsContainer &ou
 
 void Premultiply::hashChannelData( const GafferImage::ImagePlug *output, const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
-	std::string alphaChannel = alphaChannelPlug()->getValue();
 
 	ChannelDataProcessor::hashChannelData( output, context, h );
 
 	bool useDeepVisibility;
 
+	std::string alphaChannel;
 	ConstStringVectorDataPtr inChannelNamesPtr;
 	{
 		ImagePlug::GlobalScope c( context );
+		alphaChannel = alphaChannelPlug()->getValue();
 		inChannelNamesPtr = inPlug()->channelNamesPlug()->getValue();
 		useDeepVisibility = useDeepVisibilityPlug()->getValue();
 		inPlug()->deepPlug()->hash( h );
 	}
+
+	// TODO - move to earlier commit for clarity
+	h.append( alphaChannel == context->get<std::string>( ImagePlug::channelNameContextName ) );
 
 	const std::vector<std::string> &inChannelNames = inChannelNamesPtr->readable();
 	if ( std::find( inChannelNames.begin(), inChannelNames.end(), alphaChannel ) == inChannelNames.end() )
@@ -138,21 +142,23 @@ void Premultiply::hashChannelData( const GafferImage::ImagePlug *output, const G
 
 void Premultiply::processChannelData( const Gaffer::Context *context, const ImagePlug *parent, const std::string &channel, FloatVectorDataPtr outData ) const
 {
-	std::string alphaChannel = alphaChannelPlug()->getValue();
 
-	if ( channel == alphaChannel )
-	{
-		return;
-	}
 
+	std::string alphaChannel;
 	bool useDeepVisibility;
 	bool deep;
 	ConstStringVectorDataPtr inChannelNamesPtr;
 	{
 		ImagePlug::GlobalScope c( context );
+		alphaChannel = alphaChannelPlug()->getValue();
 		inChannelNamesPtr = inPlug()->channelNamesPlug()->getValue();
 		useDeepVisibility = useDeepVisibilityPlug()->getValue();
 		deep = inPlug()->deepPlug()->getValue();
+	}
+
+	if( !useDeepVisibility && channel == alphaChannel )
+	{
+		return;
 	}
 
 	const std::vector<std::string> &inChannelNames = inChannelNamesPtr->readable();
