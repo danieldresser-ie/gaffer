@@ -1232,7 +1232,7 @@ Imath::Box2i Resample::computeDataWindow( const Gaffer::Context *context, const 
 		const OIIO::Filter2D *filter = filterAndScale( filterPlug()->getValue(), ratio, inputFilterScale );
 		inputFilterScale *= filterScalePlug()->getValue();
 
-		const V2f filterRadius = V2f( filter->width(), filter->height() ) * inputFilterScale * 0.5f;
+		const V2f filterRadius = filter ? V2f( filter->width(), filter->height() ) * inputFilterScale * 0.5f : V2f( 0.0f );
 
 		dstDataWindow.min -= filterRadius * ratio;
 		dstDataWindow.max += filterRadius * ratio;
