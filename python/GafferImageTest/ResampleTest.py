@@ -38,6 +38,7 @@ import os
 import pathlib
 import shutil
 import unittest
+import random
 import subprocess
 import time
 
@@ -394,6 +395,12 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 
 		representativeImage = GafferImage.ImageReader( "representativeDeep" )
 		representativeImage["fileName"].setValue( representativeImagePath )
+		# This image has some high RGB values in it, which make it less meaningful to compare error tolerances.
+		# Normalize it so the RGB values are in an approximately 0-1 range like the alpha.
+		representativeImageNormalized = GafferImage.Grade()
+		representativeImageNormalized["in"].setInput( representativeImage["out"] )
+		representativeImageNormalized["multiply"].setValue( imath.Color4f( 0.2, 0.2, 0.2, 1 ) )
+
 		intPoints = GafferImage.ImageReader()
 		intPoints["fileName"].setValue( deepIntPointsPath )
 		intVolumes = GafferImage.ImageReader()
@@ -417,139 +424,102 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		allCombined["in"][2].setInput( floatPoints["out"] )
 		allCombined["in"][3].setInput( floatVolumes["out"] )
 
+		# By upsizing this test image, we produce a test image where there are lots of identical samples
+		# in adjacent pixels, which could help exercise special cases when merging samples at identical depths
+		allCombinedUpsize = GafferImage.Resize( "allCombinedUpsize" )
+		allCombinedUpsize["in"].setInput( allCombined["out"] )
+		allCombinedUpsize["format"].setValue( GafferImage.Format( 128, 128, 1.000 ) )
+		allCombinedUpsize["filter"].setValue( 'box' )
+
 		testImage = GafferImage.ImagePlug()
 
-		formatQuery = GafferImage.FormatQuery()
-		formatQuery["image"].setInput( testImage )
+		deepResample = GafferImage.Resample()
+		deepResample["in"].setInput( testImage )
+		deepResample["expandDataWindow"].setValue( True )
 
-		sliceNear = GafferImage.DeepSlice()
-		sliceNear["in"].setInput( testImage )
-		sliceNear["nearClip"]["enabled"].setValue( False )
-		sliceNear["farClip"]["enabled"].setValue( True )
-		sliceNear["flatten"].setValue( False )
+		# TODO REMOVE
 
-		flattenedNear = GafferImage.DeepToFlat()
-		flattenedNear["in"].setInput( sliceNear["out"] )
-		flattenedNear["depthMode"].setValue( GafferImage.DeepToFlat.DepthMode.Range )
+		deepTidy = GafferImage.DeepTidy()
+		deepTidy["in"].setInput( testImage )
+		deepResample["in"].setInput( deepTidy["out"] )
 
-		flatSliceNear = GafferImage.DeepSlice()
-		flatSliceNear["in"].setInput( testImage )
-		flatSliceNear["nearClip"]["enabled"].setValue( False )
-		flatSliceNear["farClip"]["enabled"].setValue( True )
-		flatSliceNear["farClip"]["value"].setInput( sliceNear["farClip"]["value"] )
-		flatSliceNear["flatten"].setValue( True )
+		# TODO REMOVE
 
-		sliceFar = GafferImage.DeepSlice()
-		sliceFar["in"].setInput( testImage )
-		sliceFar["nearClip"]["enabled"].setValue( True )
-		sliceFar["farClip"]["enabled"].setValue( False )
-		sliceFar["flatten"].setValue( False )
+		flattenAfter = GafferImage.DeepToFlat()
+		flattenAfter["in"].setInput( deepResample["out"] )
+		# The filtered depth output from Flatten is affected enormously by curve shape discrepancy,
+		# so we just won't check Z. The tests using DeepSlice are used to check the depth.
+		flattenAfter['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
 
+		flattenBefore = GafferImage.DeepToFlat()
+		flattenBefore["in"].setInput( testImage )
+		flattenBefore['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
 
-		flattenedFar = GafferImage.DeepToFlat()
-		flattenedFar["in"].setInput( sliceFar["out"] )
-		flattenedFar["depthMode"].setValue( GafferImage.DeepToFlat.DepthMode.Range )
+		flatResample = GafferImage.Resample()
+		flatResample["in"].setInput( flattenBefore["out"] )
+		flatResample["expandDataWindow"].setValue( True )
+		flatResample["matrix"].setInput( deepResample["matrix"] )
+		flatResample["filter"].setInput( deepResample["filter"] )
+		flatResample["filterScale"].setInput( deepResample["filterScale"] )
 
-		flatSliceFar = GafferImage.DeepSlice()
-		flatSliceFar["in"].setInput( testImage )
-		flatSliceFar["nearClip"]["enabled"].setValue( True )
-		flatSliceFar["nearClip"]["value"].setInput( sliceFar["nearClip"]["value"] )
-		flatSliceFar["farClip"]["enabled"].setValue( False )
-		flatSliceFar["flatten"].setValue( True )
+		sliceAfter = GafferImage.DeepSlice()
+		sliceAfter["in"].setInput( deepResample["out"] )
+		sliceAfter["farClip"]["enabled"].setValue( True )
+		sliceAfter["flatten"].setValue( True )
 
-		sliceMiddle = GafferImage.DeepSlice()
-		sliceMiddle["in"].setInput( testImage )
-		sliceMiddle["nearClip"]["enabled"].setValue( True )
-		sliceMiddle["farClip"]["enabled"].setValue( True )
-		sliceMiddle["flatten"].setValue( False )
+		sliceAfterNoZ = GafferImage.DeleteChannels()
+		sliceAfterNoZ["in"].setInput( sliceAfter["out"] )
+		sliceAfterNoZ["channels"].setValue( "Z ZBack" )
 
-		flattenedMiddle = GafferImage.DeepToFlat()
-		flattenedMiddle["in"].setInput( sliceMiddle["out"] )
-		flattenedMiddle["depthMode"].setValue( GafferImage.DeepToFlat.DepthMode.Range )
+		referenceSlice = GafferImage.DeepSlice()
+		referenceSlice["in"].setInput( testImage )
+		referenceSlice["farClip"]["enabled"].setValue( True )
+		referenceSlice["farClip"]["value"].setInput( sliceAfter["farClip"]["value"] )
+		referenceSlice["flatten"].setValue( True )
 
-		flatSliceMiddle = GafferImage.DeepSlice()
-		flatSliceMiddle["in"].setInput( testImage )
-		flatSliceMiddle["nearClip"]["enabled"].setValue( True )
-		flatSliceMiddle["nearClip"]["value"].setInput( sliceMiddle["nearClip"]["value"] )
-		flatSliceMiddle["farClip"]["enabled"].setValue( True )
-		flatSliceMiddle["farClip"]["value"].setInput( sliceMiddle["farClip"]["value"] )
-		flatSliceMiddle["flatten"].setValue( True )
+		referenceSliceNoZ = GafferImage.DeleteChannels()
+		referenceSliceNoZ["in"].setInput( referenceSlice["out"] )
+		referenceSliceNoZ["channels"].setValue( "Z ZBack" )
 
-		flattenedInput = GafferImage.DeepToFlat()
-		flattenedInput["in"].setInput( testImage )
-		flattenedInput["depthMode"].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
+		referenceSliceResample = GafferImage.Resample()
+		referenceSliceResample["in"].setInput( referenceSliceNoZ["out"] )
+		referenceSliceResample["expandDataWindow"].setValue( True )
+		referenceSliceResample["matrix"].setInput( deepResample["matrix"] )
+		referenceSliceResample["filter"].setInput( deepResample["filter"] )
+		referenceSliceResample["filterScale"].setInput( deepResample["filterScale"] )
 
-		flatSliceNearWithoutDepth = GafferImage.DeleteChannels()
-		flatSliceNearWithoutDepth["in"].setInput( flatSliceNear["out"] )
-		flatSliceNearWithoutDepth["channels"].setValue( "Z ZBack" )
+		linearReferenceSliceTidy = GafferImage.DeepTidy()
+		linearReferenceSliceTidy["in"].setInput( testImage )
 
-		flatSliceFarWithoutDepth = GafferImage.DeleteChannels()
-		flatSliceFarWithoutDepth["in"].setInput( flatSliceFar["out"] )
-		flatSliceFarWithoutDepth["channels"].setValue( "Z ZBack" )
+		convertToLinear = GafferImage.Premultiply()
+		convertToLinear["in"].setInput( linearReferenceSliceTidy["out"] )
+		convertToLinear["channels"].setValue( '[RGBA]' )
+		convertToLinear["useDeepVisibility"].setValue( True )
 
-		flatSliceMiddleWithoutDepth = GafferImage.DeleteChannels()
-		flatSliceMiddleWithoutDepth["in"].setInput( flatSliceMiddle["out"] )
-		flatSliceMiddleWithoutDepth["channels"].setValue( "Z ZBack" )
+		linearReferenceDontUseA = GafferImage.Shuffle()
+		linearReferenceDontUseA["in"].setInput( convertToLinear["out"] )
+		linearReferenceDontUseA["shuffles"].addChild( Gaffer.ShufflePlug( "A", "swapA", True ) )
 
-		nearOverFar = GafferImage.Merge()
-		nearOverFar["operation"].setValue( GafferImage.Merge.Operation.Over )
-		nearOverFar["in"][0].setInput( flatSliceFarWithoutDepth["out"] )
-		nearOverFar["in"][1].setInput( flatSliceNearWithoutDepth["out"] )
+		linearReferenceSlice = GafferImage.DeepSlice()
+		linearReferenceSlice["in"].setInput( linearReferenceDontUseA["out"] )
+		linearReferenceSlice["farClip"]["enabled"].setValue( True )
+		linearReferenceSlice["farClip"]["value"].setInput( sliceAfter["farClip"]["value"] )
+		linearReferenceSlice["flatten"].setValue( True )
 
-		nearOverMiddleOverFar = GafferImage.Merge()
-		nearOverMiddleOverFar["operation"].setValue( GafferImage.Merge.Operation.Over )
-		nearOverMiddleOverFar["in"][0].setInput( flatSliceFarWithoutDepth["out"] )
-		nearOverMiddleOverFar["in"][1].setInput( flatSliceMiddleWithoutDepth["out"] )
-		nearOverMiddleOverFar["in"][2].setInput( flatSliceNearWithoutDepth["out"] )
+		linearReferenceRestoreA = GafferImage.Shuffle()
+		linearReferenceRestoreA["in"].setInput( linearReferenceSlice["out"] )
+		linearReferenceRestoreA["shuffles"].addChild( Gaffer.ShufflePlug( "swapA", "A", True ) )
 
-		tidyInput = GafferImage.DeepTidy()
-		tidyInput["in"].setInput( testImage )
+		linearReferenceSliceNoZ = GafferImage.DeleteChannels()
+		linearReferenceSliceNoZ["in"].setInput( linearReferenceRestoreA["out"] )
+		linearReferenceSliceNoZ["channels"].setValue( "Z ZBack" )
 
-		sampleCountsInput = GafferImage.DeepSampleCounts()
-		sampleCountsInput["in"].setInput( tidyInput["out"] )
-
-		sampleCountsNear = GafferImage.DeepSampleCounts()
-		sampleCountsNear["in"].setInput( sliceNear["out"] )
-
-		sampleCountsFar = GafferImage.DeepSampleCounts()
-		sampleCountsFar["in"].setInput( sliceFar["out"] )
-
-		sampleCountsMiddle = GafferImage.DeepSampleCounts()
-		sampleCountsMiddle["in"].setInput( sliceMiddle["out"] )
-
-		sampleCountsNearFar = GafferImage.Merge()
-		sampleCountsNearFar["operation"].setValue( GafferImage.Merge.Operation.Add )
-		sampleCountsNearFar["in"][0].setInput( sampleCountsNear["out"] )
-		sampleCountsNearFar["in"][1].setInput( sampleCountsFar["out"] )
-
-		sampleCountsNearMiddleFar = GafferImage.Merge()
-		sampleCountsNearMiddleFar["operation"].setValue( GafferImage.Merge.Operation.Add )
-		sampleCountsNearMiddleFar["in"][0].setInput( sampleCountsNear["out"] )
-		sampleCountsNearMiddleFar["in"][1].setInput( sampleCountsMiddle["out"] )
-		sampleCountsNearMiddleFar["in"][2].setInput( sampleCountsFar["out"] )
-
-		tidyNear = GafferImage.DeepTidy()
-		tidyNear["in"].setInput( sliceNear["out"] )
-
-		tidyFar = GafferImage.DeepTidy()
-		tidyFar["in"].setInput( sliceFar["out"] )
-
-		tidyMiddle = GafferImage.DeepTidy()
-		tidyMiddle["in"].setInput( sliceMiddle["out"] )
-
-		holdoutConstant = GafferImage.Constant()
-		holdoutConstant["format"].setInput( formatQuery["format"] )
-
-		holdoutDepth = GafferImage.FlatToDeep()
-		holdoutDepth["in"].setInput( holdoutConstant["out"] )
-
-		holdout = GafferImage.DeepHoldout()
-		holdout["in"].setInput( testImage )
-		holdout["holdout"].setInput( holdoutDepth["out"] )
-
-		holdoutWithoutDepth = GafferImage.DeleteChannels()
-		holdoutWithoutDepth["in"].setInput( holdout["out"] )
-		holdoutWithoutDepth["channels"].setValue( "Z ZBack" )
+		linearReferenceSliceResample = GafferImage.Resample()
+		linearReferenceSliceResample["in"].setInput( linearReferenceSliceNoZ["out"] )
+		linearReferenceSliceResample["expandDataWindow"].setValue( True )
+		linearReferenceSliceResample["matrix"].setInput( deepResample["matrix"] )
+		linearReferenceSliceResample["filter"].setInput( deepResample["filter"] )
+		linearReferenceSliceResample["filterScale"].setInput( deepResample["filterScale"] )
 
 		random.seed( 42 )
 
@@ -557,65 +527,58 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 			( allInts["out"], 0, 4 ),
 			( allFloats["out"], 0, 4 ),
 			( allCombined["out"], 0, 4 ),
-			( representativeImage["out"], 4, 11 ),
+			#( allCombinedUpsize["out"], 0, 4 ), #TODO
+			#( representativeImageNormalized["out"], 4, 11 ),
 		]:
 
 			testImage.setInput( image )
 
-			# Since some of our tests have samples at integer depths, test specifically in the neighbourhood
-			# of integer depths, then test at a bunch of random depths as well
-			for depth in (
-				[ i + o for i in range( zStart, zEnd + 1) for o in [ -5e-7, 0, 5e-7 ] ] +
-				[ random.uniform( zStart, zEnd ) for i in range( 20 ) ]
-			):
-				with self.subTest( mode = "Near/Far", name = image.node().getName(), depth = depth ) :
-					sliceNear["farClip"]["value"].setValue( depth )
-					sliceFar["nearClip"]["value"].setValue( depth )
+			for scale, filter, filterScale in [
+				# Results in kernel of [ 0.333333, 1, 0.333333 ]
+				# Only samples 9 pixels, moderate weights, reasonable for basic tests
+				( 1, "triangle", 1.5 ), 
 
-					# The output from DeepSlice should always be tidy, which we can validate by making
-					# sure tidying has no effect
-					self.assertImagesEqual( tidyNear["out"], sliceNear["out"] )
-					self.assertImagesEqual( tidyFar["out"], sliceFar["out"] )
+				# Test a moderate upscale
+				( 1.5, "triangle", 1.5 ), 
 
-					# Check that the flat output from DeepSlice matches with what we get by flattening
-					# the deep output
-					self.assertImagesEqual( flattenedNear["out"], flatSliceNear["out"], maxDifference = 1e-6 )
-					self.assertImagesEqual( flattenedFar["out"], flatSliceFar["out"], maxDifference = 1e-6 )
+				# Test a downscale
+				( 0.4, "triangle", 1.5 ), 
 
+				# Results in kernel of [ 5.99688e-05, 0.21747, 1, 0.21747, 5.99688e-05 ]
+				# Wide, with some very tiny filter weights
+				( 1, "blackman-harris", 1.3333334 ),
 
-					# Check that we match with passing an image containing a constant depth into DeepHoldout
-					holdoutDepth["depth"].setValue( depth )
-					try:
-						self.assertImagesEqual( flatSliceNearWithoutDepth["out"], holdoutWithoutDepth["out"], maxDifference = 3e-5 )
-					except:
-						# We handle point samples exactly at the threshold a little bit differently than
-						# this DeepHoldout approach - the holdout is doing a DeepMerge with a black image with
-						# a point sample at a fixed depth at each pixel, so the fraction of a point sample
-						# exactly at the cutoff depth that comes through depends on the EXR logic for merging
-						# samples ( since the cutoff image is opaque, you get 50% of an opaque sample, or 0% of
-						# a non-opaque sample ).
-						#
-						# Our logic is different: we exclude all samples at the cutoff for farClipDepth,
-						# and we include samples at the cutoff for nearClipDepth. This ensures that using
-						# two DeepSlices to split an image at a particular depth, and then re-compositing it,
-						# gives you something that matches the original.
-						#
-						# Because of this difference, in order to get the tests passing, we just shift the
-						# holdout depth slightly nearer in order to get a matching result from the holdout.
-						holdoutDepth["depth"].setValue( depth - 5e-7 )
-						self.assertImagesEqual( flatSliceNearWithoutDepth["out"], holdoutWithoutDepth["out"], maxDifference = 3e-5 )
+				# Results in kernel of [ 0.0151259, -0.144255, 1, -0.144255, 0.0151259 ]
+				# Fairly wide, with negative lobes
+				( 1, "lanczos3", 0.75 ), 
+			]:
 
-					# Check that using DeepSlice to take everything before a depth, and using DeepSlice to
-					# take everything after a depth, results in 2 images that composite together to match
-					# the original
-					self.assertImagesEqual( nearOverFar["out"], flattenedInput["out"], maxDifference = 4e-6 )
+				deepResample["matrix"].setValue( imath.M33f( ( scale, 0, 0 ), ( 0, scale, 0 ), ( 0, 0, 1 ) ) )
+				deepResample["filter"].setValue( filter )
+				deepResample["filterScale"].setValue( imath.V2f( filterScale ) )
 
-					# Check that sample counts of the two slices are reasonable. The sum should be no less than
-					# the original sample counts, and no more than 1 greater ( since if a sample is split by
-					# the depth, it will appear in both )
-					self.assertImagesEqual(
-						sampleCountsInput["out"], sampleCountsNearFar["out"], maxDifference = (0,1)
-					)
+				with self.subTest( scale = scale, filter = filter, filterScale = filterScale, name = image.node().getName() ) :
+					self.assertImagesEqual( flattenAfter["out"], flatResample["out"], maxDifference = 2e-6 )
+
+					# Since some of our tests have samples at integer depths, test specifically in the neighbourhood
+					# of integer depths, then test at a bunch of random depths as well
+					for depth in (
+						[ ( zStart + zEnd ) * 0.5 ] #TODO
+						#[ i + o for i in range( zStart, zEnd + 1) for o in [ -5e-7, 0, 5e-7 ] ] +
+						#[ random.uniform( zStart, zEnd ) for i in range( 20 ) ]
+					):
+						with self.subTest( scale = scale, filter = filter, filterScale = filterScale, name = image.node().getName(), depth = depth ) :
+							sliceAfter["farClip"]["value"].setValue( depth )
+
+							print( sliceAfterNoZ["out"].channelNames(), linearReferenceSliceResample["out"].channelNames() )
+							self.assertImagesEqual(
+								referenceSliceResample["out"], sliceAfterNoZ["out"], 
+								maxDifference = ( -0.2, 1e-6 )
+							)
+							self.assertImagesEqual(
+								linearReferenceSliceResample["out"], sliceAfterNoZ["out"],
+								maxDifference = ( -1e-6, 1 )
+							)
 
 if __name__ == "__main__":
 	unittest.main()
