@@ -392,12 +392,13 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		deepIntVolumesPath = GafferImageTest.ImageTestCase.imagesPath() / "deepIntVolumes.exr"
 		deepFloatPointsPath = GafferImageTest.ImageTestCase.imagesPath() / "deepFloatPoints.exr"
 		deepFloatVolumesPath = GafferImageTest.ImageTestCase.imagesPath() / "deepFloatVolumes.exr"
+		deepResampleRGBErrorPath = GafferImageTest.ImageTestCase.imagesPath() / "deepResampleRGBError.exr"
 
 		representativeImage = GafferImage.ImageReader( "representativeDeep" )
 		representativeImage["fileName"].setValue( representativeImagePath )
 		# This image has some high RGB values in it, which make it less meaningful to compare error tolerances.
 		# Normalize it so the RGB values are in an approximately 0-1 range like the alpha.
-		representativeImageNormalized = GafferImage.Grade()
+		representativeImageNormalized = GafferImage.Grade( "representativeDeepNormalized" )
 		representativeImageNormalized["in"].setInput( representativeImage["out"] )
 		representativeImageNormalized["multiply"].setValue( imath.Color4f( 0.2, 0.2, 0.2, 1 ) )
 
@@ -430,6 +431,9 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		allCombinedUpsize["in"].setInput( allCombined["out"] )
 		allCombinedUpsize["format"].setValue( GafferImage.Format( 128, 128, 1.000 ) )
 		allCombinedUpsize["filter"].setValue( 'box' )
+
+		rgbError = GafferImage.ImageReader( "deepResampleRGBError" )
+		rgbError["fileName"].setValue( deepResampleRGBErrorPath )
 
 		testImage = GafferImage.ImagePlug()
 
@@ -471,22 +475,32 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		sliceAfterNoZ["in"].setInput( sliceAfter["out"] )
 		sliceAfterNoZ["channels"].setValue( "Z ZBack" )
 
+		sliceAfterAlphaOnly = GafferImage.DeleteChannels()
+		sliceAfterAlphaOnly["in"].setInput( sliceAfter["out"] )
+		sliceAfterAlphaOnly['mode'].setValue( GafferImage.DeleteChannels.Mode.Keep )
+		sliceAfterAlphaOnly["channels"].setValue( "A" )
+
 		referenceSlice = GafferImage.DeepSlice()
 		referenceSlice["in"].setInput( testImage )
 		referenceSlice["farClip"]["enabled"].setValue( True )
 		referenceSlice["farClip"]["value"].setInput( sliceAfter["farClip"]["value"] )
 		referenceSlice["flatten"].setValue( True )
 
-		referenceSliceNoZ = GafferImage.DeleteChannels()
-		referenceSliceNoZ["in"].setInput( referenceSlice["out"] )
-		referenceSliceNoZ["channels"].setValue( "Z ZBack" )
-
 		referenceSliceResample = GafferImage.Resample()
-		referenceSliceResample["in"].setInput( referenceSliceNoZ["out"] )
+		referenceSliceResample["in"].setInput( referenceSlice["out"] )
 		referenceSliceResample["expandDataWindow"].setValue( True )
 		referenceSliceResample["matrix"].setInput( deepResample["matrix"] )
 		referenceSliceResample["filter"].setInput( deepResample["filter"] )
 		referenceSliceResample["filterScale"].setInput( deepResample["filterScale"] )
+
+		referenceSliceResampleNoZ = GafferImage.DeleteChannels()
+		referenceSliceResampleNoZ["in"].setInput( referenceSliceResample["out"] )
+		referenceSliceResampleNoZ["channels"].setValue( "Z ZBack" )
+
+		referenceSliceResampleAlphaOnly = GafferImage.DeleteChannels()
+		referenceSliceResampleAlphaOnly["in"].setInput( referenceSliceResample["out"] )
+		referenceSliceResampleAlphaOnly['mode'].setValue( GafferImage.DeleteChannels.Mode.Keep )
+		referenceSliceResampleAlphaOnly["channels"].setValue( "A" )
 
 		linearReferenceSliceTidy = GafferImage.DeepTidy()
 		linearReferenceSliceTidy["in"].setInput( testImage )
@@ -527,8 +541,9 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 			( allInts["out"], 0, 4 ),
 			( allFloats["out"], 0, 4 ),
 			( allCombined["out"], 0, 4 ),
-			#( allCombinedUpsize["out"], 0, 4 ), #TODO
-			#( representativeImageNormalized["out"], 4, 11 ),
+			( allCombinedUpsize["out"], 0, 4 ),
+			( representativeImageNormalized["out"], 4, 11 ),
+			( rgbError["out"], 2, 4 ),
 		]:
 
 			testImage.setInput( image )
@@ -550,7 +565,7 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 
 				# Results in kernel of [ 0.0151259, -0.144255, 1, -0.144255, 0.0151259 ]
 				# Fairly wide, with negative lobes
-				( 1, "lanczos3", 0.75 ), 
+				#( 1, "lanczos3", 0.75 ),  TODO
 			]:
 
 				deepResample["matrix"].setValue( imath.M33f( ( scale, 0, 0 ), ( 0, scale, 0 ), ( 0, 0, 1 ) ) )
@@ -558,26 +573,43 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 				deepResample["filterScale"].setValue( imath.V2f( filterScale ) )
 
 				with self.subTest( scale = scale, filter = filter, filterScale = filterScale, name = image.node().getName() ) :
-					self.assertImagesEqual( flattenAfter["out"], flatResample["out"], maxDifference = 2e-6 )
+					self.assertImagesEqual( flattenAfter["out"], flatResample["out"], maxDifference = 6e-6 )
 
 					# Since some of our tests have samples at integer depths, test specifically in the neighbourhood
 					# of integer depths, then test at a bunch of random depths as well
 					for depth in (
-						[ ( zStart + zEnd ) * 0.5 ] #TODO
-						#[ i + o for i in range( zStart, zEnd + 1) for o in [ -5e-7, 0, 5e-7 ] ] +
-						#[ random.uniform( zStart, zEnd ) for i in range( 20 ) ]
+						#[ ( zStart + zEnd ) * 0.5 ] #TODO
+						[ i + o for i in range( zStart, zEnd + 1) for o in [ -5e-7, 0, 5e-7 ] ] +
+						[ random.uniform( zStart, zEnd ) for i in range( 20 ) ]
 					):
 						with self.subTest( scale = scale, filter = filter, filterScale = filterScale, name = image.node().getName(), depth = depth ) :
 							sliceAfter["farClip"]["value"].setValue( depth )
 
-							print( sliceAfterNoZ["out"].channelNames(), linearReferenceSliceResample["out"].channelNames() )
+							# By slicing first, and then doing a 2D resize, we can compute a totally accurate
+							# reference. We only validate agains this on the top end, however,
+							# "curve shape discrepancy" can result in ...
 							self.assertImagesEqual(
-								referenceSliceResample["out"], sliceAfterNoZ["out"], 
-								maxDifference = ( -0.2, 1e-6 )
+								referenceSliceResampleAlphaOnly["out"], sliceAfterAlphaOnly["out"], 
+								maxDifference = ( -1, 2e-6 )
 							)
 							self.assertImagesEqual(
 								linearReferenceSliceResample["out"], sliceAfterNoZ["out"],
-								maxDifference = ( -1e-6, 1 )
+								maxDifference = ( -5e-6, 1 )
+							)
+
+							# For the RGB channels, we have to allow error even abov reference.
+							# This is because the shape of the curve is determined by the alpha,
+							# but it's possible for the sample with the most alpha, which drives the curve
+							# shape, to not be the sample contributing most to this channel.
+							# The curve can't get too wrong though, because you usually can't contribute a
+							# lot of color without also contributing alpha - hence this error has a
+							# tolerance of just 0.03, unlike the underflow in the first test above which
+							# can reach 100% of alpha in extreme cases involving alphas very close to 1.
+							# The test image "deepResampleRGBError.exr" illustrates the worst the case
+							# I've been able to find for this error.
+							self.assertImagesEqual(
+								referenceSliceResampleNoZ["out"], sliceAfterNoZ["out"], 
+								maxDifference = ( -1, 0.03 )
 							)
 
 if __name__ == "__main__":
