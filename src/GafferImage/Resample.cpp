@@ -608,16 +608,16 @@ private:
 	const std::vector< float > &m_weights;
 
 	std::vector<unsigned int> m_streamSampleIndex;
-	std::vector<float> m_alphaAccumStreams;
+	std::vector<double> m_alphaAccumStreams;
 
 	float m_z;
 	float m_zBack;
 	float m_alpha;
 	bool m_hasSegment;
 
-	float m_totalClosedSegmentAccumAlpha;
-	float m_totalAccumAlpha;
-	float m_prevTotalAccumAlpha;
+	double m_totalClosedSegmentAccumAlpha;
+	double m_totalAccumAlpha;
+	double m_prevTotalAccumAlpha;
 
 
 	// Each entry in the heap stores a minimum depth, and a stream index.
