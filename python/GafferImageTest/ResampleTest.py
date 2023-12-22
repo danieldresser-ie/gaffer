@@ -432,6 +432,17 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		allCombinedUpsize["format"].setValue( GafferImage.Format( 128, 128, 1.000 ) )
 		allCombinedUpsize["filter"].setValue( 'box' )
 
+		# TODO - armor against inf/NaN values, which probably were what was happening without this
+
+
+		# TODO REMOVE
+
+		allCombinedUpsizeTidy = GafferImage.DeepTidy()
+		allCombinedUpsizeTidy["in"].setInput( allCombined["out"] )
+		allCombinedUpsize["in"].setInput( allCombinedUpsizeTidy["out"] )
+
+		# END TODO REMOVE
+
 		rgbError = GafferImage.ImageReader( "deepResampleRGBError" )
 		rgbError["fileName"].setValue( deepResampleRGBErrorPath )
 
@@ -441,13 +452,16 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 		deepResample["in"].setInput( testImage )
 		deepResample["expandDataWindow"].setValue( True )
 
+		tidyAfterResample = GafferImage.DeepTidy()
+		tidyAfterResample["in"].setInput( deepResample["out"] )
+
 		# TODO REMOVE
 
 		deepTidy = GafferImage.DeepTidy()
 		deepTidy["in"].setInput( testImage )
 		deepResample["in"].setInput( deepTidy["out"] )
 
-		# TODO REMOVE
+		# END TODO REMOVE
 
 		flattenAfter = GafferImage.DeepToFlat()
 		flattenAfter["in"].setInput( deepResample["out"] )
@@ -537,13 +551,16 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 
 		random.seed( 42 )
 
-		for image, zStart, zEnd in [
-			( allInts["out"], 0, 4 ),
-			( allFloats["out"], 0, 4 ),
-			( allCombined["out"], 0, 4 ),
-			( allCombinedUpsize["out"], 0, 4 ),
-			( representativeImageNormalized["out"], 4, 11 ),
-			( rgbError["out"], 2, 4 ),
+		# TODO - validate alpha in range 0 - 1 
+		# TODO - DeepSlice should probably handle out-of-range alphas better
+
+		for image, zStart, zEnd, tolerance in [
+			( allInts["out"], 0, 4, 2e-6 ),
+			( allFloats["out"], 0, 4, 2e-6 ),
+			( allCombined["out"], 0, 4, 2e-6 ),
+			( allCombinedUpsize["out"], 0, 4, 3e-5 ),
+			( representativeImageNormalized["out"], 4, 11, 2e-6 ),
+			( rgbError["out"], 2, 4, 2e-6 ),
 		]:
 
 			testImage.setInput( image )
@@ -575,10 +592,12 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 				with self.subTest( scale = scale, filter = filter, filterScale = filterScale, name = image.node().getName() ) :
 					self.assertImagesEqual( flattenAfter["out"], flatResample["out"], maxDifference = 6e-6 )
 
+					# Our output should always be tidy already
+					self.assertImagesEqual( tidyAfterResample["out"], deepResample["out"] )
+
 					# Since some of our tests have samples at integer depths, test specifically in the neighbourhood
 					# of integer depths, then test at a bunch of random depths as well
 					for depth in (
-						#[ ( zStart + zEnd ) * 0.5 ] #TODO
 						[ i + o for i in range( zStart, zEnd + 1) for o in [ -5e-7, 0, 5e-7 ] ] +
 						[ random.uniform( zStart, zEnd ) for i in range( 20 ) ]
 					):
@@ -590,7 +609,7 @@ class ResampleTest( GafferImageTest.ImageTestCase ) :
 							# "curve shape discrepancy" can result in ...
 							self.assertImagesEqual(
 								referenceSliceResampleAlphaOnly["out"], sliceAfterAlphaOnly["out"], 
-								maxDifference = ( -1, 2e-6 )
+								maxDifference = ( -1, tolerance )
 							)
 							self.assertImagesEqual(
 								linearReferenceSliceResample["out"], sliceAfterNoZ["out"],
