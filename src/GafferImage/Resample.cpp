@@ -393,9 +393,12 @@ public:
 			int sampleIndex = m_streamSampleIndex[stream];
 			if( m_zBackStreams[stream][sampleIndex] <= m_z )
 			{
-				float inc = ( 1 - m_alphaAccumStreams[stream] ) * m_alphaStreams[stream][sampleIndex];
-				m_alphaAccumStreams[stream] += inc;
-				m_totalClosedSegmentAccumAlpha += inc * m_weights[stream];
+				if( m_alphaStreams[stream][sampleIndex] > 0.0f )
+				{
+					float inc = ( 1 - m_alphaAccumStreams[stream] ) * m_alphaStreams[stream][sampleIndex];
+					m_alphaAccumStreams[stream] += inc;
+					m_totalClosedSegmentAccumAlpha += inc * m_weights[stream];
+				}
 				m_openSegments.erase( m_openSegments.begin() + i );
 			}
 			else
@@ -434,9 +437,16 @@ public:
 				// TODO - is there a good way to skip segments with 0 alpha without increasing complexity?
 				m_openSegments.push_back( { stream, 0.0f, 0.0f } );
 				m_streamSampleIndex[stream]++;
+
+				// TODO - makes sense as assert, add comment
+				assert( m_zBackStreams[stream][ m_streamSampleIndex[stream] ] >= m_z );
+
 				if( m_zBackStreams[stream][ m_streamSampleIndex[stream] ] < m_z )
 				{
-					std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << m_heap.top().z << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
+					if( m_zStreams[stream][ m_streamSampleIndex[stream] ] < m_zBackStreams[stream][ m_streamSampleIndex[stream] ] )
+					{
+						std::cerr << "SAMPLE SHOULD HAVE BEEN CLOSED ALREADY : " << m_zStreams[stream][ m_streamSampleIndex[stream] ] << " -> " << m_zBackStreams[stream][ m_streamSampleIndex[stream] ] << " it had priority " << m_heap.top().z << " and index " << m_streamSampleIndex[stream] << " of " << m_countStreams[stream] << "\n";
+					}
 				}
 				m_zBack = std::min( m_zBack, m_zBackStreams[stream][ m_streamSampleIndex[stream] ] );
 				if( m_streamSampleIndex[stream] < m_countStreams[stream] - 1 )
@@ -499,7 +509,7 @@ public:
 			float sampleZ = m_zStreams[i.stream][sampleIndex];
 			float sampleZBack = m_zBackStreams[i.stream][sampleIndex];
 			float sampleAlpha = m_alphaStreams[i.stream][sampleIndex];
-			if( sampleAlpha == 0.0f )
+			if( !( sampleAlpha > 0.0f ) )
 			{
 				// We don't need to do anything with a sample with zero alpha
 				// TODO - how does this affect color channels?
@@ -528,7 +538,17 @@ public:
 			}
 			m_totalAccumAlpha += ( 1 - m_alphaAccumStreams[i.stream] ) * i.alpha * m_weights[i.stream];
 		}
+
+		if( m_totalAccumAlpha > 1.0f )
+		{
+			// We don't want floating point error to result in this going over 1.0 and making everything wonky
+			m_totalAccumAlpha = 1.0f;
+		}
 		m_alpha = ( m_totalAccumAlpha - m_prevTotalAccumAlpha ) / ( 1 - m_prevTotalAccumAlpha );
+		if( m_alpha > 1.0f )
+		{
+			std::cerr << "CHANGE : " << m_totalAccumAlpha << " : " << m_prevTotalAccumAlpha << "\n";
+		}
 	}
 
 	void addSampleContributions( int &count, std::vector< int > &streamIndices, std::vector< int > &sampleIndices, std::vector< float > &weights )
@@ -564,6 +584,7 @@ public:
 					// TODO - test this
 					frac = ( m_zBack - sampleZ ) / ( sampleZBack - sampleZ );
 				}
+				frac *= ( 1.0f - m_alphaAccumStreams[i.stream] );
 			}
 			else
 			{
