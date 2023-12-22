@@ -221,16 +221,16 @@ void DeepToFlat::compute( Gaffer::ValuePlug *output, const Gaffer::Context *cont
 		}
 		*/
 
-		if( ImageAlgo::channelExists( channelNames->readable(), "A" ) )
+		if( ImageAlgo::channelExists( channelNames->readable(), ImageAlgo::channelNameA ) )
 		{
 			channelScope.setChannelName( &ImageAlgo::channelNameA );
 			ConstFloatVectorDataPtr alphaData = inPlug()->channelDataPlug()->getValue();
 			const std::vector<float> &alpha = alphaData->readable();
 
-			if( ImageAlgo::channelExists( channelNames->readable(), "ZBack" ) )
+			if( ImageAlgo::channelExists( channelNames->readable(), ImageAlgo::channelNameZBack ) )
 			{
 				// If we have a ZBack channel, find the average depth of each sample
-				channelScope.setChannelName( "ZBack" );
+				channelScope.setChannelName( ImageAlgo::channelNameZBack );
 				ConstFloatVectorDataPtr zBackData = inPlug()->channelDataPlug()->getValue();
 				const std::vector<float> &zBack = zBackData->readable();
 
