@@ -83,6 +83,7 @@ DeepResample::DeepResample( const std::string &name )
 	outPlug()->formatPlug()->setInput( tidyInPlug()->formatPlug() );
 	outPlug()->metadataPlug()->setInput( tidyInPlug()->metadataPlug() );
 	outPlug()->deepPlug()->setInput( tidyInPlug()->deepPlug() );
+	outPlug()->viewNamesPlug()->setInput( tidyInPlug()->viewNamesPlug() );
 }
 
 DeepResample::~DeepResample()
@@ -258,18 +259,18 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 	)
 	{
 		ImagePlug::ChannelDataScope channelScope( context );
-		channelScope.setChannelName( ImageAlgo::channelNameA );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 		ConstFloatVectorDataPtr alphaData = tidyInPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &alpha = alphaData->readable();
 
-		channelScope.setChannelName( ImageAlgo::channelNameZ );
+		channelScope.setChannelName( &ImageAlgo::channelNameZ );
 		ConstFloatVectorDataPtr zData = tidyInPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &z = zData->readable();
 
 		ConstFloatVectorDataPtr zBackData;
-		if( ImageAlgo::channelExists( channelNames, channelNameZBack ) )
+		if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZBack ) )
 		{
-			channelScope.setChannelName( channelNameZBack );
+			channelScope.setChannelName( &ImageAlgo::channelNameZBack );
 			zBackData = tidyInPlug()->channelDataPlug()->getValue();
 		}
 		else
@@ -283,11 +284,11 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		{
 			for( const std::string &n : channelNames )
 			{
-				if( n == ImageAlgo::channelNameA || n == ImageAlgo::channelNameZ || n == channelNameZBack )
+				if( n == ImageAlgo::channelNameA || n == ImageAlgo::channelNameZ || n == ImageAlgo::channelNameZBack )
 				{
 					continue;
 				}
-				channelScope.setChannelName( n );
+				channelScope.setChannelName( &n );
 				colorChannelsData.push_back( tidyInPlug()->channelDataPlug()->getValue() );
 			}
 		}
@@ -397,7 +398,7 @@ void DeepResample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *co
 		resampledData->members()["sampleOffsets"] = outSampleOffsetsData;
 		resampledData->members()[ImageAlgo::channelNameA] = outAlphaData;
 		resampledData->members()[ImageAlgo::channelNameZ] = outZData;
-		resampledData->members()[channelNameZBack] = outZBackData;
+		resampledData->members()[ImageAlgo::channelNameZBack] = outZBackData;
 	}
 
 	static_cast<CompoundObjectPlug *>( output )->setValue( resampledData );
@@ -415,7 +416,7 @@ void DeepResample::hashChannelData( const ImagePlug *output, const Gaffer::Conte
 
 	resampledPlug()->hash( h );
 
-	if( channelName == ImageAlgo::channelNameZ || channelName ==  channelNameZBack || channelName == ImageAlgo::channelNameA )
+	if( channelName == ImageAlgo::channelNameZ || channelName == ImageAlgo::channelNameZBack || channelName == ImageAlgo::channelNameA )
 	{
 		h.append( channelName );
 		return;
@@ -442,15 +443,15 @@ IECore::ConstFloatVectorDataPtr DeepResample::computeChannelData( const std::str
 
 	if( channelName == ImageAlgo::channelNameZ )
 	{
-		return resampled->member<FloatVectorData>(ImageAlgo::channelNameZ);
+		return resampled->member<FloatVectorData>( ImageAlgo::channelNameZ );
 	}
-	else if( channelName == channelNameZBack )
+	else if( channelName == ImageAlgo::channelNameZBack )
 	{
-		return resampled->member<FloatVectorData>(channelNameZBack);
+		return resampled->member<FloatVectorData>( ImageAlgo::channelNameZBack );
 	}
 	else if( channelName == ImageAlgo::channelNameA )
 	{
-		return resampled->member<FloatVectorData>(ImageAlgo::channelNameA);
+		return resampled->member<FloatVectorData>( ImageAlgo::channelNameA );
 	}
 
 	IECore::ConstFloatVectorDataPtr resampledAlphaData = resampled->member<FloatVectorData>(ImageAlgo::channelNameA);

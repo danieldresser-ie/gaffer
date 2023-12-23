@@ -43,6 +43,7 @@ using namespace std;
 using namespace Imath;
 using namespace IECore;
 using namespace Gaffer;
+using namespace GafferImage;
 using namespace GafferImageTest;
 
 GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( DeepAlphaOffset );
@@ -108,12 +109,12 @@ void DeepAlphaOffset::hashChannelData( const GafferImage::ImagePlug *output, con
 		ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
 		std::vector<string> channelNames = channelNamesData->readable();
 
-		if( !GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
+		if( !GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
 		{
 			return;
 		}
 
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 
 		inPlug()->channelDataPlug()->hash( h );
 		outPlug()->channelDataPlug()->hash( h );
@@ -180,12 +181,12 @@ void DeepAlphaOffset::processChannelData( const Gaffer::Context *context, const 
 		ConstStringVectorDataPtr channelNamesData = inPlug()->channelNames();
 		std::vector<string> channelNames = channelNamesData->readable();
 
-		if( !GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
+		if( !GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
 		{
 			return;
 		}
 
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 
 		ConstFloatVectorDataPtr aBeforeData = inPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &aBefore = aBeforeData->readable();

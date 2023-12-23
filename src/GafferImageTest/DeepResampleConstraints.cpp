@@ -192,7 +192,7 @@ void DeepResampleConstraints::hash( const Gaffer::ValuePlug *output, const Gaffe
 	ImagePlug::ChannelDataScope channelScope( context );
 	for( const std::string &n : channelNames )
 	{
-		channelScope.setChannelName( n );
+		channelScope.setChannelName( &n );
 		inPlug()->channelDataPlug()->hash( h );
 	}
 }
@@ -235,18 +235,18 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 	)
 	{
 		ImagePlug::ChannelDataScope channelScope( context );
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 		ConstFloatVectorDataPtr alphaData = inPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &alpha = alphaData->readable();
 
-		channelScope.setChannelName( "Z" );
+		channelScope.setChannelName( &ImageAlgo::channelNameZ );
 		ConstFloatVectorDataPtr zData = inPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &z = zData->readable();
 
 		ConstFloatVectorDataPtr zBackData;
-		if( ImageAlgo::channelExists( channelNames, "ZBack" ) )
+		if( ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZBack ) )
 		{
-			channelScope.setChannelName( "ZBack" );
+			channelScope.setChannelName( &ImageAlgo::channelNameZBack );
 			zBackData = inPlug()->channelDataPlug()->getValue();
 		}
 		else
@@ -260,11 +260,11 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		{
 			for( const std::string &n : channelNames )
 			{
-				if( n == "A" || n == "Z" || n == "ZBack" )
+				if( n == ImageAlgo::channelNameA || n == ImageAlgo::channelNameZ || n == ImageAlgo::channelNameZBack )
 				{
 					continue;
 				}
-				channelScope.setChannelName( n );
+				channelScope.setChannelName( &n );
 				colorChannelsData.push_back( inPlug()->channelDataPlug()->getValue() );
 			}
 		}

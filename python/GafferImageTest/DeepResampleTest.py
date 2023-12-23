@@ -72,8 +72,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		# Aside from depth, everything should match extremely closely in the flat image, because we adjust
 		# samples to produce an exactly matching flat image
-		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
-		resampleFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
+		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
+		resampleFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
 		self.assertImagesEqual( origFlatten["out"], resampleFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
 
 		# If we look at depth on the flat images, there will some error introduced by our alpha and
@@ -115,7 +115,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# Make sure we substantially reduce the sample count
 		#self.assertEqual( resampleCountResult, resampleCount )
 		if resampleCountResult != resampleCount:
-			print "SAMPLE COUNT MISMATCH : ", resampleCountResult, " ", resampleCount
+			print( "SAMPLE COUNT MISMATCH : ", resampleCountResult, " ", resampleCount )
 
 
 		origSampler = GafferImage.DeepSampler()
@@ -281,8 +281,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		# Aside from depth, everything should match extremely closely in the flat image, because we adjust
 		# samples to produce an exactly matching flat image
-		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
-		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None )
+		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
+		deepFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
 		self.assertImagesEqual( origFlatten["out"], deepFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
 
 		# If we look at depth on the flat images, there will some error introduced by our alpha and
@@ -323,7 +323,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		#self.assertEqual( origCount, 191684 )
 		self.assertEqual( origCount, 191482 )
 
-		print "RESAMPLE COUNT: ", resampleCount
+		print( "RESAMPLE COUNT: ", resampleCount )
 		# Make sure we substantially reduce the sample count
 		#self.assertLess( resampleCount, 53250 ) # TODO
 		self.assertLess( resampleCount, 53500 ) # TODO
@@ -348,7 +348,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# Make sure we reduce the sample count even further
 		resampleCount = int( resampleCountStats["average"].getValue()[0] * dw.size()[0] * dw.size()[1] )
 		self.assertLess( resampleCount, 25000 )
-		print "AGGRESSIVE RESAMPLE COUNT: ", resampleCount
+		print( "AGGRESSIVE RESAMPLE COUNT: ", resampleCount )
 
 		for x in range( dw.size()[0] ):
 			for y in range( dw.size()[1] ):

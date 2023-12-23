@@ -43,6 +43,7 @@ using namespace std;
 using namespace Imath;
 using namespace IECore;
 using namespace Gaffer;
+using namespace GafferImage;
 using namespace GafferImageTest;
 
 GAFFER_GRAPHCOMPONENT_DEFINE_TYPE( DeepOversample );
@@ -64,6 +65,7 @@ DeepOversample::DeepOversample( const std::string &name )
 	outPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
 	outPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );
 	outPlug()->deepPlug()->setInput( inPlug()->deepPlug() );
+	outPlug()->viewNamesPlug()->setInput( inPlug()->viewNamesPlug() );
 }
 
 DeepOversample::~DeepOversample()
@@ -132,7 +134,7 @@ void DeepOversample::hash( const Gaffer::ValuePlug *output, const Gaffer::Contex
 	maxSampleAlphaPlug()->hash( h );
 
 	GafferImage::ImagePlug::ChannelDataScope channelScope( context );
-	channelScope.setChannelName( "A" );
+	channelScope.setChannelName( &ImageAlgo::channelNameA );
 	inPlug()->channelDataPlug()->hash( h );
 }
 
@@ -155,7 +157,7 @@ void DeepOversample::compute( Gaffer::ValuePlug *output, const Gaffer::Context *
 		float thresh = std::max( 0.0001f, maxSampleAlphaPlug()->getValue() );
 
 		GafferImage::ImagePlug::ChannelDataScope channelScope( context );
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 		ConstFloatVectorDataPtr alphaData = inPlug()->channelDataPlug()->getValue();
 		const std::vector<float> &alpha = alphaData->readable();
 
@@ -203,32 +205,32 @@ void DeepOversample::hashChannelData( const GafferImage::ImagePlug *output, cons
 	
 	subSamplesPlug()->hash( h );
 
-	if( channelName == "Z" || channelName == "ZBack" )
+	if( channelName == ImageAlgo::channelNameZ || channelName == ImageAlgo::channelNameZBack )
 	{
-		h.append( channelName != "Z" );
+		h.append( channelName != ImageAlgo::channelNameZ );
 
-		if( GafferImage::ImageAlgo::channelExists( channelNames, "Z" ) )
+		if( GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZ ) )
 		{
-			channelScope.setChannelName( "Z" );
+			channelScope.setChannelName( &ImageAlgo::channelNameZ );
 			inPlug()->channelDataPlug()->hash( h );
 		}
-		if( GafferImage::ImageAlgo::channelExists( channelNames, "ZBack" ) )
+		if( GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZBack ) )
 		{
-			channelScope.setChannelName( "ZBack" );
+			channelScope.setChannelName( &ImageAlgo::channelNameZBack );
 			inPlug()->channelDataPlug()->hash( h );
 		}
 	}
 	else
 	{
-		if( GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
+		if( GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
 		{
-			channelScope.setChannelName( "A" );
+			channelScope.setChannelName( &ImageAlgo::channelNameA );
 			inPlug()->channelDataPlug()->hash( h );
 		}
 
-		if( channelName != "A" )
+		if( channelName != ImageAlgo::channelNameA )
 		{
-			channelScope.setChannelName( channelName );
+			channelScope.setChannelName( &channelName );
 			inPlug()->channelDataPlug()->hash( h );
 		}
 	}
@@ -253,9 +255,9 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 	int size = 0;
 	ConstFloatVectorDataPtr alphaData;
 	const float *alpha = nullptr;
-	if( GafferImage::ImageAlgo::channelExists( channelNames, "A" ) )
+	if( GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameA ) )
 	{
-		channelScope.setChannelName( "A" );
+		channelScope.setChannelName( &ImageAlgo::channelNameA );
 		alphaData = inPlug()->channelDataPlug()->getValue();
 		alpha = &( alphaData->readable()[0] );
 		size = alphaData->readable().size();
@@ -267,14 +269,14 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 		ConstFloatVectorDataPtr zData;
 		ConstFloatVectorDataPtr zBackData;
 
-		if( GafferImage::ImageAlgo::channelExists( channelNames, "Z" ) )
+		if( GafferImage::ImageAlgo::channelExists( channelNames, ImageAlgo::channelNameZ ) )
 		{
-			channelScope.setChannelName( "Z" );
+			channelScope.setChannelName( &ImageAlgo::channelNameZ );
 			zData = inPlug()->channelDataPlug()->getValue();
 		}
 		if( GafferImage::ImageAlgo::channelExists( channelNames, "ZBack" ) )
 		{
-			channelScope.setChannelName( "ZBack" );
+			channelScope.setChannelName( &ImageAlgo::channelNameZBack );
 			zBackData = inPlug()->channelDataPlug()->getValue();
 		}
 
@@ -338,7 +340,7 @@ IECore::ConstFloatVectorDataPtr DeepOversample::computeChannelData( const std::s
 		const float *inChannel = nullptr;
 		if( !writeAlpha )
 		{
-			channelScope.setChannelName( channelName );
+			channelScope.setChannelName( &channelName );
 			inChannelData = inPlug()->channelDataPlug()->getValue();
 			inChannel = &( inChannelData->readable()[0] );
 			size = inChannelData->readable().size();
