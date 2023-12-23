@@ -470,13 +470,17 @@ if env["PLATFORM"] != "win32" :
 			gccVersion = subprocess.check_output( [ env["CXX"], "-dumpfullversion" ], env=env["ENV"], universal_newlines=True ).strip()
 		gccVersion = [ int( v ) for v in gccVersion.split( "." ) ]
 
+		# We only want major and minor version - dumpfullversion may report the patch version as a
+		# third component, discard it
+		gccVersion = gccVersion[0:2]
+
 		# GCC emits spurious "assuming signed overflow does not occur"
 		# warnings, typically triggered by the comparisons in Box3f::isEmpty().
 		# Downgrade these back to warning status.
 		if gccVersion >= [ 4, 2 ] :
 			env.Append( CXXFLAGS = [ "-Wno-error=strict-overflow" ] )
 
-		if gccVersion >= [ 5, 1 ] and gccVersion < [ 11, 2 ] :
+		if gccVersion >= [ 5, 1 ] and gccVersion <= [ 11, 4 ] :
 			env.Append( CXXFLAGS = [ "-D_GLIBCXX_USE_CXX11_ABI=0" ] )
 
 		if gccVersion >= [ 9, 2 ] :

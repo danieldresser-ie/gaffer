@@ -129,6 +129,10 @@ struct PyBind11Converters
 			static PyObject *convert( const T &t )
 			{
 				pybind11::object o = pybind11::cast( t );
+				if( !o.ptr() )
+				{
+					throw IECore::Exception( "Invalid OCIO config" );
+				}
 				Py_INCREF( o.ptr() );
 				return o.ptr();
 			}

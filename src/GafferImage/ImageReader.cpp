@@ -172,7 +172,7 @@ ImageReader::ImageReader( const std::string &name )
 	colorSpace->inPlug()->setInput( oiioReader->outPlug() );
 	colorSpace->inputSpacePlug()->setInput( intermediateColorSpacePlug() );
 	colorSpace->processUnpremultipliedPlug()->setValue( true );
-	intermediateImagePlug()->setInput( colorSpace->outPlug() );
+	intermediateImagePlug()->setInput( oiioReader->outPlug() );
 
 	availableFramesPlug()->setInput( oiioReader->availableFramesPlug() );
 }
