@@ -1201,11 +1201,6 @@ void integratedPointSamplesForPixel(
 		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
 		if( Z != ZBackPrev )
 		{
-			if( !( Z > -1000 )  )
-			{
-				std::cerr << "Z: " << i << " of " << inSamples << " = " << Z << "\n";
-				throw IECore::Exception( "Q?" );
-			}
 			deepSamples.push_back( { Z, accumAlpha } );
 		}
 
@@ -1298,27 +1293,7 @@ void linearConstraintsForPixel(
 		return;
 	}
 
-	for( unsigned int i = 1; i < deepSamples.size(); i++ )
-	{
-		if( !std::isfinite( deepSamples[i].x ) || !std::isfinite( deepSamples[i].y ) )
-		{
-			throw IECore::Exception( "NON-FINITE ACCUM" );
-		}
-		if( !( deepSamples[i].y >= 0 ) )
-		{
-			throw IECore::Exception( "NEGATIVE ACCUM" );
-		}
-
-		if( !( deepSamples[i].x >= deepSamples[i-1].x ) )
-		{
-			throw IECore::Exception( "DECREASING X ACCUM" );
-		}
-
-		if( !( deepSamples[i].y >= deepSamples[i-1].y ) )
-		{
-			throw IECore::Exception( "DECREASING Y ACCUM" );
-		}
-	}
+	// ---- Set up lower constraints ----
 
 	lowerConstraints.reserve( deepSamples.size() ); // TODO
 	upperConstraints.reserve( deepSamples.size() );
@@ -1381,28 +1356,11 @@ void linearConstraintsForPixel(
 					{
 						lerp = 1.0f;
 					}
-					if( std::isnan( lerp ) || !std::isfinite( lerp ))
-					{
-						throw IECore::Exception( "CUR" );
-					}
-
-					if( !(deepSamples[j].x > -1000 ) )
-					{
-						throw IECore::Exception( "input 1?" );
-					}
-					if( !(deepSamples[j+1].x > -1000 ) )
-					{
-						throw IECore::Exception( "input 2?" );
-					}
 					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
 					// Make sure floating point error doesn't violate non-decreasing X
 					xIntercept = std::min( deepSamples[j+1].x, xIntercept );
 					nextX = applyZTol( xIntercept, zTolerance, false );
 					nextAlpha = 0.0;
-					if( !( nextX > -1000 ) )
-					{
-						throw IECore::Exception( "B?" );
-					}
 				}
 				else
 				{
@@ -1410,40 +1368,13 @@ void linearConstraintsForPixel(
 				}
 			}
 		}
-		if( !( nextX > -1000 ) )
-		{
-			throw IECore::Exception( "what?" );
-		}
-
-		if( !( nextAlpha >= prevAlpha ) )
-		{
-			std::cerr << "CCCCCCCC\n";
-			std::cerr << prevAlpha << " -> " << nextAlpha << "\n";
-			if( j > 0 )
-			{
-				std::cerr << deepSamples[j-1].y << " -> " << deepSamples[j].y << "\n";
-				std::cerr << deepSamples[j-1].y - aTol << " -> " << deepSamples[j].y - aTol << "\n";
-			}
-			else
-			{
-				std::cerr << "HUWAHHH???\n";
-			}
-			throw IECore::Exception( "CCCCCCCCCCCCCCCCCCc" );
-		}
 		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
 
 		float nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
 		float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 
-		//float nextCurveSample = prevLower.y < maxCurveSample ? prevLower.y + stepToNextCurveSample : std::numeric_limits<float>::infinity();
-		int qqq = 0;
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
 		{
-			qqq++;
-			if( qqq % 1000 == 0 )
-			{
-				std::cerr << "QQQ: " << nextCurveSample << "\n";
-			}
 			float denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
 			if( denom == 0.0f )
 			{
@@ -1461,49 +1392,11 @@ void linearConstraintsForPixel(
 			{
 				break;
 			}
-			if( !( intersectionX > -1000 ) )
-			{
-				throw IECore::Exception( "HOOWWWWW??" );
-			}
 
-			if( !std::isfinite( intersectionX ))
-			{
-				throw IECore::Exception( "HOOWWWWW??" );
-			}
-
-			/*if( !lowerConstraints.size() || (
-				intersectionX >= lowerConstraints.back().x &&
-				nextCurveSample >= lowerConstraints.back().y
-			) )
-			{
-				lowerConstraints.push_back( { intersectionX, nextCurveSample } );
-			}*/
-			if( lowerConstraints.size() && !( nextCurveSample >= lowerConstraints.back().y ) )
-			{
-				throw IECore::Exception( "AAAAAAAAAAAAAAAAAA" );
-			}
 			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
-			//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
 			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
-		}
-
-		if( std::isnan( nextLower.x ) || !std::isfinite( nextLower.x ) || !( nextLower.x > -1000 ) )
-		{
-			throw IECore::Exception( "BLAH" );
-		}
-		/*if( lowerConstraints.size() ) assert( nextLower.y >= lowerConstraints.back().y );
-		if( !lowerConstraints.size() || (
-			nextLower.x >= lowerConstraints.back().x &&
-			nextLower.y >= lowerConstraints.back().y
-		) )
-		{
-			lowerConstraints.push_back( nextLower );
-		}*/
-		if( lowerConstraints.size() && !( nextLower.y >= lowerConstraints.back().y ) )
-		{
-			throw IECore::Exception( "BBBBBBBBBBBBBBBBBB" );
 		}
 
 		lowerConstraints.push_back( nextLower );
@@ -1522,6 +1415,8 @@ void linearConstraintsForPixel(
 	assert( deepSamples.size() >= 1 );
 	assert( deepSamples[0].y == 0 );
 	assert( !std::isinf( deepSamples[0].x ) );
+
+	// ---- Set up upper constraints ----
 
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
 	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
@@ -1569,7 +1464,6 @@ void linearConstraintsForPixel(
 				else
 				{
 					yValueToInsert = nextCurveSample;
-					//nextCurveSample = nextCurveSample < maxCurveSample ? nextCurveSample + stepToNextCurveSample : std::numeric_limits<float>::infinity();
 					nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - nextCurveSampleAlpha ) : 1.0;
 					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 				}
@@ -1584,14 +1478,6 @@ void linearConstraintsForPixel(
 				float fraction = ( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / deltaY;
 				// TODO - clamp upper as well?
 				float upperConstraintX = std::min( std::max( fraction, 0.0f ) * ( nextUpper.x - prevUpper.x ) + prevUpper.x, nextUpper.x );
-				if( upperConstraints.size() && upperConstraintX < upperConstraints.back().x )
-				{
-					std::cerr.precision( 20 );
-					std::cerr << "A: " << exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) << "\n";
-					std::cerr << "B: " << exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y ) << "\n";
-					std::cerr << "BLEH: " << upperConstraints.back().x << " : " << upperConstraintX << "\n";
-					throw IECore::Exception( "EXPECTED !!" );
-				}
 				upperConstraints.push_back( { upperConstraintX, yValueToInsert } );
 			}
 		}
@@ -1603,21 +1489,6 @@ void linearConstraintsForPixel(
 			break;
 		}
 
-		if( std::isnan( nextUpper.x ) )
-		{
-			throw IECore::Exception( "ISNAN" );
-		}
-		/*if( !upperConstraints.size() || (
-			nextUpper.x >= upperConstraints.back().x &&
-			nextUpper.y >= upperConstraints.back().y
-		) )
-		{
-			upperConstraints.push_back( nextUpper );
-		}*/
-		if( upperConstraints.size() && nextUpper.x < upperConstraints.back().x )
-		{
-			throw IECore::Exception( "NOT EXPECTED : ARRGGGGGHGHHH! " );
-		}
 		upperConstraints.push_back( nextUpper );
 
 		if( lowerConstraints[matchingLowerIndex].y == nextUpper.y )
@@ -1627,66 +1498,6 @@ void linearConstraintsForPixel(
 
 		prevUpper = nextUpper;
 		prevAlpha = nextAlpha;
-	}
-
-	SimplePoint prev = lowerConstraints[0];
-	for( SimplePoint &i : lowerConstraints )
-	{
-		if( i.x < prev.x || i.y < prev.y )
-		{
-			std::cerr << "DECREASING LOWER CONSTRAINT : " << prev.x << "," << prev.y << " -> " << i.x << "," << i.y << "\n";
-			throw IECore::Exception( "DECREASING LOWER CONSTRAINT" );
-		}
-
-		prev = i;
-	}
-
-	prev = upperConstraints[0];
-	for( SimplePoint &i : upperConstraints )
-	{
-		if( i.x < prev.x || i.y < prev.y )
-		{
-			std::cerr << "DECREASING UPPER CONSTRAINT : " << prev.x << "," << prev.y << " -> " << i.x << "," << i.y << "\n";
-			throw IECore::Exception( "DECREASING UPPER CONSTRAINT" );
-		}
-
-		prev = i;
-	}
-
-	for( unsigned int i = 1; i < lowerConstraints.size(); i++ )
-	{
-		if( !std::isfinite( lowerConstraints[i].x ) || !std::isfinite( lowerConstraints[i].y ) )
-		{
-			throw IECore::Exception( "NON-FINITE LOWER CONSTRAINT" );
-		}
-
-		if( !( lowerConstraints[i].x >= lowerConstraints[i-1].x ) )
-		{
-			throw IECore::Exception( "DECREASING X LOWER CONSTRAINT" );
-		}
-
-		if( !( lowerConstraints[i].y >= lowerConstraints[i-1].y ) )
-		{
-			throw IECore::Exception( "DECREASING Y LOWER CONSTRAINT" );
-		}
-	}
-
-	for( unsigned int i = 1; i < upperConstraints.size(); i++ )
-	{
-		/*if( !std::isfinite( upperConstraints[i].x ) || !std::isfinite( upperConstraints[i].y ) )
-		{
-			throw IECore::Exception( "NON-FINITE UPPER CONSTRAINT" );
-		}*/
-
-		if( !( upperConstraints[i].x >= upperConstraints[i-1].x ) )
-		{
-			throw IECore::Exception( "DECREASING X UPPER CONSTRAINT" );
-		}
-
-		if( !( upperConstraints[i].y >= upperConstraints[i-1].y ) )
-		{
-			throw IECore::Exception( "DECREASING Y UPPER CONSTRAINT" );
-		}
 	}
 }
 
