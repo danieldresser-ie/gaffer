@@ -1858,9 +1858,10 @@ void resampleDeepPixel(
 	{
 		// TODO - this is the place to apply colorThreshold.
 		// We need to linearSegmentsToExponentialAlpha into a temp buffer
-		// Then do a conformToAlpha of all the color data
-		// Then do a parallel traverse of the original color/alpha and the resampled color/alpha
-		// evaluating at each original ZBack, and the resampled point with a matching alpha.
+		// Then do a conformToAlpha of all the color data ( ideally refactored so we can do it
+		// one sample at a time ).
+		// Then do a pair traverse of the original color/alpha
+		// evaluated at each original ZBack, and the resampled point with a matching alpha.
 		// Anywhere that there is a discrepancy over the colorThreshold, split the resampled
 		// segment at that depth
 	}
@@ -1872,36 +1873,27 @@ void resampleDeepPixel(
 
 void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const float *outAlpha, const float *inChannel, float *outChannel )
 {
+
+	if( inSamples == 0 || outSamples == 0 )
+	{
+		return;
+	}
+
 	float totalAccumAlpha = 0;
 
-	float alphaRemaining = 0.0;
-
-	float curChannelData = 0;
-	float curChannelAlpha = 0;
+	float alphaRemaining = std::min( 1.0f, inAlpha[ 0 ] );
 
 	int integrateIndex = 0;
 	float targetAlpha = 0;
 	for( int i = 0; i < outSamples; ++i )
 	{
 		targetAlpha += outAlpha[i] - targetAlpha * outAlpha[i];
-		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
-		{
-			std::cerr << "BAD TARGET: " << targetAlpha << "\n";
-			targetAlpha = 0.0f;
-		}
 
 		float segmentAccumChannel = 0;
 		float segmentAccumAlpha = 0;
 
-		for( ; integrateIndex < inSamples; integrateIndex++ )
+		while( integrateIndex < inSamples )
 		{
-			if( alphaRemaining == 0.0 )
-			{
-				curChannelData = inChannel[ integrateIndex ];
-				curChannelAlpha = std::min( 1.0f, inAlpha[ integrateIndex ] );
-				alphaRemaining = std::min( 1.0f, inAlpha[ integrateIndex ] );
-			}
-
 			float alphaNeeded = totalAccumAlpha < 1.0f ? ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha ) : 0.0f;
 
 			float alphaToTake;
@@ -1913,32 +1905,30 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 			else
 			{
 				alphaToTake = alphaNeeded;
-				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
+				alphaRemaining = ( alphaRemaining - alphaNeeded ) / ( 1 - alphaNeeded );
 			}
 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
-			float curChannelMultiplier = curChannelAlpha > 0 ? ( 1 - segmentAccumAlpha ) * alphaToTake / curChannelAlpha : 0.0; // TODO
+			float outputAlpha = ( 1 - segmentAccumAlpha ) * alphaToTake;
 
-			//segmentAccumChannel += curChannelMultiplier * inChannel[ integrateIndex ];
-			segmentAccumChannel += curChannelMultiplier * curChannelData;
-			segmentAccumAlpha += curChannelMultiplier * curChannelAlpha;
+			float channelMultiplier = outputAlpha > 0.0f ? outputAlpha / inAlpha[ integrateIndex ] : 0.0f;
+			segmentAccumChannel += channelMultiplier * inChannel[ integrateIndex ];
+			segmentAccumAlpha += outputAlpha;
 
 			if( alphaRemaining > 0 )
 			{
 				break;
 			}
+			else
+			{
+				integrateIndex++;
+				if( !( integrateIndex < inSamples ) )
+				{
+					break;
+				}
+				alphaRemaining = std::min( 1.0f, inAlpha[ integrateIndex ] );
+			}
 		}
-
-		/*if( compressedSamples[i].XBack < compressedSamples[i].X )
-		{
-			std::cerr << "BAD XBACK: " << compressedSamples[i].X << " -> " << compressedSamples[i].XBack << "\n";
-		}
-
-		if( ! ( segmentAccumChannels[2] > -0.1 && segmentAccumChannels[2] < 1.1 ) )
-		{
-			std::cerr << "BAD CALC: " << segmentAccumChannels[2] << "\n";
-			segmentAccumChannels[2] = 0.0f;
-		}*/
 
 		outChannel[i] = segmentAccumChannel;
 	}
