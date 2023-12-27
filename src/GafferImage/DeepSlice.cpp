@@ -849,6 +849,9 @@ IECore::ConstFloatVectorDataPtr DeepSlice::computeChannelData( const std::string
 			for( ; curIndex < inputIndex + count - 1; curIndex++ )
 			{
 				accumAlpha += channel[curIndex] * ( 1 - accumAlpha );
+				// TODO
+				// According to OpenEXR docs, precision might be better if we do:
+				//accumAlpha += channel[curIndex] - channel[curIndex] * accumAlpha;
 			}
 
 			// This conditional only fails when there was a single deep sample, and it was output by the near
