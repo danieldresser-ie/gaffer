@@ -1180,15 +1180,12 @@ void minimalSegmentsForConstraints(
 */
 void integratedPointSamplesForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	const std::vector<const float *> &colorChannels, float colorTolerance,
-	std::vector<SimplePoint> &deepSamples,
-	std::vector<bool> &canMerge
+	std::vector<SimplePoint> &deepSamples
 )
 {
 	float ZBackPrev = -1e38f;
 	float accumAlpha = 0;
 
-	std::vector<float> accumColor( colorChannels.size(), 0.0f );
 	for ( int i = 0; i < inSamples; ++i )
 	{
 		// TODO - should I investigate why this causes weirdness?
@@ -1202,20 +1199,6 @@ void integratedPointSamplesForPixel(
 
 
 		float nextAccumAlpha = accumAlpha + ( inA[i] - accumAlpha * inA[i] );
-
-		if( deepSamples.size() && colorTolerance > 0.0f )
-		{
-			for( unsigned int c = 0; c < colorChannels.size(); c++ )
-			{
-				float nextChannelValue = accumColor[c] + ( 1 - accumAlpha ) * colorChannels[c][i];
-				float prevError = ( nextChannelValue / nextAccumAlpha ) * accumAlpha - accumColor[c];
-				if( prevError > colorTolerance )
-				{
-					canMerge.back() = false;
-				}
-			}
-		}
-
 		if( Z != ZBackPrev )
 		{
 			if( !( Z > -1000 )  )
@@ -1224,7 +1207,6 @@ void integratedPointSamplesForPixel(
 				throw IECore::Exception( "Q?" );
 			}
 			deepSamples.push_back( { Z, accumAlpha } );
-			canMerge.push_back( true );
 		}
 
 		if( nextAccumAlpha >= maxConvertibleAlpha )
@@ -1253,7 +1235,6 @@ void integratedPointSamplesForPixel(
 		}
 		if( deepSamples.size() ) assert( accumAlpha >= deepSamples.back().y );
 		deepSamples.push_back( { ZBack, accumAlpha } );
-		canMerge.push_back( true );
 
 		ZBackPrev = ZBack;
 	}
@@ -1270,8 +1251,7 @@ inline float applyZTol( float z, float tol, bool upper )
 */
 void linearConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	const std::vector<const float *> &colorChannels,
-	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	float alphaTolerance, float zTolerance, float silhouetteDepth,
 	std::vector< SimplePoint > &lowerConstraints,
 	std::vector< SimplePoint > &upperConstraints
 )
@@ -1311,8 +1291,7 @@ void linearConstraintsForPixel(
 
 	// TODO - get rid of this alloc by combining with function above
 	std::vector< SimplePoint > deepSamples;
-	std::vector< bool > canMerge;
-	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, colorChannels, colorTolerance, deepSamples, canMerge );
+	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
 	if( deepSamples.size() == 0 )
 	{
 		// TODO : Currently, as per other TODO, we skip 0 alpha samples, so this could trigger
@@ -1351,12 +1330,7 @@ void linearConstraintsForPixel(
 		float nextX;
 		float nextAlpha;
 
-		if( !canMerge[j] )
-		{
-			nextX = deepSamples[j].x;
-			nextAlpha = deepSamples[j].y;
-		}
-		else if( j == deepSamples.size() - 1 )
+		if( j == deepSamples.size() - 1 )
 		{
 			// Ensure that we always reach the exact final value
 			nextX = applyZTol( deepSamples[j].x, zTolerance, false );
@@ -1560,33 +1534,13 @@ void linearConstraintsForPixel(
 
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
 	{
-		SimplePoint nextUpper;
-		float nextAlpha;
-		if( !canMerge[j] )
-		{
-			nextAlpha = deepSamples[j].y;
-			nextUpper = {
-				deepSamples[j].x,
-				-log1pf( -nextAlpha )
-			};
-			while( upperConstraints.size() && (
-				upperConstraints.back().x > nextUpper.x ||
-				upperConstraints.back().y > nextUpper.y
-			) )
-			{
-				upperConstraints.pop_back();
-			}
-		}
-		else
-		{
-			nextAlpha = deepSamples[j].y + aTol;
+		float nextAlpha = deepSamples[j].y + aTol;
 
-			// TODO - comment
-			nextUpper = {
-				applyZTol( deepSamples[j].x, zTolerance, true ),
-				nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
-			};
-		}
+		// TODO - comment
+		SimplePoint nextUpper = {
+			applyZTol( deepSamples[j].x, zTolerance, true ),
+			nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
+		};
 
 		if( nextUpper.x == prevUpper.x )
 		{
@@ -1749,8 +1703,7 @@ namespace Detail
 
 void debugConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	const std::vector<const float *> &colorChannels,
-	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	float alphaTolerance, float zTolerance, float silhouetteDepth,
 	std::vector< std::pair<float,float> > &lowerConstraints,
 	std::vector< std::pair<float,float> > &upperConstraints
 )
@@ -1758,8 +1711,8 @@ void debugConstraintsForPixel(
 	std::vector< SimplePoint > lowerLinear;
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
-		inSamples, inA, inZ, inZBack, colorChannels,
-		alphaTolerance, colorTolerance, zTolerance, silhouetteDepth,
+		inSamples, inA, inZ, inZBack, 
+		alphaTolerance, zTolerance, silhouetteDepth,
 		lowerLinear, upperLinear
 	);
 
@@ -1806,8 +1759,8 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsLower;
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
-		inSamples, inA, inZ, inZBack, colorChannels,
-		alphaTolerance, colorTolerance, zTolerance, silhouetteDepth,
+		inSamples, inA, inZ, inZBack, 
+		alphaTolerance, zTolerance, silhouetteDepth,
 		constraintsLower, constraintsUpper
 	);
 

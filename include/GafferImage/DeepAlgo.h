@@ -59,8 +59,7 @@ struct GAFFERIMAGETEST_API DeepConstraint
 
 GAFFERIMAGETEST_API void debugConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	const std::vector<const float *> &colorChannels,
-	float alphaTolerance, float colorTolerance, float zTolerance, float silhouetteDepth,
+	float alphaTolerance, float zTolerance, float silhouetteDepth,
 	std::vector< std::pair<float,float> > &lowerConstraints,
 	std::vector< std::pair<float,float> > &upperConstraints
 );
