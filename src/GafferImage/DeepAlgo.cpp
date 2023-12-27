@@ -465,7 +465,7 @@ bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, i
 /*
  Remap from the linear spaced used for resampling to exponential alpha values
 */
-void linearToExponentialAlpha(
+void linearSegmentsToExponentialAlpha(
 	const std::vector< LinearSegment >& compressedSamples,
 	int &outSamples, float *outA, float *outZ, float *outZBack
 )
@@ -483,29 +483,21 @@ void linearToExponentialAlpha(
 			i + 1 < compressedSamples.size() &&
 			compressedSamples[i].a.x == compressedSamples[i].b.x &&
 			compressedSamples[i].a.x == compressedSamples[i+1].a.x &&
-			compressedSamples[i+1].a.x == compressedSamples[i+1].b.x
+			compressedSamples[i].a.x == compressedSamples[i+1].b.x
 		)
 		{
 			continue;
 		}
 
+		float targetAlpha = -expm1f( -compressedSamples[i].b.y );
+
+
 		// The other situation that could arise from floating point error is a segment that doesn't
 		// rise above the previous sample segment.  Rather than outputting a 0 alpha segment, just
 		// skip it
-		if( i > 0 && compressedSamples[i].b.y <= compressedSamples[i-1].b.y )
+		if( targetAlpha <= prevTargetAlpha )
 		{
 			continue;
-		}
-
-		float targetAlpha = -expm1f( -compressedSamples[i].b.y );
-		if( ! ( targetAlpha > -0.1 && targetAlpha < 1.1 ) )
-		{
-			throw IECore::Exception( "BAD TARGET " );
-		}
-
-		if( compressedSamples[i].b.x < compressedSamples[i].a.x )
-		{
-			std::cerr << "NON-DECREASING XBACK: " << compressedSamples[i].a.x << " -> " << compressedSamples[i].b.x << "\n";
 		}
 
 		outZ[i] = compressedSamples[i].a.x;
@@ -1858,19 +1850,29 @@ void resampleDeepPixel(
 		}
 	}
 
-	if( debug ) std::cerr << "START CONFORM\n";
-	linearToExponentialAlpha(
-		compressedSamples,
-		outSamples, outA, outZ, outZBack
-	);
-	if( debug ) std::cerr << "END CONFORM\n";
+	if( colorChannels.size() == 0 || true ) //TODO
+	{
+		linearSegmentsToExponentialAlpha( compressedSamples, outSamples, outA, outZ, outZBack );
+	}
+	else
+	{
+		// TODO - this is the place to apply colorThreshold.
+		// We need to linearSegmentsToExponentialAlpha into a temp buffer
+		// Then do a conformToAlpha of all the color data
+		// Then do a parallel traverse of the original color/alpha and the resampled color/alpha
+		// evaluating at each original ZBack, and the resampled point with a matching alpha.
+		// Anywhere that there is a discrepancy over the colorThreshold, split the resampled
+		// segment at that depth
+	}
+
+	
+
 	return;
 }
 
 void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const float *outAlpha, const float *inChannel, float *outChannel )
 {
 	float totalAccumAlpha = 0;
-
 
 	float alphaRemaining = 0.0;
 
@@ -1897,7 +1899,7 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 			{
 				curChannelData = inChannel[ integrateIndex ];
 				curChannelAlpha = std::min( 1.0f, inAlpha[ integrateIndex ] );
-				alphaRemaining = inAlpha[ integrateIndex ];
+				alphaRemaining = std::min( 1.0f, inAlpha[ integrateIndex ] );
 			}
 
 			float alphaNeeded = totalAccumAlpha < 1.0f ? ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha ) : 0.0f;
@@ -1917,6 +1919,7 @@ void conformToAlpha( int inSamples, int outSamples, const float *inAlpha, const 
 			totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
 			float curChannelMultiplier = curChannelAlpha > 0 ? ( 1 - segmentAccumAlpha ) * alphaToTake / curChannelAlpha : 0.0; // TODO
 
+			//segmentAccumChannel += curChannelMultiplier * inChannel[ integrateIndex ];
 			segmentAccumChannel += curChannelMultiplier * curChannelData;
 			segmentAccumAlpha += curChannelMultiplier * curChannelAlpha;
 
