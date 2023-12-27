@@ -60,13 +60,13 @@ const float maximumLinearY = -log1pf( - maxConvertibleAlpha );
 const float linearOpacityThreshold = -log1pf( - 0.99999 );
 
 /// Given a value in linear space, make it exponential.
-float linearToExponential( float value )
+inline float linearToExponential( float value )
 {
 	return value == maximumLinearY ? 1 : -expm1f( -value );
 }
 
 /// Given a value in exponential space, make it linear.
-float exponentialToLinear( float value )
+inline float exponentialToLinear( float value )
 {
 	return value <= 0 ? 0 : -log1pf( -std::min( maxConvertibleAlpha, value ) );
 }
@@ -463,25 +463,17 @@ bool shallowestSegmentThroughConstraints( const SimplePoint *lowerConstraints, i
 }
 
 /*
- Given a set of segments that define an optimal resampling which fufills all constraints in the linear remapped space,
- remap all the color and alpha channels of a deep pixel to match
+ Remap from the linear spaced used for resampling to exponential alpha values
 */
-void conformToSegments(
-	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
+void linearToExponentialAlpha(
 	const std::vector< LinearSegment >& compressedSamples,
 	int &outSamples, float *outA, float *outZ, float *outZBack
 )
 {
 	outSamples = compressedSamples.size();
 
-	float totalAccumAlpha = 0;
+	float prevTargetAlpha = 0;
 
-	float curA = 0;
-	float accumA = 0;
-
-	float alphaRemaining = 0.0;
-
-	int integrateIndex = 0;
 	for( unsigned int i = 0; i < compressedSamples.size(); ++i )
 	{
 		// We could potentially get samples squashed down to being zero length and overlapping,
@@ -511,81 +503,23 @@ void conformToSegments(
 			throw IECore::Exception( "BAD TARGET " );
 		}
 
-		for( ; integrateIndex < inSamples; ++integrateIndex  )
-		{
-			if( alphaRemaining == 0.0 )
-			{
-				curA = inA[ integrateIndex ];
-				alphaRemaining = curA;
-			}
-
-			if( curA >= 1 )
-			{
-				if( integrateIndex == inSamples - 1 )
-				{
-					curA = 1.;
-				}
-				else
-				{
-					curA = 1. - std::numeric_limits<float>::epsilon(); // TODO - why?
-				}
-			}
-
-			float alphaNeeded = ( targetAlpha - totalAccumAlpha ) / ( 1 - totalAccumAlpha );
-
-			float alphaToTake;
-			if( alphaNeeded >= alphaRemaining )
-			{
-				assert( alphaRemaining >= 0 );
-				alphaToTake = alphaRemaining;
-				alphaRemaining = 0;
-				totalAccumAlpha += ( 1 - totalAccumAlpha ) * alphaToTake;
-				totalAccumAlpha = std::min( targetAlpha, totalAccumAlpha );
-			}
-			else
-			{
-				//assert( alphaNeeded >= 0 );
-				if( alphaNeeded < 0 )
-				{
-					std::cerr << "BAD alphaNeeded : " << alphaNeeded << "\n";
-					alphaNeeded = 0;
-				}
-				alphaToTake = alphaNeeded;
-				alphaRemaining = 1 - ( 1 - alphaRemaining ) / ( 1 - alphaNeeded );
-
-				totalAccumAlpha = targetAlpha;
-			}
-
-			float curChannelMultiplier = curA > 0 ? ( 1 - accumA ) * alphaToTake / curA : 0.0; // TODO
-			if( curChannelMultiplier < 0 )
-			{
-				std::cerr << "BAD MULTIPLIER :" << curChannelMultiplier << " : " << alphaToTake << "\n";
-			}
-
-			accumA += curChannelMultiplier * curA;
-
-			if( alphaRemaining > 0 )
-			{
-				break;
-			}
-		}
-
 		if( compressedSamples[i].b.x < compressedSamples[i].a.x )
 		{
 			std::cerr << "NON-DECREASING XBACK: " << compressedSamples[i].a.x << " -> " << compressedSamples[i].b.x << "\n";
 		}
 
-		if( ! ( accumA > -0.1 && accumA < 1.1 ) )
-		{
-			std::cerr << "BAD CALC: " << accumA << "\n";
-			accumA = 0.0f;
-		}
-
 		outZ[i] = compressedSamples[i].a.x;
 		outZBack[i] = compressedSamples[i].b.x;
-		outA[i] = accumA;
+		outA[i] = ( targetAlpha - prevTargetAlpha ) / ( 1.0f - prevTargetAlpha );
+		prevTargetAlpha = targetAlpha;
 
-		accumA = 0.0f;
+		// TODO
+		if( ! ( outA[i] > -0.1 && outA[i] < 1.1 ) )
+		{
+			std::cerr << "BAD CALC: " << outA[i] << "\n";
+			outA[i] = 0.0f;
+		}
+
 	}
 }
 
@@ -1925,8 +1859,7 @@ void resampleDeepPixel(
 	}
 
 	if( debug ) std::cerr << "START CONFORM\n";
-	conformToSegments(
-		inSamples, inA, inZ, inZBack,
+	linearToExponentialAlpha(
 		compressedSamples,
 		outSamples, outA, outZ, outZBack
 	);
