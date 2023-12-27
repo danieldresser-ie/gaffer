@@ -1126,7 +1126,7 @@ void minimalSegmentsForConstraints(
 		{
 			// The line we have found is a point sample.
 			xStart = segmentEnd.x = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
-			assert( std::isfinite( segmentEnd.x ) && !isnan( segmentEnd.x ) );
+			assert( std::isfinite( segmentEnd.x ) && !std::isnan( segmentEnd.x ) );
 			// TODO - intersect and update constraints
 		}
 		else
@@ -1621,7 +1621,7 @@ void linearConstraintsForPixel(
 
 	assert( deepSamples.size() >= 1 );
 	assert( deepSamples[0].y == 0 );
-	assert( !isinf( deepSamples[0].x ) );
+	assert( !std::isinf( deepSamples[0].x ) );
 
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
 	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
@@ -1629,7 +1629,7 @@ void linearConstraintsForPixel(
 	SimplePoint prevUpper = { applyZTol( deepSamples[0].x, zTolerance, true ), 0 };
 	prevAlpha = 0;
 	upperConstraints.push_back( prevUpper );
-	assert( !isinf( prevUpper.x ) );
+	assert( !std::isinf( prevUpper.x ) );
 	assert( prevUpper.x > std::numeric_limits<float>::lowest() );
 
 	for( unsigned int j = 1; j < deepSamples.size(); ++j )
@@ -1723,7 +1723,7 @@ void linearConstraintsForPixel(
 			break;
 		}
 
-		if( isnan( nextUpper.x ) )
+		if( std::isnan( nextUpper.x ) )
 		{
 			throw IECore::Exception( "ISNAN" );
 		}

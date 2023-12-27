@@ -66,6 +66,7 @@ DeepResampleConstraints::DeepResampleConstraints( const std::string &name )
 	addChild( new CompoundObjectPlug( "__constraints", Gaffer::Plug::Out, new IECore::CompoundObject() ) );
 
 	// We don't ever want to change these, so we make pass-through connections.
+	outPlug()->viewNamesPlug()->setInput( inPlug()->viewNamesPlug() );
 	outPlug()->dataWindowPlug()->setInput( inPlug()->dataWindowPlug() );
 	outPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
 	outPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );

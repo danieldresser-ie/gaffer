@@ -57,7 +57,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 	#longMessage = True
 
-	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount, extraAlphaTolerance = 0 ):
+	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount, extraAlphaTolerance = 0, flatMaxDifference = 0.000002 ):
 
 		origFlatten = GafferImage.DeepToFlat()
 		origFlatten["in"].setInput( toCompare )
@@ -74,7 +74,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# samples to produce an exactly matching flat image
 		origFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
 		resampleFlatten['depthMode'].setValue( GafferImage.DeepToFlat.DepthMode.None_ )
-		self.assertImagesEqual( origFlatten["out"], resampleFlatten["out"], maxDifference = 0.0001 ) # TODO - lower thresh
+		self.assertImagesEqual( origFlatten["out"], resampleFlatten["out"], maxDifference = flatMaxDifference ) # TODO - lower thresh
 
 		# If we look at depth on the flat images, there will some error introduced by our alpha and
 		# depths tolerances. We premult before testing because very low alpha pixels are allowed to have
@@ -129,11 +129,17 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ) + extraAlphaTolerance, depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), max( alphaTolerance, 0.000001 ) + extraAlphaTolerance, depthTolerance + 0.000001, 10.0, "Pixel %i, %i :" % ( x, y ) )
 
 	def testRepresentative( self ) :
-		representativeImage = GafferImage.ImageReader()
-		representativeImage["fileName"].setValue( self.representativeImagePath )
+		representativeImageUnnormalized = GafferImage.ImageReader()
+		representativeImageUnnormalized["fileName"].setValue( self.representativeImagePath )
+
+		# This image has some high RGB values in it, which make it less meaningful to compare error tolerances.
+		# Normalize it so the RGB values are in an approximately 0-1 range like the alpha.
+		representativeImage = GafferImage.Grade( "representativeDeepNormalized" )
+		representativeImage["in"].setInput( representativeImageUnnormalized["out"] )
+		representativeImage["multiply"].setValue( imath.Color4f( 0.2, 0.2, 0.2, 1 ) )
 
 		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53396 )
 		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.01, 0.01, 0.13, 191482, 22372 )
@@ -142,8 +148,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oversample["in"].setInput( representativeImage["out"] )
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396 )
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396, flatMaxDifference = 0.00001 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372, flatMaxDifference = 0.00002 )
 
 		# Raises test time to 143 seconds
 		#oversample["maxSampleAlpha"].setValue( 0.0002 )
@@ -163,10 +169,29 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		depthGrade["offset"]["r"].setValue( 1000000 )
 
-		# We need a high depth tolerance once we push everything way out this far.  ( The biggest error
+		# We need a high depth tolerance once we push everything way out this far. ( The biggest error
 		# actually comes from the FilteredDepth output of DeepToFlat suffering from precision errors
 		# on the original, unresampled data )
 		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.82, 191482, 67991 )
+
+	@GafferTest.TestRunner.PerformanceTestMethod( repeat = 1 )
+	def testPerformance( self ) :
+		representativeImage = GafferImage.ImageReader()
+		representativeImage["fileName"].setValue( self.representativeImagePath )
+
+		resize = GafferImage.Resize()
+		resize["in"].setInput( representativeImage["out"] )
+		resize["format"].setValue( GafferImage.Format( 600, 400, 1.000 ) )
+
+		resample = GafferImage.DeepResample()
+		resample["in"].setInput( resize["out"] )
+		resample["alphaTolerance"].setValue( 0.001 )
+		resample["depthTolerance"].setValue( 0.012 )
+
+		GafferImageTest.processTiles( resize["out"] )
+
+		with GafferTest.TestRunner.PerformanceScope() :
+			GafferImageTest.processTiles( resample["out"] )
 
 	def testRandomSamples( self ):
 
@@ -339,7 +364,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001001, 0.00100, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.001001, 0.00100, 10.0, "Pixel %i, %i :" % ( x, y ) )
 
 		# Now a much more aggressive resample
 		resample["alphaTolerance"].setValue( 0.01 )
@@ -355,8 +380,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 				origSampler["pixel"].setValue( imath.V2i( x, y ) )
 				resampleSampler["pixel"].setValue( imath.V2i( x, y ) )
 
-				#GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y )  )
-				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y )  )
+				#GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y ) )
+				GafferImageTest.assertDeepPixelsEvaluateSame( resampleSampler['pixelData'].getValue(), origSampler['pixelData'].getValue(), 0.010001, 0.01000, 10.0, "Pixel %i, %i :" % ( x, y ) )
 
 		# TODO - does 0 tolerance result in crash?
 	"""
@@ -384,7 +409,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# When testing on complex data, we can test that we are close to our reference
 
 		# We can also check that the different sequences of computation supported by DeepState
-		# all give identical results.  There are different code paths through the node depending on
+		# all give identical results. There are different code paths through the node depending on
 		# the input and output state, and by switching between flattening in one step, vs sorting
 		# or tidying before flattening, we can test all these paths.
 		oneStepFlatten = GafferImage.DeepState()
@@ -681,17 +706,17 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 			st["deepState"].setValue( GafferImage.DeepState.TargetState.Sorted )
 
-			self.assertEqual( st["out"]["deep"].getValue(), True, nodes["values"]  )
-			self.assertEqual( st["out"].sampleOffsets( tileOrigin ), expectedSortedSampleOffsets, " with parameter values %s" % nodes["values"]  )
+			self.assertEqual( st["out"]["deep"].getValue(), True, nodes["values"] )
+			self.assertEqual( st["out"].sampleOffsets( tileOrigin ), expectedSortedSampleOffsets, " with parameter values %s" % nodes["values"] )
 
 
 			st["deepState"].setValue( GafferImage.DeepState.TargetState.Tidy )
 
-			self.assertEqual( st["out"]["deep"].getValue(), True, nodes["values"]  )
+			self.assertEqual( st["out"]["deep"].getValue(), True, nodes["values"] )
 			self.assertEqual( st["out"].sampleOffsets( tileOrigin ), expectedTidySampleOffsets, " with parameter values %s" % nodes["values"] )
 
 			st["deepState"].setValue( GafferImage.DeepState.TargetState.Flat )
-			self.assertEqual( st["out"]["deep"].getValue(), False, nodes["values"]  )
+			self.assertEqual( st["out"]["deep"].getValue(), False, nodes["values"] )
 
 
 	def testChannelData( self ) :
@@ -728,7 +753,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 					channelData = st["out"].channelData( channel, tileOrigin )
 
 					self.assertEqual( len( channelData ), expectedSampleCount, "State : {}, Channel : {}, Values : {}".format( deepState, channel, nodes["values"] ) )
-					self.assertSimilarList( channelData, expectedData, 0.00001,  "State : {}, Channel : {}, Values : {}".format( deepState, channel, nodes["values"] ) )
+					self.assertSimilarList( channelData, expectedData, 0.00001, "State : {}, Channel : {}, Values : {}".format( deepState, channel, nodes["values"] ) )
 
 	def assertSimilarList( self, actual, expected, tolerance, msg = None ) :
 		self.assertEqual( len( actual ), len( expected ) )
@@ -1076,7 +1101,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertLess( diffCountsStats["min"].getValue()[0], -20 )
 		self.assertLess( diffCountsStats["min"].getValue()[0], -0.26 )
 
-		# We've got some moderate error introduced by discarding transparent.  Why is it so large?
+		# We've got some moderate error introduced by discarding transparent. Why is it so large?
 		# Looks like those transparent pixels are slightly emissive
 		for i in range( 4 ):
 			self.assertLessEqual( diffStats["max"].getValue()[i], [0.00001,0.00001,0.00001,0][i] )
@@ -1150,7 +1175,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		giantDepthOffset["depthOffset"].setValue( 100000 )
 
 		# A large depth offset means we have insufficient floating point precision to represent
-		# some samples, and some samples will collapse together.  This will throw off some pixels,
+		# some samples, and some samples will collapse together. This will throw off some pixels,
 		# but most pixels should still be close to correct ( and in particular, the alpha channel is independent
 		# of the order of results, so it's fine )
 		self.__assertDeepStateProcessing( giantDepthOffset["out"], firstResult["out"], [ 0.5, 0.5, 0.5, 0.000002 ], [ 0.0002, 0.0002, 0.0002, 0.00000003 ], 50, 1 )
@@ -1199,7 +1224,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		flatOver['in'][0].setInput( flatRepresentative["out"] )
 		flatOver['in'][1].setInput( flatOffset["out"] )
 
-		for curOffset, curDepthOffset, curCrop  in [
+		for curOffset, curDepthOffset, curCrop in [
 			[ imath.V2i( 0, 0 ), 0, None ],
 			[ imath.V2i( 1, 1 ), 0.0001, None ],
 			[ imath.V2i( 4, 6 ), 0.2, None ],
@@ -1217,7 +1242,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 			expectedMaxPrune = 4 if curDepthOffset == 0 or curCrop else 100
 			expectedAveragePrune = 0.1 if curDepthOffset == 0 or curCrop else 0.45
 
-			# Comparing to a flat over isn't very accurate - we need a big tolerance.  But we can make sure it
+			# Comparing to a flat over isn't very accurate - we need a big tolerance. But we can make sure it
 			# didn't explode, and we can check the alpha accurately.
 			self.__assertDeepStateProcessing( deepMerge["out"], flatOver["out"], [ 8, 8, 8, 0.000003 ], [ 0.09, 0.09, 0.09, 0.0000002 ], expectedMaxPrune, expectedAveragePrune )
 
