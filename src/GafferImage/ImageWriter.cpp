@@ -1775,7 +1775,7 @@ ImageWriter::DefaultColorSpaceFunction &ImageWriter::defaultColorSpaceFunction()
 
 std::string ImageWriter::colorSpace( const std::string &dataType ) const
 {
-	std::string colorSpace = colorSpacePlug()->getValue();
+	/*std::string colorSpace = colorSpacePlug()->getValue();
 	if( colorSpace != "" )
 	{
 		return colorSpace;
@@ -1795,7 +1795,8 @@ std::string ImageWriter::colorSpace( const std::string &dataType ) const
 		dataType,
 		metadata.get(),
 		OpenColorIOAlgo::currentConfig()
-	);
+	);*/
+	return "";
 }
 
 IECore::MurmurHash ImageWriter::hash( const Context *context ) const
@@ -2139,13 +2140,13 @@ void ImageWriter::execute() const
 			if ( part.spec.tile_width == 0 )
 			{
 				FlatScanlineWriter flatScanlineWriter( out, fileName, part.processDataWindow, part.imageFormat, part.channels );
-				ImageAlgo::parallelGatherTiles( colorSpaceNode()->outPlug(), part.channels, channelDataProcessor, flatScanlineWriter, part.processDataWindow, ImageAlgo::TopToBottom );
+				ImageAlgo::parallelGatherTiles( colorSpaceNode()->inPlug(), part.channels, channelDataProcessor, flatScanlineWriter, part.processDataWindow, ImageAlgo::TopToBottom );
 				flatScanlineWriter.finish();
 			}
 			else
 			{
 				FlatTileWriter flatTileWriter( out, fileName, part.processDataWindow, part.imageFormat, part.channels );
-				ImageAlgo::parallelGatherTiles( colorSpaceNode()->outPlug(), part.channels, channelDataProcessor, flatTileWriter, part.processDataWindow, ImageAlgo::TopToBottom );
+				ImageAlgo::parallelGatherTiles( colorSpaceNode()->inPlug(), part.channels, channelDataProcessor, flatTileWriter, part.processDataWindow, ImageAlgo::TopToBottom );
 				flatTileWriter.finish();
 			}
 
@@ -2159,18 +2160,18 @@ void ImageWriter::execute() const
 				assert( part.views.size() == 1 ); // We don't allow multiple entries to part.views for deep
 				Context::EditableScope offsetsScope( executeScope.context() );
 				offsetsScope.set( ImagePlug::viewNameContextName, &part.views[0] );
-				ImageAlgo::parallelGatherTiles( colorSpaceNode()->outPlug(), sampleOffsetsProcessor, sampleOffsetsAccumulator, part.processDataWindow );
+				ImageAlgo::parallelGatherTiles( colorSpaceNode()->inPlug(), sampleOffsetsProcessor, sampleOffsetsAccumulator, part.processDataWindow );
 			}
 
 			if( part.spec.tile_width == 0 )
 			{
 				DeepScanlineWriter deepScanlineWriter( out, fileName, part.processDataWindow, part.imageFormat, part.channels, sampleOffsetsAccumulator.m_sampleOffsets );
-				ImageAlgo::parallelGatherTiles( colorSpaceNode()->outPlug(), part.channels, channelDataProcessor, deepScanlineWriter, part.processDataWindow, ImageAlgo::TopToBottom );
+				ImageAlgo::parallelGatherTiles( colorSpaceNode()->inPlug(), part.channels, channelDataProcessor, deepScanlineWriter, part.processDataWindow, ImageAlgo::TopToBottom );
 			}
 			else
 			{
 				DeepTileWriter deepTileWriter( out, fileName, part.processDataWindow, part.imageFormat, part.channels, sampleOffsetsAccumulator.m_sampleOffsets );
-				ImageAlgo::parallelGatherTiles( colorSpaceNode()->outPlug(), part.channels, channelDataProcessor, deepTileWriter, part.processDataWindow, ImageAlgo::TopToBottom );
+				ImageAlgo::parallelGatherTiles( colorSpaceNode()->inPlug(), part.channels, channelDataProcessor, deepTileWriter, part.processDataWindow, ImageAlgo::TopToBottom );
 			}
 		}
 	}
