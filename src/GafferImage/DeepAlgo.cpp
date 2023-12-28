@@ -1178,7 +1178,7 @@ void minimalSegmentsForConstraints(
  Note that currently volume samples are just split into a fixed number of point samples.  A better approach would be
  to split enough times that the alpha increment for each sample is less than the alpha threshold.
 */
-void integratedPointSamplesForPixel(
+/*void integratedPointSamplesForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
 	std::vector<SimplePoint> &deepSamples
 )
@@ -1233,7 +1233,7 @@ void integratedPointSamplesForPixel(
 
 		ZBackPrev = ZBack;
 	}
-}
+}*/
 
 inline float applyZTol( float z, float tol, bool upper )
 {
@@ -1285,58 +1285,88 @@ void linearConstraintsForPixel(
 	float aTol = 0.99 * alphaTolerance;
 
 	// TODO - get rid of this alloc by combining with function above
-	std::vector< SimplePoint > deepSamples;
+	/*std::vector< SimplePoint > deepSamples;
 	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
 	if( deepSamples.size() == 0 )
 	{
 		// TODO : Currently, as per other TODO, we skip 0 alpha samples, so this could trigger
 		return;
-	}
+	}*/
 
 	// ---- Set up lower constraints ----
+	// ---- Set up upper constraints ----
 
-	lowerConstraints.reserve( deepSamples.size() ); // TODO
-	upperConstraints.reserve( deepSamples.size() );
+	lowerConstraints.reserve( inSamples ); // TODO
+	upperConstraints.reserve( inSamples );
 	//float lastValidMinY = 0;
-	float prevAlpha = 0;
+	float prevLowerAlpha = 0;
 	SimplePoint prevLower = { 0, 0 };
-	for( unsigned int j = 0; j < deepSamples.size(); ++j )
+	float prevUpperAlpha = 0;
+
+
+	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
+	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
+
+	float targetAlpha = 0;
+
+	for ( int i = 0; i < inSamples; ++i )
 	{
-		float nextX;
-		float nextAlpha;
-
-		if( j == deepSamples.size() - 1 )
+		// TODO - should I investigate why this causes weirdness?
+		if( inA[i] <= 0.0 )
 		{
-			// Ensure that we always reach the exact final value
-			nextX = applyZTol( deepSamples[j].x, zTolerance, false );
-			nextAlpha = std::min( deepSamples[j].y, maximumLinearY );
+			continue;
 		}
-		else
-		{
-			float minAlpha = deepSamples[j].y - aTol;
-			if( minAlpha >= 0 )
-			{
-				/*float min = 0.0f;
-				if( minAlpha < 1 )
-				{
-					min = -log1pf( -minAlpha );
-					lastValidMinY = min;
-				}
-				else
-				{
-					min = lastValidMinY; // TODO - why?
-				}*/
 
-				nextX = applyZTol( deepSamples[j].x, zTolerance, false );
-				if( !( nextX > -1000 ) )
-				{
-					throw IECore::Exception( "A?" );
-				}
-				nextAlpha = std::min( minAlpha, maximumLinearY );
+		float Z = inZ[ i ];
+		float ZBack = inZBack[ i ];
+
+
+		float nextTargetAlpha = targetAlpha + ( inA[i] - targetAlpha * inA[i] );
+
+		if( nextTargetAlpha >= maxConvertibleAlpha )
+		{
+			if( inA[i] >= maxConvertibleAlpha || targetAlpha >= maxConvertibleAlpha || Z == ZBack )
+			{
+				nextTargetAlpha = 1.0f;
 			}
 			else
 			{
-				float nextMinAlpha = deepSamples[j+1].y - aTol;
+				// Weird special case:  if we convert this to an accumulated alpha, it can't be represented
+				// as a floating point number, because it's less than 1, but greater than the next lowest
+				// floating point number.  If we convert it to 1, we destroy the exponential curved shape
+				// of the sample, which in extreme cases, could be significant.  So we need to round it
+				// down to maxConvertibleAlpha, but then we also need to adjust ZBack to preserve the curve
+				// shape.
+				float alphaTaken = ( maxConvertibleAlpha - targetAlpha ) / ( 1 - targetAlpha );
+				float fractionTaken = log1p( -alphaTaken ) / log1p( -inA[i] );
+				ZBack = std::max( Z, std::min( ZBack, Z + ( ZBack - Z ) * fractionTaken ) );
+				nextTargetAlpha = maxConvertibleAlpha;
+			}
+		}
+		//deepSamples.push_back( { ZBack, targetAlpha } );
+
+
+
+		float nextLowerX;
+		float nextLowerAlpha;
+
+		if( i == inSamples - 1 )
+		{
+			// Ensure that we always reach the exact final value
+			nextLowerX = applyZTol( Z, zTolerance, false );
+			nextLowerAlpha = std::min( targetAlpha, maximumLinearY );
+		}
+		else
+		{
+			float minAlpha = targetAlpha - aTol;
+			if( minAlpha >= 0 )
+			{
+				nextLowerX = applyZTol( Z, zTolerance, false );
+				nextLowerAlpha = std::min( minAlpha, maximumLinearY );
+			}
+			else
+			{
+				float nextMinAlpha = nextTargetAlpha - aTol;
 				if( nextMinAlpha > 0 )
 				{
 					//float min = -log1pf( -minAlpha );
@@ -1345,8 +1375,8 @@ void linearConstraintsForPixel(
 					//BLAH // This should look more like the more complex calculation below
 					//float lerp = -min / ( nextMin - min );
 					//float lerp = ( -exponentialToLinear( aTol ) -min ) / ( nextMin - min );
-					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( deepSamples[j].y ) ) /
-						( exponentialToLinear(deepSamples[j+1].y) - exponentialToLinear(deepSamples[j].y ) );
+					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( targetAlpha ) ) /
+						( exponentialToLinear( nextTargetAlpha ) - exponentialToLinear( targetAlpha ) );
 
 					if( ! (lerp >= 0.0f ) )
 					{
@@ -1356,36 +1386,33 @@ void linearConstraintsForPixel(
 					{
 						lerp = 1.0f;
 					}
-					float xIntercept = deepSamples[j].x + ( deepSamples[j+1].x - deepSamples[j].x ) * lerp;
+					float xIntercept = Z + ( ZBack - Z ) * lerp;
 					// Make sure floating point error doesn't violate non-decreasing X
-					xIntercept = std::min( deepSamples[j+1].x, xIntercept );
-					nextX = applyZTol( xIntercept, zTolerance, false );
-					nextAlpha = 0.0;
+					xIntercept = std::min( ZBack, xIntercept );
+					nextLowerX = applyZTol( xIntercept, zTolerance, false );
+					nextLowerAlpha = 0.0;
 				}
 				else
 				{
+					// TODO - need to handle differently once integrate upper constraints loop
 					continue;
 				}
 			}
 		}
-		SimplePoint nextLower = { nextX, exponentialToLinear( nextAlpha ) };
+		SimplePoint nextLower = { nextLowerX, exponentialToLinear( nextLowerAlpha ) };
 
-		float nextCurveSampleAlpha = ( prevAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevAlpha ) : 1.0;
+		float nextCurveSampleAlpha = ( prevLowerAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevLowerAlpha ) : 1.0;
 		float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
 		{
-			float denom = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
+			float denom = exponentialToLinear( nextTargetAlpha ) - exponentialToLinear( targetAlpha );
 			if( denom == 0.0f )
 			{
 				break; // TODO - don't 100% understand the circumstances this occurs in
 			}
-			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / denom;
-			if( !std::isfinite( lerp ))
-			{
-				throw IECore::Exception( "WHAT: " + std::to_string( deepSamples[j].y ) + " : " + std::to_string( deepSamples[j - 1].y ) );
-			}
-			float intersectionX = applyZTol( deepSamples[j - 1].x + lerp * ( deepSamples[j].x - deepSamples[j - 1 ].x ),
+			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( targetAlpha ) ) / denom;
+			float intersectionX = applyZTol( Z + lerp * ( ZBack - Z ),
 				zTolerance, false );
 
 			if( intersectionX > nextLower.x )
@@ -1400,104 +1427,25 @@ void linearConstraintsForPixel(
 		}
 
 		lowerConstraints.push_back( nextLower );
-		prevLower = nextLower;
-		prevAlpha = nextAlpha;
-
-	}
-
-	if( !lowerConstraints.size() )
-	{
-		throw IECore::Exception( "Empty lower constraints" );
-	}
-
-	unsigned int matchingLowerIndex = 0;
-
-	assert( deepSamples.size() >= 1 );
-	assert( deepSamples[0].y == 0 );
-	assert( !std::isinf( deepSamples[0].x ) );
-
-	// ---- Set up upper constraints ----
-
-	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
-	// TODO - incorrect results for giant segment with alpha extremely close to 1 ( output is curved )
-
-	SimplePoint prevUpper = { applyZTol( deepSamples[0].x, zTolerance, true ), 0 };
-	prevAlpha = 0;
-	upperConstraints.push_back( prevUpper );
-	assert( !std::isinf( prevUpper.x ) );
-	assert( prevUpper.x > std::numeric_limits<float>::lowest() );
-
-	for( unsigned int j = 1; j < deepSamples.size(); ++j )
-	{
-		float nextAlpha = deepSamples[j].y + aTol;
+	
+		float nextUpperAlpha = nextTargetAlpha + aTol;
 
 		// TODO - comment
-		SimplePoint nextUpper = {
-			applyZTol( deepSamples[j].x, zTolerance, true ),
-			nextAlpha < 1 ? -log1pf( -nextAlpha ) : maximumLinearY
-		};
+		upperConstraints.push_back( (SimplePoint){
+			applyZTol( Z, zTolerance, true ),
+			prevUpperAlpha < 1 ? -log1pf( -prevUpperAlpha ) : maximumLinearY
+		} );
+		upperConstraints.push_back( (SimplePoint){
+			applyZTol( ZBack, zTolerance, true ),
+			nextUpperAlpha < 1 ? -log1pf( -nextUpperAlpha ) : maximumLinearY
+		} );
 
-		if( nextUpper.x == prevUpper.x )
-		{
-			// Vertical constraints are simple to deal with - we don't need extra samples to define the curve
-			// shape or to make sure we hit thresholds properly.  Just fast-forward matchingLowerIndex
-			while( matchingLowerIndex < lowerConstraints.size() && lowerConstraints[matchingLowerIndex].y <= nextUpper.y )
-			{
-				matchingLowerIndex++;
-			}
-		}
-		else
-		{
-			float nextCurveSampleAlpha = ( prevAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - prevAlpha ) : 1.0;
-			float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
-			while(
-				matchingLowerIndex < lowerConstraints.size() &&
-				( lowerConstraints[matchingLowerIndex].y < nextUpper.y || nextCurveSample < nextUpper.y )
-			)
-			{
-				float yValueToInsert;
-				if( lowerConstraints[matchingLowerIndex].y < nextCurveSample )
-				{
-					yValueToInsert = lowerConstraints[matchingLowerIndex].y;
-					matchingLowerIndex++;
-				}
-				else
-				{
-					yValueToInsert = nextCurveSample;
-					nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - minimumCurveSample ) ? 1 - curveSampleRatio * ( 1 - nextCurveSampleAlpha ) : 1.0;
-					nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
-				}
+		targetAlpha = nextTargetAlpha;
 
+		prevLower = nextLower;
+		prevLowerAlpha = nextLowerAlpha;
+		prevUpperAlpha = nextUpperAlpha;
 
-				float deltaY = exponentialToLinear(deepSamples[j].y) - exponentialToLinear(deepSamples[j - 1].y );
-				if( deltaY == 0 )
-				{
-					continue;
-				}
-
-				float fraction = ( exponentialToLinear( linearToExponential( yValueToInsert ) - aTol ) - exponentialToLinear( deepSamples[j - 1].y ) ) / deltaY;
-				// TODO - clamp upper as well?
-				float upperConstraintX = std::min( std::max( fraction, 0.0f ) * ( nextUpper.x - prevUpper.x ) + prevUpper.x, nextUpper.x );
-				upperConstraints.push_back( { upperConstraintX, yValueToInsert } );
-			}
-		}
-
-		if( matchingLowerIndex == lowerConstraints.size() )
-		{
-			// Once we've matched the last lower constraint, we can stop outputting constraints - this
-			// is where the constraint search will reach the final accumulated alpha
-			break;
-		}
-
-		upperConstraints.push_back( nextUpper );
-
-		if( lowerConstraints[matchingLowerIndex].y == nextUpper.y )
-		{
-			matchingLowerIndex++;
-		}
-
-		prevUpper = nextUpper;
-		prevAlpha = nextAlpha;
 	}
 }
 
