@@ -1219,7 +1219,7 @@ void minimalSegmentsForConstraints(
 				// down to maxConvertibleAlpha, but then we also need to adjust ZBack to preserve the curve
 				// shape.
 				float alphaTaken = ( maxConvertibleAlpha - accumAlpha ) / ( 1 - accumAlpha );
-				float fractionTaken = log1p( -alphaTaken ) / log1p( -inA[i] );
+				float fractionTaken = log1pf( -alphaTaken ) / log1pf( -inA[i] );
 				ZBack = std::max( Z, std::min( ZBack, Z + ( ZBack - Z ) * fractionTaken ) );
 				accumAlpha = maxConvertibleAlpha;
 			}
@@ -1246,7 +1246,7 @@ inline float applyZTol( float z, float tol, bool upper )
 */
 void linearConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	float alphaTolerance, float zTolerance, float silhouetteDepth,
+	float alphaTolerance, float zTolerance, float silhouetteDepth, float quality,
 	std::vector< SimplePoint > &lowerConstraints,
 	std::vector< SimplePoint > &upperConstraints
 )
@@ -1255,6 +1255,12 @@ void linearConstraintsForPixel(
 	{
 		return;
 	}
+
+	quality = std::min( 0.99f, std::max( 0.5f, quality ) );
+
+	float indexToAlpha = alphaTolerance * ( 1.0f - quality );
+	float alphaToIndex = 1.0f / indexToAlpha;
+	//int alphaIndices = ceilf( alphaToIndex ) + 1; // TODO - not used yet
 
 	// The curve defining alpha with respect to depth are exponential curves.
 	// While finding the resampled segments, we work in a logarithmic space where the original curve and the resampled curve
@@ -1281,9 +1287,6 @@ void linearConstraintsForPixel(
 	//const float stepToNextCurveSample = -log( 0.76 );
 	//const float maxCurveSample = exponentialToLinear( 1 - 0.01 * alphaTolerance );
 
-	// The alpha tolerance that we actually use is padded to take account of the curve error
-	float aTol = 0.99 * alphaTolerance;
-
 	// TODO - get rid of this alloc by combining with function above
 	/*std::vector< SimplePoint > deepSamples;
 	integratedPointSamplesForPixel( inSamples, inA, inZ, inZBack, deepSamples );
@@ -1301,7 +1304,6 @@ void linearConstraintsForPixel(
 	//float lastValidMinY = 0;
 	float prevLowerAlpha = 0;
 	SimplePoint prevLower = { 0, 0 };
-	float prevUpperAlpha = 0;
 
 
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
@@ -1338,7 +1340,7 @@ void linearConstraintsForPixel(
 				// down to maxConvertibleAlpha, but then we also need to adjust ZBack to preserve the curve
 				// shape.
 				float alphaTaken = ( maxConvertibleAlpha - targetAlpha ) / ( 1 - targetAlpha );
-				float fractionTaken = log1p( -alphaTaken ) / log1p( -inA[i] );
+				float fractionTaken = log1pf( -alphaTaken ) / log1pf( -inA[i] );
 				ZBack = std::max( Z, std::min( ZBack, Z + ( ZBack - Z ) * fractionTaken ) );
 				nextTargetAlpha = maxConvertibleAlpha;
 			}
@@ -1358,7 +1360,7 @@ void linearConstraintsForPixel(
 		}
 		else
 		{
-			float minAlpha = targetAlpha - aTol;
+			float minAlpha = targetAlpha - alphaTolerance;
 			if( minAlpha >= 0 )
 			{
 				nextLowerX = applyZTol( Z, zTolerance, false );
@@ -1366,7 +1368,7 @@ void linearConstraintsForPixel(
 			}
 			else
 			{
-				float nextMinAlpha = nextTargetAlpha - aTol;
+				float nextMinAlpha = nextTargetAlpha - alphaTolerance;
 				if( nextMinAlpha > 0 )
 				{
 					//float min = -log1pf( -minAlpha );
@@ -1374,8 +1376,8 @@ void linearConstraintsForPixel(
 
 					//BLAH // This should look more like the more complex calculation below
 					//float lerp = -min / ( nextMin - min );
-					//float lerp = ( -exponentialToLinear( aTol ) -min ) / ( nextMin - min );
-					float lerp = ( exponentialToLinear( aTol ) - exponentialToLinear( targetAlpha ) ) /
+					//float lerp = ( -exponentialToLinear( alphaTolerance ) -min ) / ( nextMin - min );
+					float lerp = ( exponentialToLinear( alphaTolerance ) - exponentialToLinear( targetAlpha ) ) /
 						( exponentialToLinear( nextTargetAlpha ) - exponentialToLinear( targetAlpha ) );
 
 					if( ! (lerp >= 0.0f ) )
@@ -1401,7 +1403,7 @@ void linearConstraintsForPixel(
 		}
 		SimplePoint nextLower = { nextLowerX, exponentialToLinear( nextLowerAlpha ) };
 
-		float nextCurveSampleAlpha = ( prevLowerAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - prevLowerAlpha ) : 1.0;
+		float nextCurveSampleAlpha = ( prevLowerAlpha < 1 - alphaTolerance - minimumCurveSample ) ? 1 - alphaTolerance - curveSampleRatio * ( 1 - alphaTolerance - prevLowerAlpha ) : 1.0;
 		float nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 
 		while( nextCurveSample < nextLower.y && prevLower.x != nextLower.x )
@@ -1411,7 +1413,7 @@ void linearConstraintsForPixel(
 			{
 				break; // TODO - don't 100% understand the circumstances this occurs in
 			}
-			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + aTol ) - exponentialToLinear( targetAlpha ) ) / denom;
+			float lerp = ( exponentialToLinear( linearToExponential( nextCurveSample ) + alphaTolerance ) - exponentialToLinear( targetAlpha ) ) / denom;
 			float intersectionX = applyZTol( Z + lerp * ( ZBack - Z ),
 				zTolerance, false );
 
@@ -1422,29 +1424,76 @@ void linearConstraintsForPixel(
 
 			lowerConstraints.push_back( { intersectionX, nextCurveSample } );
 
-			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - aTol - minimumCurveSample ) ? 1 - aTol - curveSampleRatio * ( 1 - aTol - nextCurveSampleAlpha ) : 1.0;
+			nextCurveSampleAlpha = ( nextCurveSampleAlpha < 1 - alphaTolerance - minimumCurveSample ) ? 1 - alphaTolerance - curveSampleRatio * ( 1 - alphaTolerance - nextCurveSampleAlpha ) : 1.0;
 			nextCurveSample = nextCurveSampleAlpha != 1.0 ? exponentialToLinear( nextCurveSampleAlpha ) : std::numeric_limits<float>::infinity();
 		}
 
 		lowerConstraints.push_back( nextLower );
 	
-		float nextUpperAlpha = nextTargetAlpha + aTol;
+		if( targetAlpha + alphaTolerance < 1.0f )
+		{
+			if( ZBack == Z ) //|| nextTargetAlpha - targetAlpha < alphaTolerance * ( 1 - quality ) )
+			{
+				upperConstraints.push_back( (SimplePoint){
+					applyZTol( Z, zTolerance, true ),
+					-log1pf( -( targetAlpha + alphaTolerance ) )
+				} );
 
-		// TODO - comment
-		upperConstraints.push_back( (SimplePoint){
-			applyZTol( Z, zTolerance, true ),
-			prevUpperAlpha < 1 ? -log1pf( -prevUpperAlpha ) : maximumLinearY
-		} );
-		upperConstraints.push_back( (SimplePoint){
-			applyZTol( ZBack, zTolerance, true ),
-			nextUpperAlpha < 1 ? -log1pf( -nextUpperAlpha ) : maximumLinearY
-		} );
+				// UNNECESSARY
+				/*if( nextTargetAlpha + alphaTolerance < 1.0f )
+				{
+					upperConstraints.push_back( (SimplePoint){
+						applyZTol( ZBack, zTolerance, true ),
+						-log1pf( -( nextTargetAlpha + alphaTolerance ) )
+					} );
+				}*/
+			}
+			else
+			{
+				/*upperConstraints.push_back( (SimplePoint){
+					applyZTol( Z, zTolerance * ( 1.0f - quality ), true ),
+					prevUpperAlpha < 1 ? -log1pf( -( targetAlpha + alphaTolerance ) ) : maximumLinearY
+				} );*/
+
+				float stepAlphaLinear = exponentialToLinear( targetAlpha + alphaTolerance );
+
+				int nextCross = ceilf( targetAlpha * alphaToIndex );
+				int lastCross = floorf( nextTargetAlpha * alphaToIndex );
+
+				float nextZTol = applyZTol( Z, zTolerance * ( 1.0f - quality ), false );
+
+				float zScale = ( ZBack - Z ) / ( -log1pf( -nextTargetAlpha ) + log1pf( -targetAlpha ) );
+				float zOffset = log1pf( -targetAlpha );
+
+				for( int i = nextCross; i <= lastCross; i++ )
+				{
+					float ai = indexToAlpha * i;
+					float crossZ = zScale * (-log1pf( -ai ) + zOffset ) + Z;
+					if( crossZ < nextZTol )
+					{
+						continue;
+					}
+					nextZTol = applyZTol( crossZ, zTolerance * ( 1.0f - quality ), false );
+
+					upperConstraints.push_back( (SimplePoint){
+						applyZTol( crossZ, zTolerance, true ),
+						stepAlphaLinear
+					} );
+
+					stepAlphaLinear = exponentialToLinear( ai + alphaTolerance );
+				}
+				
+				upperConstraints.push_back( (SimplePoint){
+					applyZTol( ZBack, zTolerance, true ),
+					stepAlphaLinear
+				} );
+			}
+		}
 
 		targetAlpha = nextTargetAlpha;
 
 		prevLower = nextLower;
 		prevLowerAlpha = nextLowerAlpha;
-		prevUpperAlpha = nextUpperAlpha;
 
 	}
 }
@@ -1471,7 +1520,7 @@ void debugConstraintsForPixel(
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.75f,
 		lowerLinear, upperLinear
 	);
 
@@ -1519,7 +1568,7 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.75f,
 		constraintsLower, constraintsUpper
 	);
 

@@ -254,13 +254,11 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		std::vector<float> &outAlpha = outAlphaData->writable();
 		FloatVectorDataPtr outZData = new FloatVectorData();
 		std::vector<float> &outZ = outZData->writable();
-		FloatVectorDataPtr outZBackData = new FloatVectorData();
-		std::vector<float> &outZBack = outZBackData->writable();
 
 		//std::vector<DeepPixel> outputPixels;
 		//outputPixels.resize( sampleOffsets.size() );
 		int prev = 0;
-		int outputCount = 0;
+		int totalOutputCount = 0;
 
 		std::vector<std::pair<float, float> > lowerConstraints;
 		std::vector<std::pair<float, float> > upperConstraints;
@@ -276,26 +274,29 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 				lowerConstraints, upperConstraints	
 			);
 
-			int constraintsCount = 0;
-			float currentAlpha = 0;
-			float currentDepth = -1e8;
-			for( auto &c : currentConstraints )
+			int outputCount = 0;
+			if( currentConstraints.size() )
 			{
-				if( c.second != currentAlpha )
+				float currentAlpha = 0;
+				float currentDepth = currentConstraints[0].first;
+				
+				for( auto &c : currentConstraints )
 				{
 					float sampleAlpha = 1 - ( 1 - c.second ) / ( 1 - currentAlpha );
 					outAlpha.push_back( sampleAlpha );
 					outZ.push_back( currentDepth );
-					outZBack.push_back( c.first );
-
+					outputCount++;
 					currentAlpha = c.second;
-					constraintsCount++;
+					currentDepth = c.first;
 				}
-				currentDepth = c.first;
+
+				outAlpha.push_back( 0.0f );
+				outZ.push_back( currentDepth );
+				outputCount++;
 			}
 			
-			outputCount += constraintsCount;
-			outSampleOffsets[i] = outputCount;
+			totalOutputCount += outputCount;
+			outSampleOffsets[i] = totalOutputCount;
 
 			prev = index;
 		}
@@ -303,7 +304,6 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		constraintsData->members()["sampleOffsets"] = outSampleOffsetsData;
 		constraintsData->members()["A"] = outAlphaData;
 		constraintsData->members()["Z"] = outZData;
-		constraintsData->members()["ZBack"] = outZBackData;
 	}
 
 	static_cast<CompoundObjectPlug *>( output )->setValue( constraintsData );
@@ -339,10 +339,6 @@ IECore::ConstFloatVectorDataPtr DeepResampleConstraints::computeChannelData( con
 	{
 		return constraints->member<FloatVectorData>("Z");
 	}
-	else if( channelName == "ZBack" )
-	{
-		return constraints->member<FloatVectorData>("ZBack");
-	}
 	else
 	{
 		return constraints->member<FloatVectorData>("A");
@@ -375,6 +371,6 @@ void DeepResampleConstraints::hashChannelNames( const GafferImage::ImagePlug *pa
 
 IECore::ConstStringVectorDataPtr DeepResampleConstraints::computeChannelNames( const Gaffer::Context *context, const ImagePlug *parent ) const
 {
-	return new StringVectorData( { "A", "Z", "ZBack" } );
+	return new StringVectorData( { "A", "Z" } );
 }
 
