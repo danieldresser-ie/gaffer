@@ -249,20 +249,16 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 		std::vector<int> &outSampleOffsets = outSampleOffsetsData->writable();
 		outSampleOffsets.resize( sampleOffsets.size() );
 
-
 		FloatVectorDataPtr outAlphaData = new FloatVectorData();
 		std::vector<float> &outAlpha = outAlphaData->writable();
 		FloatVectorDataPtr outZData = new FloatVectorData();
 		std::vector<float> &outZ = outZData->writable();
 
-		//std::vector<DeepPixel> outputPixels;
-		//outputPixels.resize( sampleOffsets.size() );
 		int prev = 0;
 		int totalOutputCount = 0;
 
 		std::vector<std::pair<float, float> > lowerConstraints;
 		std::vector<std::pair<float, float> > upperConstraints;
-		std::vector<std::pair<float, float> > &currentConstraints = upper ? upperConstraints : lowerConstraints;
 		
 		for( unsigned int i = 0; i < sampleOffsets.size(); i++ )
 		{
@@ -275,12 +271,24 @@ void DeepResampleConstraints::compute( Gaffer::ValuePlug *output, const Gaffer::
 			);
 
 			int outputCount = 0;
-			if( currentConstraints.size() )
+
+			float currentAlpha = 0;
+			if( lowerConstraints.size() && !upper )
 			{
-				float currentAlpha = 0;
-				float currentDepth = currentConstraints[0].first;
+				for( auto &c : lowerConstraints )
+				{
+					float sampleAlpha = 1 - ( 1 - c.second ) / ( 1 - currentAlpha );
+					outAlpha.push_back( sampleAlpha );
+					outZ.push_back( c.first );
+					outputCount++;
+					currentAlpha = c.second;
+				}
+			}
+			else if( upperConstraints.size() && upper )
+			{
+				float currentDepth = upperConstraints[0].first;
 				
-				for( auto &c : currentConstraints )
+				for( auto &c : upperConstraints )
 				{
 					float sampleAlpha = 1 - ( 1 - c.second ) / ( 1 - currentAlpha );
 					outAlpha.push_back( sampleAlpha );
