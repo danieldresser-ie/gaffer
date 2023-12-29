@@ -84,6 +84,14 @@ SimplePoint evaluateLineAtY( const SimplePoint &a, const SimplePoint &b, float y
 	};
 }
 
+SimplePoint evaluateLineAtX( const SimplePoint &a, const SimplePoint &b, float x )
+{
+	return {
+		x,
+		a.y + ( ( x - a.x ) / ( b.x - a.x ) ) * ( b.y - a.y )
+	};
+}
+
 
 SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, SimplePoint b2 )
 {
@@ -132,74 +140,6 @@ SimplePoint segmentIntersect( SimplePoint a1, SimplePoint b1, SimplePoint a2, Si
 	//return { a1.x + dir1.x * t, a1.y + dir1.y * t };
 }
 
-
-SimplePoint intersectWithSegment( SimplePoint p, SimplePoint dir, SimplePoint a2, SimplePoint b2 )
-{
-	SimplePoint disp = { a2.x - p.x, a2.y - p.y };
-	SimplePoint dir2 = { b2.x - a2.x, b2.y - a2.y };
-
-	float denom = dir.x * dir2.y - dir.y * dir2.x;
-	if( fabs( denom ) < 1e-10 )
-	{
-		// TODO what if lines not coincident
-		// TODO this logic now looks bad
-		// TODO and even worse
-		if( p.x + dir.x < b2.x )
-		{
-			//return {p.x + dir.x, p.y + dir.y};
-			return {
-				std::max( a2.x, std::min( b2.x, p.x + dir.x ) ),
-				std::max( a2.y, std::min( b2.y, p.y + dir.y ) )
-			};
-		}
-		else
-		{
-			return b2;
-		}
-	}
-
-	float t = ( disp.x * dir2.y - disp.y * dir2.x ) / denom;
-
-	return { p.x + dir.x * t, p.y + dir.y * t };
-	/*SimplePoint r = {
-		std::max( a2.x, std::min( b2.x, p.x + dir.x * t ) ),
-		std::max( a2.y, std::min( b2.y, p.y + dir.y * t ) )
-	};
-
-	/////// TODO TEMP
-	//if( a2.x == b2.x )
-	//{
-		//r.x = a2.x;
-	//}
-	//if( a2.y == b2.y )
-	//{
-		//r.y = a2.y;
-	//}
-	/////// TODO TEMP
-
-	// TODO - note about assuming increasingness
-	//if( r.x < a2.x || r.y < a2.y )
-	//{
-	//	return a2;
-	//}
-	//else if( r.x > b2.x || r.y > b2.y )
-	//{
-	//	return b2;
-	//}
-
-	return r;*/
-
-	// TODO testing without the special cases above is a good way to test hang handling
-}
-
-SimplePoint clampToBox( SimplePoint p, SimplePoint a, SimplePoint b )
-{
-	return {
-		std::max( a.x, std::min( b.x, p.x ) ),
-		std::max( a.y, std::min( b.y, p.y ) )
-	};
-}
-
 struct LinearSegment
 {
 	SimplePoint a, b;
@@ -217,7 +157,7 @@ struct ConstraintSearchParams
 	int lowerConstraintIndex, upperConstraintIndex;
 };
 
-
+/*
 inline float measureViolation( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, float compareDirection )
 {
 	int anchor = startAnchor;
@@ -241,6 +181,7 @@ inline float measureViolation( const SimplePoint *points, int startIndex, int en
 	}
 	return violation;
 }
+*/
 
 inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, int startAnchor, const SimplePoint &comparePoint, float scanDirection, float constraintDirection, float steeperDirection, bool debug )
 {
@@ -521,7 +462,7 @@ void linearSegmentsToExponentialAlpha(
  */
 // TODO - note that this overwrites the constraints
 void minimalSegmentsForConstraints(
-	std::vector<SimplePoint> &constraintsLower, std::vector<SimplePoint> &constraintsUpper,  // TODO - these names are stupid
+	const std::vector<SimplePoint> &constraintsLower, const std::vector<SimplePoint> &constraintsUpper,  // TODO - these names are stupid
 	std::vector< LinearSegment > &compressedSamples,
 	bool debug
 )
@@ -712,8 +653,6 @@ void minimalSegmentsForConstraints(
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
-
-		int origLowerStartIndex = lowerStartIndex;
 
 		//assert( searchIndex > scanIndex );
 		//std::cerr << "Segment " << compressedSamples.size() << " : " << currentSearchParams.lowerConstraint.x << "," << currentSearchParams.lowerConstraint.y << "->" << currentSearchParams.upperConstraint.x << "," << currentSearchParams.upperConstraint.y << "\n";
@@ -914,33 +853,13 @@ void minimalSegmentsForConstraints(
 			// because if we are heading towards them, we will intersect it
 			upperStartIndex = upperStopIndex;
 
-			if( upperStopIndex != constraintsUpper.size() && upperStopIndex >= 2 )
+			if( upperStopIndex != constraintsUpper.size() )
 			{
-				if( debug ) std::cerr << "CHECKING UPPER:" << constraintsUpper[ upperStopIndex - 1].x << " " << constraintsUpper[ upperStopIndex ].x << "\n";
-				if( debug ) std::cerr << "CHECKING UPPER Y:" << linearToExponential( constraintsUpper[ upperStopIndex - 1 ].y ) << " " << linearToExponential( constraintsUpper[ upperStopIndex ].y ) << "\n";
-
-				SimplePoint intersection = intersectWithSegment(
-					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
-					{ constraintsUpper[ currentSearchParams.upperConstraintIndex ].x - constraintsLower[ currentSearchParams.lowerConstraintIndex ].x,
-					constraintsUpper[ currentSearchParams.upperConstraintIndex ].y - constraintsLower[ currentSearchParams.lowerConstraintIndex ].y },
-					constraintsUpper[ upperStopIndex - 1 ],
-					constraintsUpper[ upperStopIndex ]
+				segmentEnd = evaluateLineAtY(
+					constraintsLower[currentSearchParams.lowerConstraintIndex],
+					constraintsUpper[currentSearchParams.upperConstraintIndex],
+					constraintsUpper[ upperStopIndex ].y
 				);
-
-				intersection = clampToBox(
-					intersection, constraintsUpper[ upperStopIndex - 1 ], constraintsUpper[ upperStopIndex ]
-				);
-
-				if( !(
-					intersection.x == constraintsUpper[upperStopIndex ].x &&
-					intersection.y == constraintsUpper[upperStopIndex ].y
-				) )
-				{
-					upperStartIndex--;
-				}
-				if( debug ) std::cerr << "**** CHANGE UPPER << " << intersection.x << " , " << intersection.y << "\n";
-				constraintsUpper[upperStartIndex] = intersection;
-				segmentEnd = intersection;
 			}
 
 			if( lowerStopIndex >= 2 )
@@ -960,19 +879,6 @@ void minimalSegmentsForConstraints(
 					std::cerr << "LINEAR: " << ( segmentEnd.y ) << " : " << ( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << ( constraintsLower[ lowerStopIndex].y ) << "\n";
 					std::cerr << "BAD HORIZ-to-LOWER TEST: " << linearToExponential( segmentEnd.y ) << " : " << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " -> " << linearToExponential( constraintsLower[ lowerStopIndex].y ) << "\n";
 				}
-				else
-				{
-
-					if( constraintsLower[ lowerStopIndex ].y != constraintsLower[ lowerStopIndex - 1 ].y )  // TODO
-					{
-						lowerStartIndex--;
-						constraintsLower[lowerStartIndex] = evaluateLineAtY(
-							constraintsLower[ lowerStopIndex - 1 ], constraintsLower[ lowerStopIndex ], segmentEnd.y
-						);
-						//constraintsLower[lowerStartIndex].x = ( segmentEnd.y - constraintsLower[ lowerStopIndex - 1 ].y ) / ( constraintsLower[ lowerStopIndex ].y - constraintsLower[ lowerStopIndex - 1 ].y ) * ( constraintsLower[ lowerStopIndex ].x - constraintsLower[ lowerStopIndex - 1 ].x ) + constraintsLower[ lowerStopIndex - 1 ].x;
-						//constraintsLower[lowerStartIndex].y = segmentEnd.y;
-					}
-				}
 			}
 		}
 		else
@@ -981,40 +887,11 @@ void minimalSegmentsForConstraints(
 			// TODO The line we found passes under the next lower constraint,
 			// so we can find a point where it intersects the lower constraint line
 
-			if( lowerStopIndex >= 2 )
-				//&& constraintsLower[ lowerStopIndex - 1 ].x != constraintsLower[ lowerStopIndex ].x
-			{
-				if( debug ) std::cerr << "CHECKING LOWER:" << constraintsLower[ lowerStopIndex - 1].x << " " << constraintsLower[ lowerStopIndex ].x << "\n";
-				if( debug ) std::cerr << "CHECKING LOWER Y:" << linearToExponential( constraintsLower[ lowerStopIndex - 1 ].y ) << " " << linearToExponential( constraintsLower[ lowerStopIndex ].y ) << "\n";
-				SimplePoint intersection = intersectWithSegment(
-					constraintsLower[ currentSearchParams.lowerConstraintIndex ],
-					{ constraintsUpper[ currentSearchParams.upperConstraintIndex ].x - constraintsLower[ currentSearchParams.lowerConstraintIndex ].x,
-					constraintsUpper[ currentSearchParams.upperConstraintIndex ].y - constraintsLower[ currentSearchParams.lowerConstraintIndex ].y },
-					constraintsLower[ lowerStopIndex - 1 ],
-					constraintsLower[ lowerStopIndex ]
-				);
-
-				intersection = clampToBox(
-					intersection, constraintsLower[ lowerStopIndex - 1 ], constraintsLower[ lowerStopIndex ]
-				);
-
-				if( intersection.y <= constraintsLower[origLowerStartIndex].y && intersection.x <= constraintsLower[origLowerStartIndex].x )
-				{
-					intersection = constraintsLower[ lowerStopIndex ];
-					if( debug ) std::cerr << "BAD FP SEGMENT INTERSECT\n";
-				}
-
-				if( !(
-					intersection.x == constraintsLower[lowerStopIndex ].x &&
-					intersection.y == constraintsLower[lowerStopIndex ].y
-				) )
-				{
-					lowerStartIndex--;
-				}
-				if( debug ) std::cerr << "**** CHANGE LOWER << " << intersection.x << " , " << intersection.y << "\n";
-				constraintsLower[lowerStartIndex] = intersection;
-				segmentEnd = constraintsLower[lowerStartIndex];
-			}
+			segmentEnd = evaluateLineAtX(
+				constraintsLower[currentSearchParams.lowerConstraintIndex],
+				constraintsUpper[currentSearchParams.upperConstraintIndex],
+				constraintsLower[lowerStopIndex].x
+			);
 		}
 
 		if( debug )
@@ -1107,7 +984,7 @@ void minimalSegmentsForConstraints(
 			{
 
 				std::cerr << "BAD CURRENT : " << compressedSamples.back().b.y << " -> " << compressedSample.b.y << "\n";
-				throw IECore::Exception( "VERY BAD CURRENT" );
+				//throw IECore::Exception( "VERY BAD CURRENT" );
 
 				//TODO
 				yPrev = segmentEnd.y;
