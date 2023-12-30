@@ -496,6 +496,7 @@ void minimalSegmentsForConstraints(
 		currentSearchParams.upperConstraintIndex = -1;
 
 
+		bool progress = false;
 		bool advanceUpper = false;
 		// Note that the next loop must run at least once, since we wouldn't get in here unless
 		// lowerStopIndex starts out valid.  The only reason to initialize advanceUpper is because
@@ -535,6 +536,7 @@ void minimalSegmentsForConstraints(
 				if( debug ) std::cerr << "NOT ENOUGH CONSTRAINTS FOR SEARCH, OR NO OVERLAP\n";
 				upperStopIndex = testUpperStopIndex;
 				lowerStopIndex = testLowerStopIndex;
+				progress = true;
 				continue;
 			}
 
@@ -562,6 +564,7 @@ void minimalSegmentsForConstraints(
 					{
 						upperStopIndex = testUpperStopIndex;
 						lowerStopIndex = testLowerStopIndex;
+						progress = true;
 						continue;
 					}
 
@@ -587,6 +590,7 @@ void minimalSegmentsForConstraints(
 					{
 						upperStopIndex = testUpperStopIndex;
 						lowerStopIndex = testLowerStopIndex;
+						progress = true;
 						continue;
 					}
 					if( searchLowerIndex == -1 )
@@ -651,6 +655,7 @@ void minimalSegmentsForConstraints(
 
 			upperStopIndex = testUpperStopIndex;
 			lowerStopIndex = testLowerStopIndex;
+			progress = true;
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
@@ -667,6 +672,10 @@ void minimalSegmentsForConstraints(
 			//throw IECore::Exception( "COULDN'T FIND ANY LINE" );
 		}
 
+		if( !progress )
+		{
+			throw IECore::Exception( "STUCK!" );
+		}
 		// If we didn't manage to reach a higher Y value than the previous segment during search,
 		// something has gone badly wrong.  We can assume that this is due to floating point precision error,
 		// and just advance until we reach an upper constraint that won't risk stalling in an infinite loop
@@ -1190,6 +1199,16 @@ void linearConstraintsForPixel(
 		//prevLowerAlpha = nextLowerAlpha;
 
 	}
+
+	while( lowerConstraints.size() && lowerConstraints.back().x >= inZBack[ inSamples - 1] )
+	{
+		lowerConstraints.pop_back();
+	}
+
+	lowerConstraints.push_back( (SimplePoint){
+		inZBack[ inSamples - 1],
+		exponentialToLinear( targetAlpha )
+	} );
 }
 
 }
@@ -1214,7 +1233,7 @@ void debugConstraintsForPixel(
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.75f,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.99f,
 		lowerLinear, upperLinear
 	);
 
@@ -1262,7 +1281,7 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.75f,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.99f,
 		constraintsLower, constraintsUpper
 	);
 
