@@ -135,10 +135,14 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		representativeImageUnnormalized = GafferImage.ImageReader()
 		representativeImageUnnormalized["fileName"].setValue( self.representativeImagePath )
 
+		temp = GafferImage.DeleteChannels()
+		temp["in"].setInput( representativeImageUnnormalized["out"] )
+		temp["channels"].setValue( "R G B" )
 		# This image has some high RGB values in it, which make it less meaningful to compare error tolerances.
 		# Normalize it so the RGB values are in an approximately 0-1 range like the alpha.
 		representativeImage = GafferImage.Grade( "representativeDeepNormalized" )
-		representativeImage["in"].setInput( representativeImageUnnormalized["out"] )
+		#representativeImage["in"].setInput( representativeImageUnnormalized["out"] )
+		representativeImage["in"].setInput( temp["out"] )
 		representativeImage["multiply"].setValue( imath.Color4f( 0.2, 0.2, 0.2, 1 ) )
 
 		self.assertValidResample( representativeImage["out"], representativeImage["out"], 0.001, 0.001, 0.012, 191482, 53396 )
@@ -195,6 +199,34 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 	def testRandomSamples( self ):
 
+		deepIntPointsPath = GafferImageTest.ImageTestCase.imagesPath() / "deepIntPoints.exr"
+		deepIntVolumesPath = GafferImageTest.ImageTestCase.imagesPath() / "deepIntVolumes.exr"
+		deepFloatPointsPath = GafferImageTest.ImageTestCase.imagesPath() / "deepFloatPoints.exr"
+		deepFloatVolumesPath = GafferImageTest.ImageTestCase.imagesPath() / "deepFloatVolumes.exr"
+
+		intPoints = GafferImage.ImageReader()
+		intPoints["fileName"].setValue( deepIntPointsPath )
+		intVolumes = GafferImage.ImageReader()
+		intVolumes["fileName"].setValue( deepIntVolumesPath )
+		floatPoints = GafferImage.ImageReader()
+		floatPoints["fileName"].setValue( deepFloatPointsPath )
+		floatVolumes = GafferImage.ImageReader()
+		floatVolumes["fileName"].setValue( deepFloatVolumesPath )
+
+		allInts = GafferImage.DeepMerge( "allInts" )
+		allInts["in"][0].setInput( intPoints["out"] )
+		allInts["in"][1].setInput( intVolumes["out"] )
+
+		allFloats = GafferImage.DeepMerge( "allFloats" )
+		allFloats["in"][0].setInput( floatPoints["out"] )
+		allFloats["in"][1].setInput( floatVolumes["out"] )
+
+		allCombined = GafferImage.DeepMerge( "allCombined" )
+		allCombined["in"][0].setInput( intPoints["out"] )
+		allCombined["in"][1].setInput( intVolumes["out"] )
+		allCombined["in"][2].setInput( floatPoints["out"] )
+		allCombined["in"][3].setInput( floatVolumes["out"] )
+
 		constant = GafferImage.Constant()
 		constant["format"].setValue( GafferImage.Format( 128, 128, 1.000 ) )
 
@@ -238,6 +270,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 		deepTidy = GafferImage.DeepTidy()
 		deepTidy["in"].setInput( oslImage["out"] )
+		deepTidy["in"].setInput( allCombined["out"] )
 
 		###self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125856 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.001, 0.0011, 526233, 125857 )

@@ -504,7 +504,7 @@ void minimalSegmentsForConstraints(
 		{
 			// TODO - what's the x comparison here for?  Remove?
 			advanceUpper = upperStopIndex < constraintsUpper.size() &&
-				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y && constraintsUpper[ upperStopIndex ].x <= constraintsLower[lowerStopIndex].x;
+				constraintsUpper[ upperStopIndex ].y <= constraintsLower[lowerStopIndex].y; // && constraintsUpper[ upperStopIndex ].x <= constraintsLower[lowerStopIndex].x;
 
 			unsigned int testUpperStopIndex = upperStopIndex;
 			unsigned int testLowerStopIndex = lowerStopIndex;
@@ -637,12 +637,13 @@ void minimalSegmentsForConstraints(
 			}*/
 			if( newSegment.lowerConstraintIndex == -1 )
 			{
+				if( debug ) std::cerr << "SEARCH FAILED\n";
 				// It didn't work, so we'll use the previous value left in currentSearchParams
 				break;
 			}
 
 			currentSearchParams = newSegment;
-			if( debug && newSegment.lowerConstraintIndex != -1 )
+			if( debug )
 			{
 				std::cerr << "SUCCESSFULLY FOUND INDICES : " << currentSearchParams.lowerConstraintIndex << " -> " << currentSearchParams.upperConstraintIndex << "\n";
 
@@ -669,11 +670,12 @@ void minimalSegmentsForConstraints(
 		// If we didn't manage to reach a higher Y value than the previous segment during search,
 		// something has gone badly wrong.  We can assume that this is due to floating point precision error,
 		// and just advance until we reach an upper constraint that won't risk stalling in an infinite loop
-		while( currentSearchParams.upperConstraintIndex + 1 < (int)constraintsUpper.size() && constraintsUpper[currentSearchParams.upperConstraintIndex].y <= constraintsLower[lowerStartIndex].y )
+		// TODO - do this in terms of indices?
+		/*while( currentSearchParams.upperConstraintIndex + 1 < (int)constraintsUpper.size() && constraintsUpper[currentSearchParams.upperConstraintIndex].y <= constraintsLower[lowerStartIndex].y )
 		{
 			currentSearchParams.upperConstraintIndex++;
 			upperStopIndex = std::max( upperStopIndex, (unsigned int)currentSearchParams.upperConstraintIndex + 1 );
-		}
+		}*/
 
 
 		//assert( currentSearchParams.lowerConstraintIndex != -1 );
@@ -805,36 +807,6 @@ void minimalSegmentsForConstraints(
 		//SimplePoint cacheLowerBeforeIntersect = constraintsLower[ currentSearchParams.lowerConstraintIndex ];
 		//SimplePoint cacheUpperBeforeIntersect = constraintsUpper[ currentSearchParams.upperConstraintIndex ];
 
-		SimplePoint prevIntersect;
-		if( foundSlope )
-		{
-			prevIntersect = evaluateLineAtY(
-				constraintsLower[currentSearchParams.lowerConstraintIndex],
-				constraintsUpper[currentSearchParams.upperConstraintIndex],
-				yPrev
-			);
-
-			if( compressedSamples.size() > 0 && prevIntersect.x < compressedSamples.back().b.x )
-			{
-				LinearSegment &prevSegment = compressedSamples.back();
-				// Calculate the intersection of our new line with the previous line
-				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
-				prevIntersect = segmentIntersect(
-					constraintsLower[currentSearchParams.lowerConstraintIndex],
-					constraintsUpper[currentSearchParams.upperConstraintIndex],
-					prevSegment.a, prevSegment.b
-				);
-				if( prevIntersect.x < prevSegment.a.x )
-				{
-					// This case may occur due to precision issues.
-					prevIntersect.x = prevSegment.a.x;
-				}
-				if( prevIntersect.x > prevSegment.b.x )
-				{
-					prevIntersect.x = prevSegment.b.x;
-				}
-			}
-		}
 
 		// Calculate where our new line hits its flat top
 
@@ -894,14 +866,6 @@ void minimalSegmentsForConstraints(
 			);
 		}
 
-		if( debug )
-		{
-			if( lowerStopIndex < constraintsLower.size() )
-			{
-				std::cerr.precision( 20 );
-				std::cerr << "TRYING LOWER CONSTRAINT FAST FORWARD : " << constraintsLower[lowerStopIndex].y << " : " <<  segmentEnd.y << " : " << ( constraintsLower[lowerStopIndex].y <= segmentEnd.y ) << "\n";
-			}
-		}
 		// If our flat top coincides with horizontal segment, we can fast forward to the end of
 		// the horizontal segment when considering constraints, because the previous constraints
 		// are under the flat top
@@ -942,6 +906,32 @@ void minimalSegmentsForConstraints(
 			}
 			assert( !std::isnan( segmentEnd.x ) );
 
+			SimplePoint prevIntersect = evaluateLineAtY(
+				constraintsLower[currentSearchParams.lowerConstraintIndex],
+				constraintsUpper[currentSearchParams.upperConstraintIndex],
+				yPrev
+			);
+
+			if( compressedSamples.size() > 0 && prevIntersect.x < compressedSamples.back().b.x )
+			{
+				LinearSegment &prevSegment = compressedSamples.back();
+				// Calculate the intersection of our new line with the previous line
+				// If the previous sample was a point sample, intersect the new line segment with a vertical line that passes through it.
+				prevIntersect = segmentIntersect(
+					constraintsLower[currentSearchParams.lowerConstraintIndex],
+					constraintsUpper[currentSearchParams.upperConstraintIndex],
+					prevSegment.a, prevSegment.b
+				);
+				if( prevIntersect.x < prevSegment.a.x )
+				{
+					// This case may occur due to precision issues.
+					prevIntersect.x = prevSegment.a.x;
+				}
+				if( prevIntersect.x > prevSegment.b.x )
+				{
+					prevIntersect.x = prevSegment.b.x;
+				}
+			}
 
 			// Calculate where our new line hits the previous flat top
 			// Calculate the intersection of our new line with the previous line
@@ -961,8 +951,8 @@ void minimalSegmentsForConstraints(
 			}
 		}
 
-		if( debug ) std::cerr << "xstart/end : " << xStart << " : " << segmentEnd.x << "\n";
-		assert( segmentEnd.x >= xStart );
+		/*if( debug ) std::cerr << "xstart/end : " << xStart << " : " << segmentEnd.x << "\n";
+		assert( segmentEnd.x >= xStart );*/
 		assert( !std::isnan( segmentEnd.y ) );
 
 		LinearSegment compressedSample;
@@ -1078,8 +1068,8 @@ void linearConstraintsForPixel(
 	// ---- Set up lower constraints ----
 	// ---- Set up upper constraints ----
 
-	lowerConstraints.reserve( inSamples ); // TODO
-	upperConstraints.reserve( inSamples );
+	//lowerConstraints.reserve( inSamples ); // TODO
+	//upperConstraints.reserve( inSamples );
 
 
 	// TODO - something weird happens when starting from depth 0 ( constraint isn't offset backwards? )
@@ -1150,11 +1140,11 @@ void linearConstraintsForPixel(
 	
 		if( targetAlpha + alphaTolerance < 1.0f )
 		{
-			if( ZBack == Z )
+			if( ZBack == Z || targetSegmentAlpha >= 1.0f )
 			{
 				upperConstraints.push_back( (SimplePoint){
 					applyZTol( Z, zTolerance, true ),
-					-log1pf( -( targetAlpha + alphaTolerance ) )
+					exponentialToLinear( targetAlpha + alphaTolerance )
 				} );
 			}
 			else
