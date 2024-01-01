@@ -496,7 +496,6 @@ void minimalSegmentsForConstraints(
 		currentSearchParams.upperConstraintIndex = -1;
 
 
-		bool progress = false;
 		bool advanceUpper = false;
 		// Note that the next loop must run at least once, since we wouldn't get in here unless
 		// lowerStopIndex starts out valid.  The only reason to initialize advanceUpper is because
@@ -536,7 +535,6 @@ void minimalSegmentsForConstraints(
 				if( debug ) std::cerr << "NOT ENOUGH CONSTRAINTS FOR SEARCH, OR NO OVERLAP\n";
 				upperStopIndex = testUpperStopIndex;
 				lowerStopIndex = testLowerStopIndex;
-				progress = true;
 				continue;
 			}
 
@@ -564,7 +562,6 @@ void minimalSegmentsForConstraints(
 					{
 						upperStopIndex = testUpperStopIndex;
 						lowerStopIndex = testLowerStopIndex;
-						progress = true;
 						continue;
 					}
 
@@ -590,7 +587,6 @@ void minimalSegmentsForConstraints(
 					{
 						upperStopIndex = testUpperStopIndex;
 						lowerStopIndex = testLowerStopIndex;
-						progress = true;
 						continue;
 					}
 					if( searchLowerIndex == -1 )
@@ -655,7 +651,6 @@ void minimalSegmentsForConstraints(
 
 			upperStopIndex = testUpperStopIndex;
 			lowerStopIndex = testLowerStopIndex;
-			progress = true;
 
 			// We'll continue looping and try to find a segment that covers more constraints
 		}
@@ -672,10 +667,6 @@ void minimalSegmentsForConstraints(
 			//throw IECore::Exception( "COULDN'T FIND ANY LINE" );
 		}
 
-		if( !progress )
-		{
-			throw IECore::Exception( "STUCK!" );
-		}
 		// If we didn't manage to reach a higher Y value than the previous segment during search,
 		// something has gone badly wrong.  We can assume that this is due to floating point precision error,
 		// and just advance until we reach an upper constraint that won't risk stalling in an infinite loop
@@ -797,6 +788,10 @@ void minimalSegmentsForConstraints(
 			currentSearchParams.lowerConstraintIndex = lowerStartIndex;
 		}*/
 
+		if( !( lowerStopIndex > lowerStartIndex || currentSearchParams.upperConstraintIndex > (int)upperStartIndex ) )
+		{
+			throw IECore::Exception( "FAILED TO MAKE ANY PROGRESS" );
+		}
 
 		lowerStartIndex = lowerStopIndex;
 		// TODO - max?
@@ -901,7 +896,9 @@ void minimalSegmentsForConstraints(
 		//if( fabs( lineA ) == std::numeric_limits<float>::infinity() )
 		{
 			// The line we have found is a point sample.
-			xStart = segmentEnd.x = constraintsLower[currentSearchParams.lowerConstraintIndex].x;
+
+			// TODO - don't like this
+			xStart = segmentEnd.x = currentSearchParams.lowerConstraintIndex >= 0 ? constraintsLower[currentSearchParams.lowerConstraintIndex].x : constraintsLower[0].x;
 			assert( std::isfinite( segmentEnd.x ) && !std::isnan( segmentEnd.x ) );
 			// TODO - intersect and update constraints
 		}
@@ -1233,7 +1230,7 @@ void debugConstraintsForPixel(
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.99f,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.9,
 		lowerLinear, upperLinear
 	);
 
@@ -1281,7 +1278,7 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.99f,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.9f,
 		constraintsLower, constraintsUpper
 	);
 
@@ -1307,7 +1304,6 @@ void resampleDeepPixel(
 		}
 		std::cerr << "\n\n";
 	}
-
 
 	std::vector< LinearSegment > compressedSamples;
 	minimalSegmentsForConstraints( constraintsLower, constraintsUpper, compressedSamples, debug );
