@@ -1066,7 +1066,7 @@ inline float applyZTol( float z, float tol, bool upper )
 */
 void linearConstraintsForPixel(
 	const int inSamples, const float *inA, const float *inZ, const float *inZBack,
-	float alphaTolerance, float zTolerance, float silhouetteDepth, float quality,
+	float alphaTolerance, float zTolerance, float silhouetteDepth, float quality, bool debug,
 	std::vector< SimplePoint > &lowerConstraints,
 	std::vector< SimplePoint > &upperConstraints
 )
@@ -1099,7 +1099,12 @@ void linearConstraintsForPixel(
 		float ZBack = inZBack[ i ];
 
 		float targetSegmentAlpha = inA[i];
-		float nextTargetAlpha = targetAlpha + ( targetSegmentAlpha - targetAlpha * targetSegmentAlpha );
+		// We use an expanded form rather than:
+		// `nextTargetAlpha = 1 - ( 1 - targetAlpha ) * ( 1 - targetSegmentAlpha )`
+		// because that would have poor precision near 1.
+		// But this still has some precision concerns, so we use a max to ensure that floating point
+		// error doesn't cause us to violate that alphas should be non-decreasing.
+		float nextTargetAlpha = targetAlpha + std::max( 0.0f, targetSegmentAlpha - targetAlpha * targetSegmentAlpha );
 
 		if( nextTargetAlpha - alphaTolerance > 0.0f )
 		{
@@ -1124,7 +1129,7 @@ void linearConstraintsForPixel(
 
 				for( int i = nextCross; i <= lastCross; i++ )
 				{
-					float ai = indexToAlpha * i;
+					float ai = std::max( targetAlpha, std::min( nextTargetAlpha, indexToAlpha * i ) );
 
 					// clamp with Z/ZBack to avoid getting out of order due to floating point precision
 					float crossZ = std::max( Z, std::min( ZBack, zScale * (-log1pf( -ai ) + zOffset ) + Z ) );
@@ -1148,7 +1153,7 @@ void linearConstraintsForPixel(
 
 					stepDepth = applyZTol( crossZ, zTolerance, false );
 				}
-				
+
 				lowerConstraints.push_back( (SimplePoint){
 					stepDepth,
 					exponentialToLinear( nextTargetAlpha - alphaTolerance )
@@ -1179,7 +1184,7 @@ void linearConstraintsForPixel(
 
 				for( int i = nextCross; i <= lastCross; i++ )
 				{
-					float ai = indexToAlpha * i;
+					float ai = std::max( targetAlpha, std::min( nextTargetAlpha, indexToAlpha * i ) );
 					if( ai >= 1.0f )
 					{
 						throw IECore::Exception( "TODO" );
@@ -1259,6 +1264,29 @@ void linearConstraintsForPixel(
 		}
 		check = i;
 	}
+
+	// Hmm, this is a very brute force solution ... but floating point error can result in the
+	// constraints turning inside out - it's probably reasonable to fix them if the amount we
+	// need to shift is within floating point tolerance
+	int correspondingUpper = -1;
+	for( SimplePoint &i : lowerConstraints )
+	{
+		while( correspondingUpper + 1 < (int)upperConstraints.size() && upperConstraints[ correspondingUpper + 1 ].y < i.y )
+		{
+			correspondingUpper++;
+		}
+
+		if( correspondingUpper > 0 && upperConstraints[correspondingUpper].x > i.x )
+		{
+			if( debug && i.y - upperConstraints[correspondingUpper].y > 1e-6 )
+			{
+				std::cerr << fmt::format( "Upper constraint below lower constraint ({}, {}) < ({}, {})", upperConstraints[correspondingUpper].x, upperConstraints[correspondingUpper].y, i.x, i.y ) << "\n";
+				//throw IECore::Exception( fmt::format( "Upper constraint below lower constraint ({}, {}) < ({}, {})", upperConstraints[correspondingUpper].x, upperConstraints[correspondingUpper].y, i.x, i.y ) );
+			}
+
+			upperConstraints[correspondingUpper].y = i.y;
+		}
+	}
 }
 
 }
@@ -1283,7 +1311,7 @@ void debugConstraintsForPixel(
 	std::vector< SimplePoint > upperLinear;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.9,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.9, false,
 		lowerLinear, upperLinear
 	);
 
@@ -1331,7 +1359,7 @@ void resampleDeepPixel(
 	std::vector<SimplePoint> constraintsUpper;
 	linearConstraintsForPixel(
 		inSamples, inA, inZ, inZBack, 
-		alphaTolerance, zTolerance, silhouetteDepth, 0.9f,
+		alphaTolerance, zTolerance, silhouetteDepth, 0.9f, debug,
 		constraintsLower, constraintsUpper
 	);
 
