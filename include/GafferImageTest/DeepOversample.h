@@ -70,6 +70,10 @@ class GAFFERIMAGE_API DeepOversample : public GafferImage::ImageProcessor
 		void hashSampleOffsets( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
 		IECore::ConstIntVectorDataPtr computeSampleOffsets( const Imath::V2i &tileOrigin, const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
 
+		void hashDeep( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const override;
+        bool computeDeep( const Gaffer::Context *context, const GafferImage::ImagePlug *parent ) const override;
+
+
 	private :
 
 		Gaffer::IntVectorDataPlug *subSamplesPlug();

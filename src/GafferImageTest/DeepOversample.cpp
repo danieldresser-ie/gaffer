@@ -64,7 +64,6 @@ DeepOversample::DeepOversample( const std::string &name )
 	outPlug()->dataWindowPlug()->setInput( inPlug()->dataWindowPlug() );
 	outPlug()->formatPlug()->setInput( inPlug()->formatPlug() );
 	outPlug()->metadataPlug()->setInput( inPlug()->metadataPlug() );
-	outPlug()->deepPlug()->setInput( inPlug()->deepPlug() );
 	outPlug()->viewNamesPlug()->setInput( inPlug()->viewNamesPlug() );
 }
 
@@ -415,4 +414,14 @@ IECore::ConstIntVectorDataPtr DeepOversample::computeSampleOffsets( const Imath:
 	}
 
 	return outSampleOffsetsData;
+}
+
+void DeepOversample::hashDeep( const GafferImage::ImagePlug *parent, const Gaffer::Context *context, IECore::MurmurHash &h ) const
+{
+    ImageProcessor::hashDeep( parent, context, h );
+}
+
+bool DeepOversample::computeDeep( const Gaffer::Context *context, const ImagePlug *parent ) const
+{
+    return true;
 }
