@@ -1,0 +1,21 @@
+* Replace OSLImage test case with deepFloatVolumes et al, probably with a 2D Resample to blend samples from adjacent pixels and make some more complex tests
+
+* Update sample counts in tests
+
+* Optimization 1 : Instead of linearly stepping to find valid segments, use a binary search to find the last constraint that can be added.
+
+* Optimization 2 : In findAnchor, when searching for any constraint that violates a current line, we can test regions at a time if we know a min/max slope, by intersecting the max slope from the first point with the min slope from the last point to find a convex hull that all constraints are within. This would probably start with simple logic just based on the slopes being positive - we can start by intersecting a line with slope 0 from the last point with a line with slope inf from the first point. Using these convex hulls would allow binary partitioning of the range in findAnchor, with many subranges being rejected by the bounding hull.
+
+I think these can be done as a stackless binary search by halving the search range whenever a range fails, and doubling the search range on success, except the first success keeps the same range size ( as would happen if you implemented it recursively ).
+
+Tracking actual min/max slopes would potentially be a big win even on top of these optimizations, but is a bit trickier for a few reasons:
+
+- how accurately do we try to track the slope for a range? Ideally, each query would know the slopes for exactly the range being queried. Probably good enough to track min/max for all constraints for the current segment, updated online, and cleared whenever you output a segment. It's a bit of a shame that one steep sample could make the whole search perform badly until it clears, but at least since we're only concerned with peak constraints, a point sample doesn't imply infinite slope, unless there is another sample right beside it.
+
+- in order for the optimizations to have no effect on output, we would have to be careful with floating point rounding. "Directed Rounding Arithmetic Operations" seem to not be that nice on current C++/processors. fesetround seems painful. Maybe just using nexttowardf would be good enough if we're careful.
+
+* Optimization 3 : Is there an advantage to generating curve samples on the fly, from a precomputed table for every possible alpha value, rather than storing dense constraints? Seems like it could be a win, once the other optimizations make sure we don't need to actually access every constraint. Could potentially accelerate slope computation as well, since once per curve shape would be a good granularity to store slopes at.
+
+* Once we have those optimizations in place - is there any benefit to omitting constraints because the depth hasn't changed over a tolerance? Or would omitting this rejection make the code simpler, and potentially yield slightly better compression. Hopefully the cost won't be much once the optimizations are in place.
+
+* Implement RGB threshold as a post-process by splitting the compressed samples at point with matching alpha which evaluate differently by too much RGB.
