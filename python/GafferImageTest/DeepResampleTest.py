@@ -57,7 +57,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 
 	#longMessage = True
 
-	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount, extraAlphaTolerance = 5e-7, flatMaxDifference = 0.000002 ):
+	def assertValidResample( self, toResample, toCompare, alphaTolerance, depthTolerance, flatZError, origSampleCount, resampleCount, extraAlphaTolerance = 2e-7, flatMaxDifference = 0.000002 ):
 
 		origFlatten = GafferImage.DeepToFlat()
 		origFlatten["in"].setInput( toCompare )
@@ -152,8 +152,11 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		oversample["in"].setInput( representativeImage["out"] )
 		oversample["maxSampleAlpha"].setValue( 0.001 )
 
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.012, 13011287, 53396, flatMaxDifference = 0.00001 )
-		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372, flatMaxDifference = 0.00002 )
+		# Splitting everything into tiny pieces gives us another thing to test - it should still
+		# match the resample of the original image - though we do need some extra error margin
+		# to account for the extra floating point error of combining lots of tiny pieces
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.001, 0.001, 0.013, 13011287, 53396, flatMaxDifference = 0.00001, extraAlphaTolerance = 5e-6 )
+		self.assertValidResample( oversample["out"], representativeImage["out"], 0.01, 0.01, 0.13, 13011287, 22372, flatMaxDifference = 0.00002, extraAlphaTolerance = 5e-6 )
 
 		# Raises test time to 143 seconds
 		#oversample["maxSampleAlpha"].setValue( 0.0002 )
@@ -176,7 +179,7 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		# We need a high depth tolerance once we push everything way out this far. ( The biggest error
 		# actually comes from the FilteredDepth output of DeepToFlat suffering from precision errors
 		# on the original, unresampled data )
-		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.82, 191482, 67991 )
+		self.assertValidResample( depthGrade["out"], depthGrade["out"], 0.001, 1e-8, 0.82, 191482, 67991, extraAlphaTolerance = 5e-7 )
 
 	@GafferTest.TestRunner.PerformanceTestMethod( repeat = 1 )
 	def testPerformance( self ) :
@@ -277,7 +280,8 @@ class DeepResampleTest( GafferImageTest.ImageTestCase ) :
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0.01, 0.011, 526233, 68995 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.1, 0.1, 0.12, 526233, 25920 )
 
-		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0, 0.01, 0.01, 526233, 219304 )
+		# TODO - test with lowest valid alpha tolerance ( it's not going to be zero )
+		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.001, 0.01, 0.01, 526233, 219304 )
 		self.assertValidResample( deepTidy["out"], deepTidy["out"], 0.01, 0, 0.01, 526233, 75741 )
 
 		oslCode["parameters"]["maxAlpha"].setValue( 0.01 )
