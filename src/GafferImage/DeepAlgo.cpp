@@ -39,12 +39,15 @@
 // TODO
 #include "IECore/Exception.h"
 
+#include "fmt/format.h"
+
 #include <vector>
 #include <cmath>
 #include <assert.h>
 #include <limits> // TODO
 #include <iostream> // TODO
 #include <stdexcept> // TODO
+
 
 using namespace GafferImage::DeepAlgo::Detail;
 
@@ -207,6 +210,7 @@ inline int findAnchor( const SimplePoint *points, int startIndex, int endIndex, 
 		{
 			//if( steeperDirection < 0 ) std::cerr << "VIOLATE : " << i << "\n";
 			SimplePoint delta = { comparePoint.x - lowerX, comparePoint.y - minY };
+			//std::cerr << "dc : " << delta.x * scanDirection << "\n";
 			if( delta.x * scanDirection <= 0 )
 			{
 				//if( steeperDirection < 0 ) std::cerr << "REVERSED : " << comparePoint.x << " : " << lowerX << "\n";
@@ -593,7 +597,7 @@ void minimalSegmentsForConstraints(
 					{
 						break;
 					}
-					throw IECore::Exception( "DOH" );
+					throw IECore::Exception( fmt::format( "New lower ({}, {}) is steeper than previous segement ({}, {} ) -> ({}, {})", constraintsLower[searchLowerIndex].x, constraintsLower[searchLowerIndex].y, constraintsLower[currentSearchParams.lowerConstraintIndex].x, constraintsLower[currentSearchParams.lowerConstraintIndex].y, constraintsUpper[currentSearchParams.upperConstraintIndex].x, constraintsUpper[currentSearchParams.upperConstraintIndex].y ) );
 				}
 				if( debug ) std::cerr << "\n\n************ SEARCH AFTER ADJUST *********** \n\n";
 				//newSegment = steepestSegmentThroughConstraints( &constraintsLower[0], searchLowerIndex, testLowerStopIndex, &constraintsUpper[0], upperStartIndex, searchUpperIndex + 1, false, false );
@@ -683,7 +687,7 @@ void minimalSegmentsForConstraints(
 		assert( upperStopIndex > upperStartIndex );
 		assert( lowerStopIndex > lowerStartIndex );
 
-		bool foundSlope = constraintsLower[ currentSearchParams.lowerConstraintIndex ].x < constraintsUpper[ currentSearchParams.upperConstraintIndex ].x;
+		bool foundSlope = currentSearchParams.lowerConstraintIndex >= 0 && currentSearchParams.upperConstraintIndex >= 0 && constraintsLower[ currentSearchParams.lowerConstraintIndex ].x < constraintsUpper[ currentSearchParams.upperConstraintIndex ].x;
 		if( foundSlope )
 		{
 			if( advanceUpper )
@@ -898,7 +902,8 @@ void minimalSegmentsForConstraints(
 			// The line we have found is a point sample.
 
 			// TODO - don't like this
-			xStart = segmentEnd.x = currentSearchParams.lowerConstraintIndex >= 0 ? constraintsLower[currentSearchParams.lowerConstraintIndex].x : constraintsLower[0].x;
+			xStart = currentSearchParams.lowerConstraintIndex >= 0 ? constraintsLower[currentSearchParams.lowerConstraintIndex].x : constraintsLower[0].x;
+			segmentEnd.x = xStart;
 			assert( std::isfinite( segmentEnd.x ) && !std::isnan( segmentEnd.x ) );
 			// TODO - intersect and update constraints
 		}
@@ -965,16 +970,22 @@ void minimalSegmentsForConstraints(
 		compressedSample.a = { xStart, compressedSamples.size() > 0 ? compressedSamples.back().b.y : 0.0f };
 		compressedSample.b = segmentEnd;
 
-
 		if( debug )
 		{
+			std::cerr << "FOUND SLOPE = " << foundSlope << "\n";
+			std::cerr << "xStart = " << xStart << "\n";
 			std::cerr << "yFinal: " << segmentEnd.y << "\n";
 			std::cerr << "SEGMENT INDICES: " << currentSearchParams.lowerConstraintIndex << " : " << currentSearchParams.upperConstraintIndex << "\n";
 			std::cerr << "SEGMENT RAW : " << compressedSample.a.x << "\t" << compressedSample.b.x << "\t" << compressedSample.b.y << "\n";
 			std::cerr << "SEGMENT: " << compressedSample.a.x << "\t" << compressedSample.b.x << "\t" << linearToExponential( compressedSample.b.y ) << "\n\n\n";
 		}
 
-		if( compressedSamples.size() )
+		if( !( compressedSample.b.x >= compressedSample.a.x && compressedSample.b.y >= compressedSample.a.y ) )
+		{
+			throw IECore::Exception( fmt::format( "Invalid segment ({}, {}) -> ({}, {})", compressedSample.a.x, compressedSample.a.y, compressedSample.b.x, compressedSample.b.y ) );
+		}
+
+		/*if( compressedSamples.size() )
 		{
 			if( compressedSample.b.y < compressedSamples.back().b.y )
 			{
@@ -995,7 +1006,7 @@ void minimalSegmentsForConstraints(
 		if( !std::isfinite( compressedSample.b.x ) )
 		{
 			throw IECore::Exception( "NON FINITE XBACK" );
-		}
+		}*/
 		compressedSamples.push_back( compressedSample );
 
 		yPrev = segmentEnd.y;
@@ -1115,7 +1126,8 @@ void linearConstraintsForPixel(
 				{
 					float ai = indexToAlpha * i;
 
-					float crossZ = zScale * (-log1pf( -ai ) + zOffset ) + Z;
+					// clamp with Z/ZBack to avoid getting out of order due to floating point precision
+					float crossZ = std::max( Z, std::min( ZBack, zScale * (-log1pf( -ai ) + zOffset ) + Z ) );
 					if( ai - alphaTolerance <= 0.0f )
 					{
 						stepDepth = applyZTol( crossZ, zTolerance, false );
@@ -1144,7 +1156,7 @@ void linearConstraintsForPixel(
 			}
 		}
 	
-		if( targetAlpha + alphaTolerance < 1.0f )
+		if( targetAlpha + alphaTolerance < 1.0f && targetSegmentAlpha > 0.0f )
 		{
 			if( ZBack == Z || targetSegmentAlpha >= 1.0f )
 			{
@@ -1168,7 +1180,12 @@ void linearConstraintsForPixel(
 				for( int i = nextCross; i <= lastCross; i++ )
 				{
 					float ai = indexToAlpha * i;
-					float crossZ = zScale * (-log1pf( -ai ) + zOffset ) + Z;
+					if( ai >= 1.0f )
+					{
+						throw IECore::Exception( "TODO" );
+					}
+					// clamp with Z/ZBack to avoid getting out of order due to floating point precision
+					float crossZ = std::max( Z, std::min( ZBack, zScale * (-log1pf( -ai ) + zOffset ) + Z ) );
 					if( crossZ < nextZTol )
 					{
 						continue;
@@ -1180,13 +1197,28 @@ void linearConstraintsForPixel(
 						stepAlphaLinear
 					} );
 
+					if( applyZTol( ZBack, zTolerance, true ) < applyZTol( crossZ, zTolerance, true ) )
+					{
+						throw IECore::Exception( fmt::format( "Went over {} to {} by {}", ZBack, crossZ, ( -log1pf( -ai ) + log1pf( -targetAlpha ) ) / log1pf( -targetSegmentAlpha ) ) );
+					}				
+
+					if( !std::isfinite( applyZTol( crossZ, zTolerance, true ) ) )
+					{
+						throw IECore::Exception( "A (" + std::to_string( zScale ) + " : "  + std::to_string( targetSegmentAlpha ) + ")" );
+					}
+
 					stepAlphaLinear = exponentialToLinear( ai + alphaTolerance );
 				}
-				
+
 				upperConstraints.push_back( (SimplePoint){
 					applyZTol( ZBack, zTolerance, true ),
 					stepAlphaLinear
 				} );
+
+				if( !std::isfinite( applyZTol( ZBack, zTolerance, true ) ) )
+				{
+					throw IECore::Exception( "B" );
+				}
 			}
 		}
 
@@ -1206,6 +1238,27 @@ void linearConstraintsForPixel(
 		inZBack[ inSamples - 1],
 		exponentialToLinear( targetAlpha )
 	} );
+
+
+	SimplePoint check = upperConstraints.size() ? upperConstraints[0] : SimplePoint();
+	for( SimplePoint &i : upperConstraints )
+	{
+		if( i.x < check.x || i.y < check.y )
+		{
+			throw IECore::Exception( fmt::format( "Invalid upper constraint order ({}, {}) -> ({}, {})", check.x, check.y, i.x, i.y ) );
+		}
+		check = i;
+	}
+
+	check = lowerConstraints[0];
+	for( SimplePoint &i : lowerConstraints )
+	{
+		if( i.x < check.x || i.y < check.y )
+		{
+			throw IECore::Exception( fmt::format( "Invalid lower constraint order ({}, {}) -> ({}, {})", check.x, check.y, i.x, i.y ) );
+		}
+		check = i;
+	}
 }
 
 }
