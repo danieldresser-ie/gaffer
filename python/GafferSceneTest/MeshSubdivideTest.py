@@ -77,49 +77,41 @@ class MeshSubdivideTest( GafferSceneTest.SceneTestCase ) :
 		with GafferTest.TestRunner.PerformanceScope() :
 			subdivide["out"].object( "/sphere" )
 
-	@GafferTest.TestRunner.PerformanceTestMethod()
-	def testBigSourcePerfRegular( self ):
-
-		cube = GafferScene.Cube()
-
-		filter = GafferScene.PathFilter()
-		filter["paths"].setValue( IECore.StringVectorData( [ '/cube' ] ) )
-
-		meshType = GafferScene.MeshType()
-		meshType["in"].setInput( cube["out"] )
-		meshType["filter"].setInput( filter["out"] )
-		meshType["meshType"].setValue( 'catmullClark' )
-
-		# Our set of primitives is currently so limited that the only way to generate a curved primitive
-		# without highly irregular vertices is subdividing a cube.
-		preSubdivide = GafferScene.MeshSubdivide()
-		preSubdivide["in"].setInput( meshType["out"] )
-		preSubdivide["filter"].setInput( filter["out"] )
-		preSubdivide["subdividePolygons"].setValue( True )
-		preSubdivide["levels"].setValue( 7 )
-
-		# May be unnecessary if we add an option to output subdivs
-		remeshType = GafferScene.MeshType()
-		remeshType["in"].setInput( preSubdivide["out"] )
-		remeshType["filter"].setInput( filter["out"] )
-		remeshType["meshType"].setValue( 'catmullClark' )
-
-		subdivide = GafferScene.MeshSubdivide()
-		subdivide["in"].setInput( remeshType["out"] )
-		subdivide["filter"].setInput( filter["out"] )
-		subdivide["subdividePolygons"].setValue( True )
-		subdivide["levels"].setValue( 1 )
-
-		subdivide["in"].object( "/cube" )
-
-		with GafferTest.TestRunner.PerformanceScope() :
-			subdivide["out"].object( "/cube" )
-
 	@GafferTest.TestRunner.PerformanceTestMethod( repeat = 1)
 	def testBigSourcePerfIrregular( self ):
 
 		sphere = GafferScene.Sphere()
 		sphere["divisions"].setValue( imath.V2i( 300, 300 ) )
+
+		filter = GafferScene.PathFilter()
+		filter["paths"].setValue( IECore.StringVectorData( [ '/sphere' ] ) )
+
+		meshType = GafferScene.MeshType()
+		meshType["in"].setInput( sphere["out"] )
+		meshType["filter"].setInput( filter["out"] )
+		meshType["meshType"].setValue( 'catmullClark' )
+
+		subdivide = GafferScene.MeshSubdivide()
+		subdivide["in"].setInput( meshType["out"] )
+		subdivide["filter"].setInput( filter["out"] )
+		subdivide["subdividePolygons"].setValue( True )
+		subdivide["levels"].setValue( 1 )
+
+		subdivide["in"].object( "/sphere" )
+
+		with GafferTest.TestRunner.PerformanceScope() :
+			subdivide["out"].object( "/sphere" )
+
+	@GafferTest.TestRunner.PerformanceTestMethod()
+	def testBigSourcePerfRegular( self ):
+
+		# OpenSubdiv really doesn't like the poles on our sphere primitive. Clipping them off
+		# results in much faster times.
+
+		sphere = GafferScene.Sphere()
+		sphere["divisions"].setValue( imath.V2i( 300, 300 ) )
+		sphere["zMin"].setValue( -0.9999999 )
+		sphere["zMax"].setValue( 0.9999999 )
 
 		filter = GafferScene.PathFilter()
 		filter["paths"].setValue( IECore.StringVectorData( [ '/sphere' ] ) )

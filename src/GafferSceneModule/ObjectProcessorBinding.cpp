@@ -51,6 +51,7 @@
 #include "GafferScene/MeshTangents.h"
 #include "GafferScene/MeshToPoints.h"
 #include "GafferScene/MeshType.h"
+#include "GafferScene/MeshSubdivide.h"
 #include "GafferScene/ObjectProcessor.h"
 #include "GafferScene/Orientation.h"
 #include "GafferScene/Parameters.h"
@@ -87,6 +88,16 @@ void GafferSceneModule::bindObjectProcessor()
 	GafferBindings::DependencyNodeClass<Wireframe>();
 	GafferBindings::DependencyNodeClass<CopyPrimitiveVariables>();
 	GafferBindings::DependencyNodeClass<MeshNormals>();
+
+	{
+		scope s = GafferBindings::DependencyNodeClass<GafferScene::MeshSubdivide>();
+
+		enum_<GafferScene::MeshSubdivide::Scheme>( "Scheme" )
+			.value( "Bilinear", GafferScene::MeshSubdivide::Scheme::Bilinear )
+			.value( "CatmullClark", GafferScene::MeshSubdivide::Scheme::CatmullClark )
+			.value( "Loop", GafferScene::MeshSubdivide::Scheme::Loop )
+		;
+	}
 
 	{
 		scope s = GafferBindings::DependencyNodeClass<GafferScene::MeshTangents>();

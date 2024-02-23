@@ -192,6 +192,7 @@ from . import RenderPassesUI
 from . import DeleteRenderPassesUI
 from . import RenderPassWedgeUI
 from . import LightPositionToolUI
+from . import MeshSubdivideUI
 
 # then all the PathPreviewWidgets. note that the order
 # of import controls the order of display.
