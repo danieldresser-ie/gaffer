@@ -938,7 +938,6 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 		)
 		self.assertBoundingBoxesValid( mergeMeshes["out"] )
 
-	@unittest.skipIf( True, "MergeMeshes currently too slow to run perf tests" )
 	@GafferTest.TestRunner.PerformanceTestMethod()
 	def testPerformance( self ) :
 		sphere = GafferScene.Sphere()
@@ -959,6 +958,9 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 		mergeMeshes["filter"].setInput( allFilter["out"] )
 
 		mergeMeshes["destination"].setValue( "/merged" )
+
+		# Merging 1000 meshes makes sure that performance scales properly ( using the old IECoreScene::MeshAlgo::merge
+		# takes 7 seconds instead of 0.02 seconds ).
 
 		with GafferTest.TestRunner.PerformanceScope():
 			mergeMeshes["out"].object( "/merged" )
