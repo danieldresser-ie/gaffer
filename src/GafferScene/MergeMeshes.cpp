@@ -38,11 +38,8 @@
 
 #include "tbb/task_arena.h"
 
-#include "IECoreScene/MeshAlgo.h"
+#include "GafferScene/Private/IECoreScenePreview/PrimitiveAlgo.h"
 #include "IECoreScene/MeshPrimitive.h"
-#include "IECoreScene/TransformOp.h" // TODO
-#include "IECore/TypeTraits.h"
-#include "IECore/DataAlgo.h"
 #include "IECore/NullObject.h"
 
 using namespace std;
@@ -68,8 +65,7 @@ MergeMeshes::~MergeMeshes()
 
 IECore::ConstObjectPtr MergeMeshes::mergeObjects( const std::vector< std::pair< IECore::ConstObjectPtr, Imath::M44f > > &sources, const Gaffer::Context *context ) const
 {
-	std::vector< IECoreScene::ConstMeshPrimitivePtr > meshes;
-	std::vector< const IECoreScene::MeshPrimitive * > meshPointers;
+	std::vector< std::pair< const IECoreScene::Primitive *, Imath::M44f > > meshes;
 
 	for( const auto &[object, transform] : sources )
 	{
@@ -80,35 +76,17 @@ IECore::ConstObjectPtr MergeMeshes::mergeObjects( const std::vector< std::pair< 
 			continue;
 		}
 
-		vector<string> primVarNames;
-		for( IECoreScene::PrimitiveVariableMap::const_iterator it = m->variables.begin(), eIt = m->variables.end(); it != eIt; ++it )
-		{
-			if( IECore::trait<TypeTraits::IsFloatVec3VectorTypedData>( it->second.data.get() ) )
-			{
-				primVarNames.push_back( it->first );
-			}
-		}
-
-		MeshPrimitivePtr outputMesh = m->copy();
-		TransformOpPtr transformOp = new TransformOp;
-		transformOp->inputParameter()->setValue( outputMesh );
-		transformOp->copyParameter()->setTypedValue( false );
-		transformOp->matrixParameter()->setValue( new M44fData( transform ) );
-		transformOp->primVarsParameter()->setTypedValue( primVarNames );
-		transformOp->operate();
-
-		meshes.push_back( outputMesh );
-		meshPointers.push_back( outputMesh.get() );
+		meshes.push_back( std::make_pair( m, transform ) );
 	}
 
-	if( !meshPointers.size() )
+	if( !meshes.size() )
 	{
 		return IECore::NullObject::defaultNullObject();
 	}
 
 	return tbb::this_task_arena::isolate(
 		[&]() {
-			return IECoreScene::MeshAlgo::merge( meshPointers, context->canceller() );
+			return IECoreScenePreview::PrimitiveAlgo::mergePrimitives( meshes, context->canceller() );
 		}
 	);
 }
