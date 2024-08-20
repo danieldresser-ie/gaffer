@@ -48,126 +48,10 @@ import GafferScene
 import GafferSceneTest
 import GafferTest
 
+# Because we haven't yet figured out where else assertMeshesPraticallyEqual should live
+import GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest
+
 class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
-	# ( Copied from GafferSceneTest/IECoreScenePreviewTest/MeshAlgoTessellateTest.py, might be time to find a central
-	# place for this )
-	# We begin with a bunch of machinery to support assertMeshesPracticallyEqual.
-	# This is a bit overkill for what's actually needed here, but it does seem quite useful in general to be
-	# able to compare meshes that have floating point precision differences, or have different vertex or face
-	# orders, but are still effectively the same mesh. We haven't decided on a central place for this to live,
-	# hopefully we remember it exists next time we need it.
-	def reindexPrimvar( self, var, reindex ):
-		if var.indices:
-			return IECoreScene.PrimitiveVariable( var.interpolation, var.data, IECore.IntVectorData( [ var.indices[i] for i in reindex ] ) )
-		else:
-			data = type( var.data )( [ var.data[i] for i in reindex ] )
-			IECore.setGeometricInterpretation( data, IECore.getGeometricInterpretation( var.data ) )
-			return IECoreScene.PrimitiveVariable( var.interpolation, data )
-
-	def reorderVertsToMatch( self, m, ref ):
-		tree = IECore.V3fTree( ref["P"].data )
-
-		numVerts = m.variableSize( IECoreScene.PrimitiveVariable.Interpolation.Vertex )
-
-		sortIndices = sorted( range( numVerts ), key = lambda i : tree.nearestNeighbour( m["P"].data[i] ) )
-
-		reverseSort = [-1] * numVerts
-		for i in range( len( sortIndices ) ):
-			reverseSort[ sortIndices[i] ] = i
-
-		result = IECoreScene.MeshPrimitive( m.verticesPerFace, IECore.IntVectorData( [ reverseSort[i] for i in m.vertexIds ] ), m.interpolation )
-
-		for k in m.keys():
-			if m[k].interpolation == IECoreScene.PrimitiveVariable.Interpolation.Vertex:
-				result[k] = self.reindexPrimvar( m[k], sortIndices )
-			else:
-				result[k] = m[k]
-		return result
-
-	def canonicalizeFaceOrders( self, m ):
-		offset = 0
-		vertices = []
-		for n in m.verticesPerFace:
-			origIndices = range( offset, offset+n )
-			ids = [ m.vertexIds[i] for i in origIndices ]
-			rotate = ids.index( min( ids ) )
-			vertices.append( list( origIndices )[rotate:] + list( origIndices )[:rotate] )
-			offset += n
-
-		faceReorder = sorted( range( m.numFaces() ), key = lambda i : [ m.vertexIds[ j ] for j in vertices[i] ] )
-
-		faceVertexReorder = sum( [ vertices[i] for i in faceReorder ], [] )
-
-		result = IECoreScene.MeshPrimitive( IECore.IntVectorData( m.verticesPerFace[i] for i in faceReorder ), IECore.IntVectorData( [ m.vertexIds[i] for i in faceVertexReorder ] ), m.interpolation )
-
-		for k in m.keys():
-			if m[k].interpolation == IECoreScene.PrimitiveVariable.Interpolation.FaceVarying:
-				result[k] = self.reindexPrimvar( m[k], faceVertexReorder )
-			elif m[k].interpolation == IECoreScene.PrimitiveVariable.Interpolation.Uniform:
-				result[k] = self.reindexPrimvar( m[k], faceReorder )
-			else:
-				result[k] = m[k]
-		return result
-
-	def betterAssertAlmostEqual( self, a, b, tolerance = 0, msg = "" ):
-		if hasattr( a, "min" ):
-			# Assume it's a box
-			self.betterAssertAlmostEqual( a.min(), b.min(), tolerance, msg )
-			self.betterAssertAlmostEqual( a.max(), b.max(), tolerance, msg )
-			return
-		elif hasattr( a, "v" ):
-			# Assume it's a quat
-			self.betterAssertAlmostEqual( a.r(), b.r(), tolerance, msg )
-			self.betterAssertAlmostEqual( a.v(), b.v(), tolerance, msg )
-			return
-		elif type( a ) == imath.Color4f:
-			# Annoying that imath doesn't have equalWithAbsError on Color4f
-			self.betterAssertAlmostEqual( a.r, b.r, tolerance, msg )
-			self.betterAssertAlmostEqual( a.g, b.g, tolerance, msg )
-			self.betterAssertAlmostEqual( a.b, b.b, tolerance, msg )
-			self.betterAssertAlmostEqual( a.a, b.a, tolerance, msg )
-			return
-
-		if type( a ) == str:
-			match = a == b
-		elif hasattr( a, "equalWithAbsError" ):
-			match = a.equalWithAbsError( b, tolerance )
-		else:
-			match = abs( a - b ) <= tolerance
-
-		if not match:
-			raise AssertionError( ( msg + " : " if msg else "" ) + "%s != %s" % ( repr( a ), repr( b ) ) )
-
-	def assertPrimvarsPracticallyEqual( self, a, b, name, tolerance = 0 ):
-		self.assertEqual( a.interpolation, b.interpolation )
-		expandedVarA = a.expandedData()
-		expandedVarB = b.expandedData()
-
-		if not hasattr( expandedVarA, "size" ):
-			self.betterAssertAlmostEqual( expandedVarA.value, expandedVarB.value, tolerance, "Primvar %s" % name )
-			return
-
-		self.assertEqual( len( expandedVarA ), len( expandedVarB ) )
-
-		hasAbsError = hasattr( expandedVarA[0], "equalWithAbsError" )
-		for i in range( len( expandedVarA ) ):
-			self.betterAssertAlmostEqual(
-				expandedVarA[i], expandedVarB[i], tolerance, 'Primvar "%s" element %i' % ( name, i )
-			)
-
-	def assertMeshesPracticallyEqual( self, a, b, tolerance = 0 ):
-		compareA = self.canonicalizeFaceOrders( a )
-		compareB = self.canonicalizeFaceOrders( self.reorderVertsToMatch( b, a ) )
-
-		self.assertPrimvarsPracticallyEqual( compareA["P"], compareB["P"], "P", tolerance )
-		self.assertEqual( compareA.verticesPerFace, compareB.verticesPerFace )
-		self.assertEqual( compareA.vertexIds, compareB.vertexIds )
-		self.assertEqual( compareA.interpolation, compareB.interpolation )
-
-		self.assertEqual( compareA.keys(), compareB.keys() )
-
-		for k in compareA.keys():
-			self.assertPrimvarsPracticallyEqual( compareA[k], compareB[k], k, tolerance )
 
 	def listLocations( self, scenePlug ):
 
@@ -339,12 +223,12 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 		self.assertEqual( self.listLocations( mergeMeshes["out"] ), self.listLocations( mergeMeshes["in"] ) )
 
 		# After swapping, the bounds get mixed together so that both locations have the total bound
-		self.betterAssertAlmostEqual(
+		GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual(
 			mergeMeshes["out"].bound( "/bigCube" ), mergeMeshes["in"].bound( "/bigCube" ),
 			tolerance = 0.000001
 		)
 		# This is just the total bound in the local space of this location
-		self.betterAssertAlmostEqual(
+		GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual(
 			mergeMeshes["out"].bound( "/bigCube/smallCube" ),
 			imath.Box3f( imath.V3f( -0.5, -3.5, -2.5 ), imath.V3f( 4.5, 0.5, 0.5 ) ),
 			tolerance = 0.000001
@@ -626,14 +510,14 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 			currentBound = reference["out"].bound( "/merged" ) * mergeMeshes["out"].fullTransform( path ).inverse()
 
 			for i in range( len( pathTokens ), 1, -1 ):
-				self.betterAssertAlmostEqual(
+				GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual(
 					mergeMeshes["out"].bound( pathTokens[:i] ),
 					currentBound,
 					tolerance = 0.00001
 				)
 				currentBound = currentBound * mergeMeshes["out"].transform( pathTokens[:i] )
 
-			self.assertMeshesPracticallyEqual(
+			GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 				applyTransform["out"].object( path ),
 				reference["out"].object( "/merged" ), tolerance = 0.000001
 			)
@@ -694,14 +578,14 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 		# If we fixed the precision of Duplicate, then we could probably just use the default checks of
 		# assertScenesEqual, instead of using tolerances here
 		for l in self.listLocations( mergeMeshes["out"] ):
-			self.betterAssertAlmostEqual(
+			GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual(
 				mergeMeshes["out"].transform( l ), refFreeze["out"].transform( l ), tolerance = 0.000001
 			)
-			self.betterAssertAlmostEqual(
+			GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual(
 				mergeMeshes["out"].bound( l ), refFreeze["out"].bound( l ), tolerance = 0.000001
 			)
 			if not ( type( mergeMeshes["out"].object( l ) ) == IECore.NullObject ):
-				self.assertMeshesPracticallyEqual(
+				GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 					mergeMeshes["out"].object( l ), refFreeze["out"].object( l ), tolerance = 0.000001
 				)
 
@@ -751,7 +635,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 
 		self.assertEqual( mergeMeshes["out"].object( "/A" ).numFaces(), 180 )
 		self.assertEqual( mergeMeshes["out"].object( "/B" ).numFaces(), 198 )
-		self.assertMeshesPracticallyEqual(
+		GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 			remerge["out"].object( "/merged" ),
 			reference["out"].object( "/merged" ), tolerance = 0.000001
 		)
@@ -844,14 +728,14 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 				# so we have to use a reference path that also involves a merge. We can partially validate this
 				# by validating against the reference file when there are no abandoned locations.
 				if f == pathFilterAll:
-					self.assertMeshesPracticallyEqual(
+					GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 						prunedReferenceMerge["out"].object( "/merged" ),
 						reference["out"].object( "/merged" ), tolerance = 0.00001
 					)
 				# We can't compare to the remerge the reference mesh when there is a filter - it won't match
 				# due to abandoned locations. But we can compare to a one-step reference merge that just skips
 				# abandoned locations.
-				self.assertMeshesPracticallyEqual(
+				GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 					remerge["out"].object( "/merged" ),
 					prunedReferenceMerge["out"].object( "/merged" ), tolerance = 0.00001
 				)
@@ -872,7 +756,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 
 					refBound = self.referenceBound( uniqueDest, sources, mergeMeshes["in"], mergeMeshes["out"] )
 
-					self.betterAssertAlmostEqual( mergeMeshes["out"].bound( uniqueDest ), refBound, tolerance = 0.00001 )
+					GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().betterAssertAlmostEqual( mergeMeshes["out"].bound( uniqueDest ), refBound, tolerance = 0.00001 )
 
 				# If we attach a source so we're no longer working in place, all the target destinations should
 				# get uniquified so that we end up with 2 full copies of the mesh.
@@ -883,7 +767,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 				else:
 					prunedReferenceFilter["paths"].setValue( IECore.StringVectorData( [ i for i in [ GafferScene.ScenePlug.pathToString( j ) for j in allLocations ] if not i in f["paths"].getValue()] ) )
 
-				self.assertMeshesPracticallyEqual(
+				GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 					remerge["out"].object( "/merged" ),
 					doubleRef["out"].object( "/merged" ), tolerance = 0.00001
 				)
@@ -911,7 +795,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 
 		mergeMeshes["testDestinations"].setValue( IECore.StringVectorData( [ "/merged" ] ) )
 
-		self.assertMeshesPracticallyEqual( mergeMeshes["out"].object( "/merged" ), reference["out"].object( "/merged" ) )
+		GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual( mergeMeshes["out"].object( "/merged" ), reference["out"].object( "/merged" ) )
 		self.assertBoundingBoxesValid( mergeMeshes["out"] )
 
 		# A few more weird random scrambles for good luck
@@ -920,7 +804,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 				[ "/new", "/new/loc", "/group/group/group/group/group/cube", "/group/group1/group/group/group/cube/merged" ] +
 				random.sample( [ GafferScene.ScenePlug.pathToString(i) for i in allLocations ], subsetSize )
 			) )
-			self.assertMeshesPracticallyEqual(
+			GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 				remerge["out"].object( "/merged" ),
 				reference["out"].object( "/merged" ), tolerance = 0.000002
 			)
@@ -932,7 +816,7 @@ class MergeMeshesTest( GafferSceneTest.SceneTestCase ) :
 			mergeMeshes["filter"].setInput( pathFilterAll["out"] )
 
 		mergeMeshes["source"].setInput( sourceOffset["out"] )
-		self.assertMeshesPracticallyEqual(
+		GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual(
 			remerge["out"].object( "/merged" ),
 			doubleRef["out"].object( "/merged" ), tolerance = 0.00001
 		)
