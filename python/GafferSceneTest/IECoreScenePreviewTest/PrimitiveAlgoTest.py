@@ -40,6 +40,7 @@ import itertools
 import math
 import pathlib
 import random
+import threading
 import time
 
 import IECore
@@ -141,6 +142,8 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 			)
 		)
 
+	def testTransformPrimitiveCancellation( self ):
+
 		# Test cancellation
 		# ( This function is so fast that we actually need some pretty enormous data to show cancellation doing
 		# something )
@@ -149,18 +152,29 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 			divisions = imath.V2i( 2000, 2000 )
 		)
 
+		m = imath.M44f()
+		m.translate( imath.V3f( 10, 1, 0 ) )
+
+		canceller = IECore.Canceller()
+
 		def slowTransform():
-			PrimitiveAlgo.transformPrimitive( bigPlane, m, Gaffer.Context.current().canceller() )
+			try:
+				PrimitiveAlgo.transformPrimitive( bigPlane, m, canceller )
+			except IECore.Cancelled:
+				pass
 
 		t = time.time()
-		backgroundTask = Gaffer.ParallelAlgo.callOnBackgroundThread( None, slowTransform )
+		thread = threading.Thread( target = slowTransform )
+		thread.start()
 
 		# Delay so that the computation actually starts, rather
 		# than being avoided entirely.
 		time.sleep( 0.01 )
 
 		acceptableCancellationDelay = 0.01 if GafferTest.inCI() else 0.001
-		backgroundTask.cancelAndWait()
+
+		canceller.cancel()
+		thread.join()
 		self.assertLess( time.time() - t, 0.01 + acceptableCancellationDelay )
 
 
