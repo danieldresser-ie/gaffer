@@ -176,6 +176,9 @@ class MeshAlgoTessellateTest( GafferTest.TestCase ) :
 		self.assertEqual( compareA.verticesPerFace, compareB.verticesPerFace )
 		self.assertEqual( compareA.vertexIds, compareB.vertexIds )
 		self.assertEqual( compareA.interpolation, compareB.interpolation )
+		self.assertEqual( compareA.getInterpolateBoundary(), compareB.getInterpolateBoundary() )
+		self.assertEqual( compareA.getFaceVaryingLinearInterpolation(), compareB.getFaceVaryingLinearInterpolation() )
+		self.assertEqual( compareA.getTriangleSubdivisionRule(), compareB.getTriangleSubdivisionRule() )
 
 		# \todo These crease/corner tests are stricter than necessary - two meshes are effectively
 		# equal even if their corners are specified in a different order. But we're only really putting
