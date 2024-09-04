@@ -487,6 +487,9 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 	// Mesh specific globals
 	std::string resultMeshInterpolation;
+	IECore::InternedString resultMeshInterpolateBound;
+	IECore::InternedString resultMeshFaceVaryingLI;
+	IECore::InternedString resultMeshTriangleSub;
 
 	// Curve specific globals
 	const CubicBasisf invalidBasis( Imath::M44f( 0.0f ), 0 );
@@ -562,7 +565,11 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 			if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
 			{
-				resultMeshInterpolation = static_cast< const MeshPrimitive *>( primitives[i].first )->interpolation();
+				const MeshPrimitive *sourceMesh = static_cast< const MeshPrimitive *>( primitives[i].first );
+				resultMeshInterpolation = sourceMesh->interpolation();
+				resultMeshInterpolateBound = sourceMesh->getInterpolateBoundary();
+				resultMeshFaceVaryingLI = sourceMesh->getFaceVaryingLinearInterpolation();
+				resultMeshTriangleSub = sourceMesh->getTriangleSubdivisionRule();
 			}
 			else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
 			{
@@ -588,20 +595,63 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 			if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
 			{
 				const MeshPrimitive *sourceMesh = static_cast< const MeshPrimitive *>( primitives[i].first );
-				const std::string interp = sourceMesh->interpolation();
+
 				if(
 					resultMeshInterpolation != "" &&
-					interp != resultMeshInterpolation
+					sourceMesh->interpolation() != resultMeshInterpolation
 				)
 				{
 					msg( Msg::Warning, "mergePrimitives",
 						fmt::format(
 							"Ignoring mismatch between mesh interpolations {} and {} and defaulting to linear",
-							resultMeshInterpolation, interp
+							resultMeshInterpolation, sourceMesh->interpolation()
 						)
 					);
 					resultMeshInterpolation = "";
 				}
+
+				if(
+					resultMeshInterpolateBound != "" &&
+					sourceMesh->getInterpolateBoundary() != resultMeshInterpolateBound
+				)
+				{
+					msg( Msg::Warning, "mergePrimitives",
+						fmt::format(
+							"Ignoring mismatch between mesh interpolate bound {} and {} and defaulting to edgeAndCorner",
+							resultMeshInterpolateBound.string(), sourceMesh->getInterpolateBoundary().string()
+						)
+					);
+					resultMeshInterpolateBound = "";
+				}
+
+				if(
+					resultMeshFaceVaryingLI != "" &&
+					sourceMesh->getFaceVaryingLinearInterpolation() != resultMeshFaceVaryingLI
+				)
+				{
+					msg( Msg::Warning, "mergePrimitives",
+						fmt::format(
+							"Ignoring mismatch between mesh face varying linear interpolation {} and {} and defaulting to cornersPlus1",
+							resultMeshFaceVaryingLI.string(), sourceMesh->getFaceVaryingLinearInterpolation().string()
+						)
+					);
+					resultMeshFaceVaryingLI = "";
+				}
+
+				if(
+					resultMeshTriangleSub != "" &&
+					sourceMesh->getTriangleSubdivisionRule() != resultMeshTriangleSub
+				)
+				{
+					msg( Msg::Warning, "mergePrimitives",
+						fmt::format(
+							"Ignoring mismatch between mesh triangle subdivision rule {} and {} and defaulting to catmullClark",
+							resultMeshTriangleSub.string(), sourceMesh->getTriangleSubdivisionRule().string()
+						)
+					);
+					resultMeshTriangleSub = "";
+				}
+
 			}
 			else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
 			{
@@ -1161,6 +1211,24 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 		}
 
 		resultMesh->setTopologyUnchecked( resultVerticesPerFaceData, resultVertexIdsData, totalInterpolation[ PrimitiveVariable::Vertex ], resultMeshInterpolation );
+
+		if( resultMeshInterpolateBound == "" )
+		{
+			resultMeshInterpolateBound = MeshPrimitive::interpolateBoundaryEdgeAndCorner;
+		}
+		resultMesh->setInterpolateBoundary( resultMeshInterpolateBound );
+
+		if( resultMeshFaceVaryingLI == "" )
+		{
+			resultMeshFaceVaryingLI = MeshPrimitive::faceVaryingLinearInterpolationCornersPlus1;
+		}
+		resultMesh->setFaceVaryingLinearInterpolation( resultMeshFaceVaryingLI );
+
+		if( resultMeshTriangleSub == "" )
+		{
+			resultMeshTriangleSub = MeshPrimitive::triangleSubdivisionRuleCatmullClark;
+		}
+		resultMesh->setTriangleSubdivisionRule( resultMeshTriangleSub );
 
 		if( resultCornerIdsData )
 		{

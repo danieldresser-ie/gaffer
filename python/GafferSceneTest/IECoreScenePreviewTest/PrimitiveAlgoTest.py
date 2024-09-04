@@ -202,18 +202,6 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 				IECore.GeometricData.Interpretation.Point )
 		)
 
-		mesh1.setInterpolation( "catmullClark" )
-
-		with IECore.CapturingMessageHandler() as mh:
-			mergedNew = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
-		self.assertEqual( len( mh.messages ), 1 )
-		self.assertEqual( mh.messages[0].message, 'Ignoring mismatch between mesh interpolations catmullClark and linear and defaulting to linear' )
-
-		mesh2.setInterpolation( "catmullClark" )
-		mergedNew = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
-		merged.setInterpolation( "catmullClark" )
-		self.assertEqual( mergedNew, merged )
-
 		curveVerts1 = [ imath.V3f( i ) for i in [ (0,0,0),(0,1,0),(1,1,0),(1,0,0) ] ]
 		curves1 = IECoreScene.CurvesPrimitive( IECore.IntVectorData( [ 4 ] ), IECore.CubicBasisf.linear(), False,
 			IECore.V3fVectorData( curveVerts1 )
@@ -267,6 +255,63 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 		merged = PrimitiveAlgo.mergePrimitives( [( points1, imath.M44f() ), ( points2, imath.M44f() ) ] )
 		self.assertTrue( merged.arePrimitiveVariablesValid() )
 		self.assertEqual( merged["P"], IECoreScene.PrimitiveVariable( Interpolation.Vertex, IECore.V3fVectorData( pointVerts1 + pointVerts2, IECore.GeometricData.Interpretation.Point ) ) )
+
+
+	def testMergePrimitiveMeshInterpolate( self ) :
+
+		mesh1 = IECoreScene.MeshPrimitive.createPlane( imath.Box2f( imath.V2f( -2 ), imath.V2f( 2 ) ) )
+		mesh2 = IECoreScene.MeshPrimitive.createPlane( imath.Box2f( imath.V2f( -2 ), imath.V2f( 3 ) ) )
+
+		ref = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+
+		mesh1.setInterpolation( "catmullClark" )
+
+		with IECore.CapturingMessageHandler() as mh:
+			merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		self.assertEqual( len( mh.messages ), 1 )
+		self.assertEqual( mh.messages[0].message, 'Ignoring mismatch between mesh interpolations catmullClark and linear and defaulting to linear' )
+		self.assertEqual( merged, ref )
+
+		mesh2.setInterpolation( "catmullClark" )
+		merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		ref.setInterpolation( "catmullClark" )
+		self.assertEqual( merged, ref )
+
+		mesh2.setInterpolateBoundary( "edgeOnly" )
+		with IECore.CapturingMessageHandler() as mh:
+			merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		self.assertEqual( len( mh.messages ), 1 )
+		self.assertEqual( mh.messages[0].message, 'Ignoring mismatch between mesh interpolate bound edgeAndCorner and edgeOnly and defaulting to edgeAndCorner' )
+		self.assertEqual( merged, ref )
+
+		mesh1.setInterpolateBoundary( "edgeOnly" )
+		merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		ref.setInterpolateBoundary( "edgeOnly" )
+		self.assertEqual( merged, ref )
+
+		mesh2.setFaceVaryingLinearInterpolation( "cornersPlus2" )
+		with IECore.CapturingMessageHandler() as mh:
+			merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		self.assertEqual( len( mh.messages ), 1 )
+		self.assertEqual( mh.messages[0].message, 'Ignoring mismatch between mesh face varying linear interpolation cornersPlus1 and cornersPlus2 and defaulting to cornersPlus1' )
+		self.assertEqual( merged, ref )
+
+		mesh1.setFaceVaryingLinearInterpolation( "cornersPlus2" )
+		merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		ref.setFaceVaryingLinearInterpolation( "cornersPlus2" )
+		self.assertEqual( merged, ref )
+
+		mesh2.setTriangleSubdivisionRule( "smooth" )
+		with IECore.CapturingMessageHandler() as mh:
+			merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		self.assertEqual( len( mh.messages ), 1 )
+		self.assertEqual( mh.messages[0].message, 'Ignoring mismatch between mesh triangle subdivision rule catmullClark and smooth and defaulting to catmullClark' )
+		self.assertEqual( merged, ref )
+
+		mesh1.setTriangleSubdivisionRule( "smooth" )
+		merged = PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( mesh2, imath.M44f() ) ] )
+		ref.setTriangleSubdivisionRule( "smooth" )
+		self.assertEqual( merged, ref )
 
 	def testMismatchedInterpolation( self ) :
 
