@@ -316,32 +316,31 @@ PrimitiveVariable::Interpolation mergeInterpolations(
 )
 {
 	PrimitiveVariable::Interpolation result;
-	if( a == PrimitiveVariable::Invalid || b == PrimitiveVariable::Invalid )
-	{
-		// Invalid inputs are always invalid.
-		result = PrimitiveVariable::Invalid;
-	}
-	else if( primType == IECoreScene::PointsPrimitiveTypeId )
+
+	// In general, more specific Interpolations have a higher enum value, so we want to take
+	// whichever interpolation is higher. This doesn't always work, so afterwards we have several
+	// special cases to clean things up.
+	result = std::max( a, b );
+
+	if( primType == IECoreScene::PointsPrimitiveTypeId )
 	{
 		// On points, everything is output as Vertex
 		result = PrimitiveVariable::Vertex;
 	}
-	else if( interpolationMatches( primType, a, b ) )
+	else if(
+		primType == IECoreScene::MeshPrimitiveTypeId &&
+		result >= PrimitiveVariable::Vertex &&
+		( a == PrimitiveVariable::Uniform || b == PrimitiveVariable::Uniform )
+	)
 	{
-		// If they're the same, then we don't need to promote.
-		result = a;
+		// On meshes, if you mix Uniform and Vertex, we need to use FaceVarying to represent both
+		result = PrimitiveVariable::FaceVarying;
 	}
-	else if( a == PrimitiveVariable::Constant || ( primType != IECoreScene::MeshPrimitiveTypeId && a == PrimitiveVariable::Uniform ) )
-	{
-		// If a is effectively constant, then we can just take b.
-		result = b;
-	}
-	else if( b == PrimitiveVariable::Constant || ( primType != IECoreScene::MeshPrimitiveTypeId && b == PrimitiveVariable::Uniform ) )
-	{
-		// If b is effectively constant, then we can just take a.
-		result = a;
-	}
-	else if( primType == IECoreScene::CurvesPrimitiveTypeId )
+	else if(
+		primType == IECoreScene::CurvesPrimitiveTypeId &&
+		result >= PrimitiveVariable::Varying &&
+		( a == PrimitiveVariable::Vertex || b == PrimitiveVariable::Vertex )
+	)
 	{
 		// Mixing Vertex/Varying on curves requires a lossy resample that would make things more complex.
 		msg( Msg::Warning, "mergePrimitives",
@@ -351,20 +350,6 @@ PrimitiveVariable::Interpolation mergeInterpolations(
 			)
 		);
 		result = PrimitiveVariable::Invalid;
-	}
-	else
-	{
-		// The only remaining possibility is that we're on a mesh has a FaceVarying primvar, or
-		// mixes Vertex and Uniform, which requires FaceVarying.
-		assert( primType == IECoreScene::MeshPrimitiveTypeId );
-		assert(
-			( a == PrimitiveVariable::Varying || b == PrimitiveVariable::FaceVarying ) ||
-			(
-				( interpolationMatches( primType, a, PrimitiveVariable::Vertex ) || interpolationMatches( primType, b, PrimitiveVariable::Vertex ) ) &&
-				( a == PrimitiveVariable::Uniform || b == PrimitiveVariable::Uniform )
-			)
-		);
-		result = PrimitiveVariable::FaceVarying;
 	}
 
 	// When merging interpolations, if the interpolation has synonymous names, we always choose the canonical one
