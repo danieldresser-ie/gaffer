@@ -482,83 +482,407 @@ void copyIndices(
 }
 
 
-} // namespace
-
-
-void PrimitiveAlgo::transformPrimitive(
-	IECoreScene::Primitive &primitive, Imath::M44f matrix,
-	const IECore::Canceller *canceller
-)
+struct MergePrimitivesMeshResult
 {
-	if( matrix == Imath::M44f() )
+	using PrimitiveType = IECoreScene::MeshPrimitive;
+
+	// Initialize, and allocate storage for the topology
+	MergePrimitivesMeshResult(
+		const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives,
+		const std::vector< int > &totalInterpolation
+	)
 	{
-		// Early out for identity matrix
-		return;
+
+		result = new IECoreScene::MeshPrimitive();
+
+		// Need to hold onto this until we pass it to the result in finalize
+		numVertices = totalInterpolation[ PrimitiveVariable::Vertex ];
+
+		setMeshGlobals( result.get(), primitives );
+
+		resultVerticesPerFaceData = new IntVectorData;
+		resultVertexIdsData = new IntVectorData;
+
+		resultVerticesPerFaceData->writable().resize( totalInterpolation[ PrimitiveVariable::Uniform ] );
+		resultVertexIdsData->writable().resize( totalInterpolation[ PrimitiveVariable::FaceVarying ] );
+
+		int totalAccumCorners = 0;
+		int totalAccumCreases = 0;
+		int totalAccumCreaseIds = 0;
+
+		countCorners.reserve( primitives.size() );
+		countCreases.reserve( primitives.size() );
+		countCreaseIds.reserve( primitives.size() );
+		accumCorners.reserve( primitives.size() );
+		accumCreases.reserve( primitives.size() );
+		accumCreaseIds.reserve( primitives.size() );
+
+		for( const auto & [prim, matrix] : primitives )
+		{
+			const MeshPrimitive *mesh = static_cast< const MeshPrimitive * >( prim );
+
+			countCorners.push_back( mesh->cornerIds()->readable().size() );
+			accumCorners.push_back( totalAccumCorners );
+			totalAccumCorners += countCorners.back();
+
+			countCreases.push_back( mesh->creaseLengths()->readable().size() );
+			accumCreases.push_back( totalAccumCreases );
+			totalAccumCreases += countCreases.back();
+
+			countCreaseIds.push_back( mesh->creaseIds()->readable().size() );
+			accumCreaseIds.push_back( totalAccumCreaseIds );
+			totalAccumCreaseIds += countCreaseIds.back();
+		}
+
+		if( totalAccumCorners )
+		{
+			resultCornerIdsData = new IntVectorData;
+			resultCornerIdsData->writable().resize( totalAccumCorners );
+			resultCornerSharpnessesData = new FloatVectorData;
+			resultCornerSharpnessesData->writable().resize( totalAccumCorners );
+		}
+
+		if( totalAccumCreases )
+		{
+			resultCreaseLengthsData = new IntVectorData;
+			resultCreaseLengthsData->writable().resize( totalAccumCreases );
+			resultCreaseSharpnessesData = new FloatVectorData;
+			resultCreaseSharpnessesData->writable().resize( totalAccumCreases );
+			resultCreaseIdsData = new IntVectorData;
+			resultCreaseIdsData->writable().resize( totalAccumCreaseIds );
+		}
 	}
 
-	Imath::M44f normalMatrix = normalTransform( matrix );
-
-	for( const auto &[name, var] : primitive.variables )
+	// This must be called once for each source primitive
+	void copyFromSource(
+		const MeshPrimitive *mesh, int i,
+		std::vector<std::vector<int> > &countInterpolation, std::vector< std::vector<int> > &accumInterpolation,
+		const IECore::Canceller *canceller
+	)
 	{
+		int startUniform = accumInterpolation[ PrimitiveVariable::Uniform ][i];
+		int numUniform = countInterpolation[ PrimitiveVariable::Uniform ][i];
+		int startVertex = accumInterpolation[ PrimitiveVariable::Vertex ][i];
+		int startFaceVarying = accumInterpolation[ PrimitiveVariable::FaceVarying ][i];
+		int numFaceVarying = countInterpolation[ PrimitiveVariable::FaceVarying ][i];
+
+		const int *sourceVerticesPerFace = &mesh->verticesPerFace()->readable()[0];
+		int *resultVerticesPerFace = &resultVerticesPerFaceData->writable()[ startUniform ];
 		Canceller::check( canceller );
-		V3fVectorData *vecVar = IECore::runTimeCast<V3fVectorData>( var.data.get() );
-		V3fData *vecConstVar = IECore::runTimeCast<V3fData>( var.data.get() );
-		if( !vecVar && !vecConstVar )
+		for( int j = 0; j < numUniform; j++ )
 		{
-			continue;
+			*(resultVerticesPerFace++) = *(sourceVerticesPerFace++);
 		}
 
-		GeometricData::Interpretation interp = vecVar ? vecVar->getInterpretation() : vecConstVar->getInterpretation();
-		if( !(
-			interp == GeometricData::Interpretation::Point ||
-			interp == GeometricData::Interpretation::Vector ||
-			interp == GeometricData::Interpretation::Normal
-		) )
+		const int* sourceVertexIds = &mesh->vertexIds()->readable()[0];
+		int *resultVertexIds = &resultVertexIdsData->writable()[startFaceVarying];
+		Canceller::check( canceller );
+		for( int j = 0; j < numFaceVarying; j++ )
 		{
-			continue;
+			*(resultVertexIds++) = *(sourceVertexIds++) + startVertex;
 		}
 
-		if( vecVar )
+		if( resultCornerIdsData )
 		{
-			for( Imath::V3f &i : vecVar->writable() )
+			const int *sourceCornerIds = &mesh->cornerIds()->readable()[0];
+			const float *sourceCornerSharpnesses = &mesh->cornerSharpnesses()->readable()[0];
+			int *resultCornerIds = &resultCornerIdsData->writable()[ accumCorners[i] ];
+			float *resultCornerSharpnesses = &resultCornerSharpnessesData->writable()[ accumCorners[i] ];
+			Canceller::check( canceller );
+			for( int j = 0; j < countCorners[i]; j++ )
 			{
-				Canceller::check( canceller );
-				transformPrimVarValue( i, i, matrix, normalMatrix, interp );
+				*(resultCornerIds++) = *(sourceCornerIds++) + startVertex;
+				*(resultCornerSharpnesses++) = *(sourceCornerSharpnesses++);
 			}
 		}
-		else
+
+		if( resultCreaseLengthsData )
 		{
-			// Fairly weird corner case, but technically Constant primvars could need transforming too
-			transformPrimVarValue( vecConstVar->writable(), vecConstVar->writable(), matrix, normalMatrix, interp );
+			const int *sourceCreaseLengths = &mesh->creaseLengths()->readable()[0];
+			const float *sourceCreaseSharpnesses = &mesh->creaseSharpnesses()->readable()[0];
+			int *resultCreaseLengths = &resultCreaseLengthsData->writable()[accumCreases[i]];
+			float *resultCreaseSharpnesses = &resultCreaseSharpnessesData->writable()[accumCreases[i]];
+			Canceller::check( canceller );
+			for( int j = 0; j < countCreases[i]; j++ )
+			{
+				*(resultCreaseLengths++) = *(sourceCreaseLengths++);
+				*(resultCreaseSharpnesses++) = *(sourceCreaseSharpnesses++);
+			}
+
+			const int *sourceCreaseIds = &mesh->creaseIds()->readable()[0];
+			int *resultCreaseIds = &resultCreaseIdsData->writable()[accumCreaseIds[i]];
+			Canceller::check( canceller );
+			for( int j = 0; j < countCreaseIds[i]; j++ )
+			{
+				*(resultCreaseIds++) = *(sourceCreaseIds++) + startVertex;
+			}
 		}
 	}
-}
 
-IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
+	// This must be called after all calls to copyFromSource
+	void finalize()
+	{
+
+		result->setTopologyUnchecked( resultVerticesPerFaceData, resultVertexIdsData, numVertices, result->interpolation() );
+
+		if( resultCornerIdsData )
+		{
+			result->setCorners( resultCornerIdsData.get(), resultCornerSharpnessesData.get() );
+		}
+
+		if( resultCreaseLengthsData )
+		{
+			result->setCreases(
+				resultCreaseLengthsData.get(), resultCreaseIdsData.get(), resultCreaseSharpnessesData.get()
+			);
+		}
+	}
+
+	static void setMeshGlobals(
+		MeshPrimitive *result,
+		const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives
+	)
+	{
+		const MeshPrimitive *firstMesh = static_cast< const MeshPrimitive * >( primitives[0].first );
+		std::string meshInterpolation = firstMesh->interpolation();
+		IECore::InternedString interpolateBound = firstMesh->getInterpolateBoundary();
+		IECore::InternedString faceVaryingLI = firstMesh->getFaceVaryingLinearInterpolation();
+		IECore::InternedString triangleSub = firstMesh->getTriangleSubdivisionRule();
+
+		for( const auto & [prim, matrix] : primitives )
+		{
+			const MeshPrimitive *mesh = static_cast< const MeshPrimitive * >( prim );
+			if(
+				meshInterpolation != "" &&
+				mesh->interpolation() != meshInterpolation
+			)
+			{
+				msg( Msg::Warning, "mergePrimitives",
+					fmt::format(
+						"Ignoring mismatch between mesh interpolations {} and {} and defaulting to linear",
+						meshInterpolation, mesh->interpolation()
+					)
+				);
+				meshInterpolation = "";
+			}
+
+			if(
+				interpolateBound != "" &&
+				mesh->getInterpolateBoundary() != interpolateBound
+			)
+			{
+				msg( Msg::Warning, "mergePrimitives",
+					fmt::format(
+						"Ignoring mismatch between mesh interpolate bound {} and {} and defaulting to edgeAndCorner",
+						interpolateBound.string(), mesh->getInterpolateBoundary().string()
+					)
+				);
+				interpolateBound = "";
+			}
+
+			if(
+				faceVaryingLI != "" &&
+				mesh->getFaceVaryingLinearInterpolation() != faceVaryingLI
+			)
+			{
+				msg( Msg::Warning, "mergePrimitives",
+					fmt::format(
+						"Ignoring mismatch between mesh face varying linear interpolation {} and {} and defaulting to cornersPlus1",
+						faceVaryingLI.string(), mesh->getFaceVaryingLinearInterpolation().string()
+					)
+				);
+				faceVaryingLI = "";
+			}
+
+			if(
+				triangleSub != "" &&
+				mesh->getTriangleSubdivisionRule() != triangleSub
+			)
+			{
+				msg( Msg::Warning, "mergePrimitives",
+					fmt::format(
+						"Ignoring mismatch between mesh triangle subdivision rule {} and {} and defaulting to catmullClark",
+						triangleSub.string(), mesh->getTriangleSubdivisionRule().string()
+					)
+				);
+				triangleSub = "";
+			}
+		}
+
+		if( meshInterpolation == "" )
+		{
+			meshInterpolation = "linear";
+		}
+		result->setInterpolation( meshInterpolation );
+
+		if( interpolateBound == "" )
+		{
+			interpolateBound = MeshPrimitive::interpolateBoundaryEdgeAndCorner;
+		}
+		result->setInterpolateBoundary( interpolateBound );
+
+		if( faceVaryingLI == "" )
+		{
+			faceVaryingLI = MeshPrimitive::faceVaryingLinearInterpolationCornersPlus1;
+		}
+		result->setFaceVaryingLinearInterpolation( faceVaryingLI );
+
+		if( triangleSub == "" )
+		{
+			triangleSub = MeshPrimitive::triangleSubdivisionRuleCatmullClark;
+		}
+		result->setTriangleSubdivisionRule( triangleSub );
+	}
+
+	IECoreScene::MeshPrimitivePtr result;
+	IntVectorDataPtr resultVerticesPerFaceData;
+	IntVectorDataPtr resultVertexIdsData;
+	int numVertices;
+
+	std::vector<int> countCorners;
+	std::vector<int> countCreases;
+	std::vector<int> countCreaseIds;
+	std::vector<int> accumCorners;
+	std::vector<int> accumCreases;
+	std::vector<int> accumCreaseIds;
+
+	IntVectorDataPtr resultCornerIdsData;
+	FloatVectorDataPtr resultCornerSharpnessesData;
+	IntVectorDataPtr resultCreaseLengthsData;
+	IntVectorDataPtr resultCreaseIdsData;
+	FloatVectorDataPtr resultCreaseSharpnessesData;
+};
+
+
+struct MergePrimitivesCurvesResult
+{
+	using PrimitiveType = IECoreScene::CurvesPrimitive;
+
+	// Initialize, and allocate storage for the topology
+	MergePrimitivesCurvesResult(
+		const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives,
+		const std::vector< int > &totalInterpolation
+	)
+	{
+		result = new IECoreScene::CurvesPrimitive();
+
+		resultVerticesPerCurveData = new IntVectorData;
+		resultVerticesPerCurveData->writable().resize( totalInterpolation[ PrimitiveVariable::Uniform ] );
+
+		setCurvesGlobals( result.get(), primitives );
+	}
+
+	// This must be called once for each source primitive
+	void copyFromSource(
+		const CurvesPrimitive *curves, int i,
+		std::vector<std::vector<int> > &countInterpolation, std::vector< std::vector<int> > &accumInterpolation,
+		const IECore::Canceller *canceller
+	)
+	{
+		int startUniform = accumInterpolation[ PrimitiveVariable::Uniform ][i];
+		int numUniform = countInterpolation[ PrimitiveVariable::Uniform ][i];
+
+		int *resultVerticesPerCurve = &resultVerticesPerCurveData->writable()[ startUniform ];
+		const int *sourceVerticesPerCurve = &curves->verticesPerCurve()->readable()[0];
+		Canceller::check( canceller );
+		for( int j = 0; j < numUniform; j++ )
+		{
+			*(resultVerticesPerCurve++) = *(sourceVerticesPerCurve++);
+		}
+	}
+
+	// This must be called after all calls to copyFromSource
+	void finalize()
+	{
+		result->setTopology( resultVerticesPerCurveData, result->basis(), result->periodic() );
+	}
+
+	static void setCurvesGlobals(
+		CurvesPrimitive *result,
+		const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives
+	)
+	{
+		const CurvesPrimitive *firstCurves = static_cast< const CurvesPrimitive * >( primitives[0].first );
+		CubicBasisf basis = firstCurves->basis();
+		bool periodic = firstCurves->periodic();
+
+		static const CubicBasisf invalidBasis( Imath::M44f( 0.0f ), 0 );
+
+		for( const auto & [prim, matrix] : primitives )
+		{
+			const CurvesPrimitive *curves = static_cast< const CurvesPrimitive * >( prim );
+			if( curves->periodic() != periodic )
+			{
+				throw IECore::Exception( "Cannot merge periodic and non-periodic curves" );
+			}
+
+			if(
+				basis != invalidBasis &&
+				curves->basis() != basis
+			)
+			{
+				msg( Msg::Warning, "mergePrimitives",
+					"Ignoring mismatch in curve basis and defaulting to linear"
+				);
+				basis = invalidBasis;
+			}
+		}
+
+		if( basis == invalidBasis )
+		{
+			basis = CubicBasisf::linear();
+		}
+
+		result->setTopology( result->verticesPerCurve(), basis, periodic );
+	}
+
+	IECoreScene::CurvesPrimitivePtr result;
+	IntVectorDataPtr resultVerticesPerCurveData;
+};
+
+struct MergePrimitivesPointsResult
+{
+	using PrimitiveType = IECoreScene::PointsPrimitive;
+
+	MergePrimitivesPointsResult(
+		const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives,
+		const std::vector< int > &totalInterpolation
+	)
+	{
+		result = new IECoreScene::PointsPrimitive( totalInterpolation[ PrimitiveVariable::Vertex ] );
+	}
+
+	void copyFromSource(
+		const PointsPrimitive *curves, int i,
+		std::vector<std::vector<int> > &countInterpolation, std::vector< std::vector<int> > &accumInterpolation,
+		const IECore::Canceller *canceller
+	)
+	{
+		// Points don't have any topology to copy
+	}
+
+	void finalize()
+	{
+	}
+
+	IECoreScene::PointsPrimitivePtr result;
+};
+
+template<class ResultStruct>
+IECoreScene::PrimitivePtr mergePrimitivesInternal(
 	const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives,
 	const IECore::Canceller *canceller
 )
 {
-	IECoreScene::TypeId resultTypeId = (IECoreScene::TypeId)IECore::InvalidTypeId;
-
-	// Mesh specific globals
-	std::string resultMeshInterpolation;
-	IECore::InternedString resultMeshInterpolateBound;
-	IECore::InternedString resultMeshFaceVaryingLI;
-	IECore::InternedString resultMeshTriangleSub;
-
-	// Curve specific globals
-	const CubicBasisf invalidBasis( Imath::M44f( 0.0f ), 0 );
-	CubicBasisf resultCurvesBasis( invalidBasis );
-	bool resultCurvesPeriodic( false );
+	IECoreScene::TypeId resultTypeId = (IECoreScene::TypeId)ResultStruct::PrimitiveType::staticTypeId();
 
 	// Data we need to store for each primvar we output
 	struct PrimVarInfo
 	{
-		PrimVarInfo( PrimitiveVariable::Interpolation interpol, IECore::TypeId t, GeometricData::Interpretation interpretation, int numMeshes )
+		PrimVarInfo( PrimitiveVariable::Interpolation interpol, IECore::TypeId t, GeometricData::Interpretation interpretation, int numPrimitives )
 			: interpolation( interpol ),
 			typeId( t ), interpret( interpretation ), interpretInvalid( false ), indexed( false ),
-			numData( numMeshes, 0 )
+			numData( numPrimitives, 0 )
 		{
 		}
 
@@ -582,151 +906,33 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 	std::unordered_map< IECore::InternedString, PrimVarInfo > varInfos;
 
+    for( const auto & [prim, matrix] : primitives )
+    {
+		if( !prim )
+		{
+			throw IECore::Exception( "Cannot merge null Primitive" );
+		}
+
+        // We already have a primitive, so the types must match
+        if( !IECore::runTimeCast< const typename ResultStruct::PrimitiveType >( prim ) )
+        {
+            throw IECore::Exception( fmt::format(
+                "Primitive type mismatch: Cannot merge {} with {}",
+                prim->typeName(), ResultStruct::PrimitiveType::staticTypeName()
+            ) );
+        }
+    }
+
 	//
 	// Before we can even start counting the sizes of things, we need to gather information about what
 	// kinds of primitives and primvars we're dealing with.
 	//
 
-	for( unsigned int i = 0; i < primitives.size(); i++ )
+    for( const auto & [prim, matrix] : primitives )
 	{
-		if( !primitives[i].first )
-		{
-			throw IECore::Exception( "Cannot merge null Primitive" );
-		}
-
-		IECoreScene::TypeId primTypeId = (IECoreScene::TypeId)primitives[i].first->typeId();
-		if( resultTypeId == (IECoreScene::TypeId)IECore::InvalidTypeId )
-		{
-			// Initializing for first primitive
-			if( !(
-				primTypeId == IECoreScene::PointsPrimitiveTypeId ||
-				primTypeId == IECoreScene::MeshPrimitiveTypeId ||
-				primTypeId == IECoreScene::CurvesPrimitiveTypeId
-			) )
-			{
-				throw IECore::Exception( fmt::format(
-					"Unsupported Primitive type for merging: {}", primitives[i].first->typeName()
-				) );
-			}
-
-			resultTypeId = primTypeId;
-
-			if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-			{
-				const MeshPrimitive *sourceMesh = static_cast< const MeshPrimitive *>( primitives[i].first );
-				resultMeshInterpolation = sourceMesh->interpolation();
-				resultMeshInterpolateBound = sourceMesh->getInterpolateBoundary();
-				resultMeshFaceVaryingLI = sourceMesh->getFaceVaryingLinearInterpolation();
-				resultMeshTriangleSub = sourceMesh->getTriangleSubdivisionRule();
-			}
-			else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-			{
-				const CurvesPrimitive *sourceCurves = static_cast< const CurvesPrimitive *>( primitives[i].first );
-				resultCurvesBasis = sourceCurves->basis();
-				resultCurvesPeriodic = sourceCurves->periodic();
-			}
-		}
-		else
-		{
-			// We already have a primitive, so the types must match
-			if( primTypeId != resultTypeId )
-			{
-				throw IECore::Exception( fmt::format(
-					"Primitive type mismatch: {} != {}",
-					primitives[i].first->typeName(), RunTimeTyped::typeNameFromTypeId( (IECore::TypeId) resultTypeId )
-				) );
-			}
-
-			// Check that the primitive type specific globals match. These globals all have a reasonable default
-			// value, so we don't throw an exception if they don't match, we just emit a warning, and use the
-			// default value.
-			if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-			{
-				const MeshPrimitive *sourceMesh = static_cast< const MeshPrimitive *>( primitives[i].first );
-
-				if(
-					resultMeshInterpolation != "" &&
-					sourceMesh->interpolation() != resultMeshInterpolation
-				)
-				{
-					msg( Msg::Warning, "mergePrimitives",
-						fmt::format(
-							"Ignoring mismatch between mesh interpolations {} and {} and defaulting to linear",
-							resultMeshInterpolation, sourceMesh->interpolation()
-						)
-					);
-					resultMeshInterpolation = "";
-				}
-
-				if(
-					resultMeshInterpolateBound != "" &&
-					sourceMesh->getInterpolateBoundary() != resultMeshInterpolateBound
-				)
-				{
-					msg( Msg::Warning, "mergePrimitives",
-						fmt::format(
-							"Ignoring mismatch between mesh interpolate bound {} and {} and defaulting to edgeAndCorner",
-							resultMeshInterpolateBound.string(), sourceMesh->getInterpolateBoundary().string()
-						)
-					);
-					resultMeshInterpolateBound = "";
-				}
-
-				if(
-					resultMeshFaceVaryingLI != "" &&
-					sourceMesh->getFaceVaryingLinearInterpolation() != resultMeshFaceVaryingLI
-				)
-				{
-					msg( Msg::Warning, "mergePrimitives",
-						fmt::format(
-							"Ignoring mismatch between mesh face varying linear interpolation {} and {} and defaulting to cornersPlus1",
-							resultMeshFaceVaryingLI.string(), sourceMesh->getFaceVaryingLinearInterpolation().string()
-						)
-					);
-					resultMeshFaceVaryingLI = "";
-				}
-
-				if(
-					resultMeshTriangleSub != "" &&
-					sourceMesh->getTriangleSubdivisionRule() != resultMeshTriangleSub
-				)
-				{
-					msg( Msg::Warning, "mergePrimitives",
-						fmt::format(
-							"Ignoring mismatch between mesh triangle subdivision rule {} and {} and defaulting to catmullClark",
-							resultMeshTriangleSub.string(), sourceMesh->getTriangleSubdivisionRule().string()
-						)
-					);
-					resultMeshTriangleSub = "";
-				}
-
-			}
-			else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-			{
-				const CurvesPrimitive *sourceCurves = static_cast< const CurvesPrimitive *>( primitives[i].first );
-				CubicBasisf basis = sourceCurves->basis();
-				bool periodic = sourceCurves->periodic();
-				if( periodic != resultCurvesPeriodic )
-				{
-					throw IECore::Exception( "Cannot merge periodic and non-periodic curves" );
-				}
-
-				if(
-					resultCurvesBasis != invalidBasis &&
-					basis != resultCurvesBasis
-				)
-				{
-					msg( Msg::Warning, "mergePrimitives",
-						"Ignoring mismatch in curve basis and defaulting to linear"
-					);
-					resultCurvesBasis = invalidBasis;
-				}
-			}
-		}
-
 		// Process all the primvars for this primitive, adding new entries to the varInfo list, or
 		// checking that existing entries match correctly
-		for( const auto &[name, var] : primitives[i].first->variables )
+		for( const auto &[name, var] : prim->variables )
 		{
 			GeometricData::Interpretation interpret = IECore::getGeometricInterpretation( var.data.get() );
 
@@ -784,8 +990,6 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 				}
 			}
 
-			// For meshes and curves, the interpolation we need depends on the interpolations of all the variables
-			// being combined.
 			varInfo.interpolation = mergeInterpolations( resultTypeId, varInfo.interpolation, var.interpolation, name );
 		}
 	}
@@ -874,102 +1078,10 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 	}
 
 	//
-	// Allocate the result, together with any topology information needed ( and optionally crease data in the case of
-	// meshes.
+	// Allocate the result, together with any topology information needed
 	//
 
-	IECoreScene::PrimitivePtr result;
-
-	IECoreScene::MeshPrimitivePtr resultMesh;
-	IntVectorDataPtr resultVerticesPerFaceData;
-	IntVectorDataPtr resultVertexIdsData;
-
-	std::vector<int> countCorners;
-	std::vector<int> countCreases;
-	std::vector<int> countCreaseIds;
-	std::vector< int > accumCorners;
-	std::vector< int > accumCreases;
-	std::vector< int > accumCreaseIds;
-
-	IntVectorDataPtr resultCornerIdsData;
-	FloatVectorDataPtr resultCornerSharpnessesData;
-	IntVectorDataPtr resultCreaseLengthsData;
-	IntVectorDataPtr resultCreaseIdsData;
-	FloatVectorDataPtr resultCreaseSharpnessesData;
-
-	IECoreScene::CurvesPrimitivePtr resultCurves;
-	IntVectorDataPtr resultVerticesPerCurveData;
-
-	if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-	{
-		resultMesh = new IECoreScene::MeshPrimitive();
-
-		resultVerticesPerFaceData = new IntVectorData;
-		resultVertexIdsData = new IntVectorData;
-
-		resultVerticesPerFaceData->writable().resize( totalInterpolation[ PrimitiveVariable::Uniform ] );
-		resultVertexIdsData->writable().resize( totalInterpolation[ PrimitiveVariable::FaceVarying ] );
-
-		int totalAccumCorners = 0;
-		int totalAccumCreases = 0;
-		int totalAccumCreaseIds = 0;
-
-		countCorners.reserve( primitives.size() );
-		countCreases.reserve( primitives.size() );
-		countCreaseIds.reserve( primitives.size() );
-		accumCorners.reserve( primitives.size() );
-		accumCreases.reserve( primitives.size() );
-		accumCreaseIds.reserve( primitives.size() );
-
-		for( unsigned int i = 0; i < primitives.size(); i++ )
-		{
-			const MeshPrimitive *p = static_cast< const MeshPrimitive *>( primitives[i].first );
-
-			countCorners.push_back( p->cornerIds()->readable().size() );
-			accumCorners.push_back( totalAccumCorners );
-			totalAccumCorners += countCorners.back();
-
-			countCreases.push_back( p->creaseLengths()->readable().size() );
-			accumCreases.push_back( totalAccumCreases );
-			totalAccumCreases += countCreases.back();
-
-			countCreaseIds.push_back( p->creaseIds()->readable().size() );
-			accumCreaseIds.push_back( totalAccumCreaseIds );
-			totalAccumCreaseIds += countCreaseIds.back();
-		}
-
-		if( totalAccumCorners )
-		{
-			resultCornerIdsData = new IntVectorData;
-			resultCornerIdsData->writable().resize( totalAccumCorners );
-			resultCornerSharpnessesData = new FloatVectorData;
-			resultCornerSharpnessesData->writable().resize( totalAccumCorners );
-		}
-
-		if( totalAccumCreases )
-		{
-			resultCreaseLengthsData = new IntVectorData;
-			resultCreaseLengthsData->writable().resize( totalAccumCreases );
-			resultCreaseSharpnessesData = new FloatVectorData;
-			resultCreaseSharpnessesData->writable().resize( totalAccumCreases );
-			resultCreaseIdsData = new IntVectorData;
-			resultCreaseIdsData->writable().resize( totalAccumCreaseIds );
-		}
-
-		result = resultMesh;
-	}
-	else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-	{
-		resultCurves = new IECoreScene::CurvesPrimitive();
-		result = resultCurves;
-
-		resultVerticesPerCurveData = new IntVectorData;
-		resultVerticesPerCurveData->writable().resize( totalInterpolation[ PrimitiveVariable::Uniform ] );
-	}
-	else
-	{
-		result = new IECoreScene::PointsPrimitive( totalInterpolation[ PrimitiveVariable::Vertex ] );
-	}
+	ResultStruct result( primitives, totalInterpolation );
 
 	//
 	// Allocate storage for the primitives variables
@@ -990,7 +1102,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 			accumDataSize += i;
 		}
 
-		PrimitiveVariable &p = result->variables.emplace(name, PrimitiveVariable() ).first->second;
+		PrimitiveVariable &p = result.result->variables.emplace(name, PrimitiveVariable() ).first->second;
 
 		p.data = IECore::runTimeCast<Data>( IECore::Object::create( varInfo.typeId ) );
 
@@ -1034,7 +1146,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 						continue;
 					}
 
-					PrimitiveVariable &destVar = result->variables.find( name )->second;
+					PrimitiveVariable &destVar = result.result->variables.find( name )->second;
 
 					const size_t numIndices = countInterpolation[ varInfo.interpolation ][i];
 					const size_t startIndex = accumInterpolation[ varInfo.interpolation ][i];
@@ -1084,85 +1196,13 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 					}
 				}
 
-				// Copy the topology information for this primitive into the result topology information
+				// Copy the topology information for this primitive into the result topology information,
+				// using a type specific function
 
-				if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-				{
-					const MeshPrimitive *sourceMesh = IECore::runTimeCast< const MeshPrimitive >( &sourcePrim );
-
-					int startUniform = accumInterpolation[ PrimitiveVariable::Uniform ][i];
-					int numUniform = countInterpolation[ PrimitiveVariable::Uniform ][i];
-					int startVertex = accumInterpolation[ PrimitiveVariable::Vertex ][i];
-					int startFaceVarying = accumInterpolation[ PrimitiveVariable::FaceVarying ][i];
-					int numFaceVarying = countInterpolation[ PrimitiveVariable::FaceVarying ][i];
-
-					const int *sourceVerticesPerFace = &sourceMesh->verticesPerFace()->readable()[0];
-					int *resultVerticesPerFace = &resultVerticesPerFaceData->writable()[ startUniform ];
-					Canceller::check( canceller );
-					for( int j = 0; j < numUniform; j++ )
-					{
-						*(resultVerticesPerFace++) = *(sourceVerticesPerFace++);
-					}
-
-					const int* sourceVertexIds = &sourceMesh->vertexIds()->readable()[0];
-					int *resultVertexIds = &resultVertexIdsData->writable()[startFaceVarying];
-					Canceller::check( canceller );
-					for( int j = 0; j < numFaceVarying; j++ )
-					{
-						*(resultVertexIds++) = *(sourceVertexIds++) + startVertex;
-					}
-
-					if( resultCornerIdsData )
-					{
-						const int *sourceCornerIds = &sourceMesh->cornerIds()->readable()[0];
-						const float *sourceCornerSharpnesses = &sourceMesh->cornerSharpnesses()->readable()[0];
-						int *resultCornerIds = &resultCornerIdsData->writable()[ accumCorners[i] ];
-						float *resultCornerSharpnesses = &resultCornerSharpnessesData->writable()[ accumCorners[i] ];
-						Canceller::check( canceller );
-						for( int j = 0; j < countCorners[i]; j++ )
-						{
-							*(resultCornerIds++) = *(sourceCornerIds++) + startVertex;
-							*(resultCornerSharpnesses++) = *(sourceCornerSharpnesses++);
-						}
-					}
-
-					if( resultCreaseLengthsData )
-					{
-						const int *sourceCreaseLengths = &sourceMesh->creaseLengths()->readable()[0];
-						const float *sourceCreaseSharpnesses = &sourceMesh->creaseSharpnesses()->readable()[0];
-						int *resultCreaseLengths = &resultCreaseLengthsData->writable()[accumCreases[i]];
-						float *resultCreaseSharpnesses = &resultCreaseSharpnessesData->writable()[accumCreases[i]];
-						Canceller::check( canceller );
-						for( int j = 0; j < countCreases[i]; j++ )
-						{
-							*(resultCreaseLengths++) = *(sourceCreaseLengths++);
-							*(resultCreaseSharpnesses++) = *(sourceCreaseSharpnesses++);
-						}
-
-						const int *sourceCreaseIds = &sourceMesh->creaseIds()->readable()[0];
-						int *resultCreaseIds = &resultCreaseIdsData->writable()[accumCreaseIds[i]];
-						Canceller::check( canceller );
-						for( int j = 0; j < countCreaseIds[i]; j++ )
-						{
-							*(resultCreaseIds++) = *(sourceCreaseIds++) + startVertex;
-						}
-					}
-				}
-				else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-				{
-					const CurvesPrimitive *sourceCurves = IECore::runTimeCast< const CurvesPrimitive >( &sourcePrim );
-
-					int startUniform = accumInterpolation[ PrimitiveVariable::Uniform ][i];
-					int numUniform = countInterpolation[ PrimitiveVariable::Uniform ][i];
-
-					int *resultVerticesPerCurve = &resultVerticesPerCurveData->writable()[ startUniform ];
-					const int *sourceVerticesPerCurve = &sourceCurves->verticesPerCurve()->readable()[0];
-					Canceller::check( canceller );
-					for( int j = 0; j < numUniform; j++ )
-					{
-						*(resultVerticesPerCurve++) = *(sourceVerticesPerCurve++);
-					}
-				}
+				result.copyFromSource(
+					static_cast< const typename ResultStruct::PrimitiveType * >( primitives[i].first ), i,
+					countInterpolation, accumInterpolation, canceller
+				);
 			}
 		},
 		tbb::auto_partitioner(),
@@ -1170,55 +1210,101 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 	);
 
 	// Set topology and other primitive type specific globals
+	result.finalize();
 
-	if( resultMesh )
+	return result.result;
+}
+
+// Why isn't this a static in RunTimeTyped?
+bool isInstanceOf( IECore::TypeId type, IECore::TypeId baseType )
+{
+	return type == baseType || RunTimeTyped::inheritsFrom( type, baseType );
+}
+
+} // namespace
+
+
+void PrimitiveAlgo::transformPrimitive(
+	IECoreScene::Primitive &primitive, Imath::M44f matrix,
+	const IECore::Canceller *canceller
+)
+{
+	if( matrix == Imath::M44f() )
 	{
-		if( resultMeshInterpolation == "" )
-		{
-			resultMeshInterpolation = "linear";
-		}
-
-		resultMesh->setTopologyUnchecked( resultVerticesPerFaceData, resultVertexIdsData, totalInterpolation[ PrimitiveVariable::Vertex ], resultMeshInterpolation );
-
-		if( resultMeshInterpolateBound == "" )
-		{
-			resultMeshInterpolateBound = MeshPrimitive::interpolateBoundaryEdgeAndCorner;
-		}
-		resultMesh->setInterpolateBoundary( resultMeshInterpolateBound );
-
-		if( resultMeshFaceVaryingLI == "" )
-		{
-			resultMeshFaceVaryingLI = MeshPrimitive::faceVaryingLinearInterpolationCornersPlus1;
-		}
-		resultMesh->setFaceVaryingLinearInterpolation( resultMeshFaceVaryingLI );
-
-		if( resultMeshTriangleSub == "" )
-		{
-			resultMeshTriangleSub = MeshPrimitive::triangleSubdivisionRuleCatmullClark;
-		}
-		resultMesh->setTriangleSubdivisionRule( resultMeshTriangleSub );
-
-		if( resultCornerIdsData )
-		{
-			resultMesh->setCorners( resultCornerIdsData.get(), resultCornerSharpnessesData.get() );
-		}
-
-		if( resultCreaseLengthsData )
-		{
-			resultMesh->setCreases(
-				resultCreaseLengthsData.get(), resultCreaseIdsData.get(), resultCreaseSharpnessesData.get()
-			);
-		}
-	}
-	else if( resultCurves )
-	{
-		if( resultCurvesBasis == invalidBasis )
-		{
-			resultCurvesBasis = CubicBasisf::linear();
-		}
-
-		resultCurves->setTopology( resultVerticesPerCurveData, resultCurvesBasis, resultCurvesPeriodic );
+		// Early out for identity matrix
+		return;
 	}
 
-	return result;
+	Imath::M44f normalMatrix = normalTransform( matrix );
+
+	for( const auto &[name, var] : primitive.variables )
+	{
+		Canceller::check( canceller );
+		V3fVectorData *vecVar = IECore::runTimeCast<V3fVectorData>( var.data.get() );
+		V3fData *vecConstVar = IECore::runTimeCast<V3fData>( var.data.get() );
+		if( !vecVar && !vecConstVar )
+		{
+			continue;
+		}
+
+		GeometricData::Interpretation interp = vecVar ? vecVar->getInterpretation() : vecConstVar->getInterpretation();
+		if( !(
+			interp == GeometricData::Interpretation::Point ||
+			interp == GeometricData::Interpretation::Vector ||
+			interp == GeometricData::Interpretation::Normal
+		) )
+		{
+			continue;
+		}
+
+		if( vecVar )
+		{
+			for( Imath::V3f &i : vecVar->writable() )
+			{
+				Canceller::check( canceller );
+				transformPrimVarValue( i, i, matrix, normalMatrix, interp );
+			}
+		}
+		else
+		{
+			// Fairly weird corner case, but technically Constant primvars could need transforming too
+			transformPrimVarValue( vecConstVar->writable(), vecConstVar->writable(), matrix, normalMatrix, interp );
+		}
+	}
+}
+
+IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
+	const std::vector< std::pair< const IECoreScene::Primitive*, Imath::M44f > > &primitives,
+	const IECore::Canceller *canceller
+)
+{
+	if( !primitives.size() )
+	{
+		throw IECore::Exception( "mergePrimitives requires at least one primitive" );
+	}
+
+	if( !primitives[0].first )
+	{
+		throw IECore::Exception( "Cannot merge null Primitive" );
+	}
+
+	IECore::TypeId resultTypeId = primitives[0].first->typeId();
+	if( isInstanceOf( resultTypeId, (IECore::TypeId)IECoreScene::MeshPrimitiveTypeId ) )
+	{
+		return mergePrimitivesInternal<MergePrimitivesMeshResult>( primitives, canceller );
+	}
+	else if( isInstanceOf( resultTypeId, (IECore::TypeId)IECoreScene::CurvesPrimitiveTypeId ) )
+	{
+		return mergePrimitivesInternal<MergePrimitivesCurvesResult>( primitives, canceller );
+	}
+	else if( isInstanceOf( resultTypeId, (IECore::TypeId)IECoreScene::PointsPrimitiveTypeId ) )
+	{
+		return mergePrimitivesInternal<MergePrimitivesPointsResult>( primitives, canceller );
+	}
+	else
+	{
+		throw IECore::Exception( fmt::format(
+			"Unsupported Primitive type for merging: {}", primitives[0].first->typeId()
+		) );
+	}
 }

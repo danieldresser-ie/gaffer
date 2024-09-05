@@ -182,8 +182,10 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 
 		mesh1 = IECoreScene.MeshPrimitive.createPlane( imath.Box2f( imath.V2f( -2 ), imath.V2f( 2 ) ) )
 
-		self.assertEqual( PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() )] ), mesh1 )
+		with self.assertRaisesRegex( RuntimeError, "mergePrimitives requires at least one primitive" ) :
+			self.assertEqual( PrimitiveAlgo.mergePrimitives( [] ), None )
 
+		self.assertEqual( PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() )] ), mesh1 )
 
 		with self.assertRaisesRegex( RuntimeError, "Cannot merge null Primitive" ) :
 			PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( None, imath.M44f() )] )
@@ -226,7 +228,7 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 			IECore.V3fVectorData( curveVerts1 )
 		)
 
-		with self.assertRaisesRegex( RuntimeError, "Primitive type mismatch: CurvesPrimitive != MeshPrimitive" ) :
+		with self.assertRaisesRegex( RuntimeError, "Primitive type mismatch: Cannot merge CurvesPrimitive with MeshPrimitive" ) :
 			PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( curves1, imath.M44f() ) ] )
 
 		curveVerts2	= [ imath.V3f( i, 2, 0 ) for i in range( 7 ) ]
@@ -269,7 +271,7 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 		pointVerts1 = [ imath.V3f( i ) for i in range( 9 ) ]
 		points1 = IECoreScene.PointsPrimitive( IECore.V3fVectorData( pointVerts1 ) )
 
-		with self.assertRaisesRegex( RuntimeError, "Primitive type mismatch: PointsPrimitive != MeshPrimitive" ) :
+		with self.assertRaisesRegex( RuntimeError, "Primitive type mismatch: Cannot merge PointsPrimitive with MeshPrimitive" ) :
 			PrimitiveAlgo.mergePrimitives( [( mesh1, imath.M44f() ), ( points1, imath.M44f() ) ] )
 
 		pointVerts2 = [ imath.V3f( i, 0, 0 ) for i in range( 11 ) ]
