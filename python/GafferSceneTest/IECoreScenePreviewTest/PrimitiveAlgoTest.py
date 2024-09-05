@@ -336,164 +336,131 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 		ref.setTriangleSubdivisionRule( "smooth" )
 		self.assertEqual( merged, ref )
 
-	def testMismatchedInterpolation( self ) :
 
+	def runTestMismatchedInterpolation( self, source ) :
 		# A lot of the complexity comes from handling every possible combination for mismatched interpolations,
 		# so make sure we test it thoroughly
 
-		file = IECoreScene.SceneInterface.create(
-			str( self.usdFileDir / "generalTestMesh.usd" ), IECore.IndexedIO.OpenMode.Read
-		)
-		meshSource = file.child( "object" ).readObject( 0.0 )
-		for k in meshSource.keys():
-			if k == "P":
-				continue
-			del meshSource[k]
+		isMesh = type( source ) == IECoreScene.MeshPrimitive
+		isCurves = type( source ) == IECoreScene.CurvesPrimitive
+		isPoints = not isMesh and not isCurves
 
-		random.seed( 42 )
+		# Create a source with one primvar of each interpolation, and a random P
 
 		def randomC():
 			return imath.Color3f( random.random(), random.random(), random.random() )
 
-		curvesSource = IECoreScene.CurvesPrimitive(
-			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.linear(), False
-		)
-		curvesSourceCubic = IECoreScene.CurvesPrimitive(
-			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.bSpline(), False
-		)
-		curvesSourcePeriodic = IECoreScene.CurvesPrimitive(
-			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.linear(), True
-		)
-		curvesSourcePeriodicCubic = IECoreScene.CurvesPrimitive(
-			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.bSpline(), True
-		)
-
-		for c in [ curvesSource, curvesSourceCubic, curvesSourcePeriodic, curvesSourcePeriodicCubic ]:
-			c["P"] = IECoreScene.PrimitiveVariable( Interpolation.Vertex,
-				IECore.V3fVectorData( [ imath.V3f( randomC() ) for i in range( c.variableSize( Interpolation.Vertex ) ) ] )
+		source["P"] = IECoreScene.PrimitiveVariable( Interpolation.Vertex,
+			IECore.V3fVectorData(
+				[ imath.V3f( randomC() ) for i in range( source.variableSize( Interpolation.Vertex ) ) ]
 			)
-
-		pointsSource = IECoreScene.PointsPrimitive( 20 )
-		pointsSource["P"] = IECoreScene.PrimitiveVariable( Interpolation.Vertex,
-			IECore.V3fVectorData( [ imath.V3f( randomC() ) for i in range( 20 ) ] )
 		)
+		allInterps = source.copy()
+		allInterps["A"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.Color3fData( randomC() ) )
+		for name, interp in [
+			( "B", Interpolation.Vertex ), ( "C", Interpolation.Uniform ),
+			( "D", Interpolation.Varying ), ( "E", Interpolation.FaceVarying )
+		]:
+			allInterps[name] = IECoreScene.PrimitiveVariable(
+				interp, IECore.Color3fVectorData( [ randomC() for i in range( source.variableSize( interp ) ) ] )
+			)
+		allInterps["labelSource"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.IntData( 0 ) )
 
-		for source in [ meshSource, curvesSource, curvesSourceCubic, curvesSourcePeriodic, curvesSourcePeriodicCubic, pointsSource ]:
-			isMesh = type( source ) == IECoreScene.MeshPrimitive
-			isCurves = type( source ) == IECoreScene.CurvesPrimitive
-			isPoints = not isMesh and not isCurves
+		for interp, indexed in itertools.product( [
+				Interpolation.Constant, Interpolation.Vertex, Interpolation.Uniform,
+				Interpolation.Varying, Interpolation.FaceVarying
+			], [ False, True ] ):
 
-			# Create a source with one primvar of each interpolation
-			allInterps = source.copy()
-			allInterps["A"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.Color3fData( randomC() ) )
-			for name, interp in [
-				( "B", Interpolation.Vertex ), ( "C", Interpolation.Uniform ),
-				( "D", Interpolation.Varying ), ( "E", Interpolation.FaceVarying )
-			]:
-				allInterps[name] = IECoreScene.PrimitiveVariable(
-					interp, IECore.Color3fVectorData( [ randomC() for i in range( source.variableSize( interp ) ) ] )
-				)
-			allInterps["labelSource"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.IntData( 0 ) )
+			# Create a source with all primvars set to the current interpolation, optionally indexed
+			oneInterp = source.copy()
+			for name in [ "A", "B", "C", "D", "E" ]:
+				varSize = source.variableSize( interp )
 
-			for interp, indexed in itertools.product( [
-					Interpolation.Constant, Interpolation.Vertex, Interpolation.Uniform,
-					Interpolation.Varying, Interpolation.FaceVarying
-				], [ False, True ] ):
+				if interp == Interpolation.Constant:
+					oneInterp[name] = IECoreScene.PrimitiveVariable( interp, IECore.Color3fData( randomC() ) )
+				elif indexed:
+					oneInterp[name] = IECoreScene.PrimitiveVariable(
+						interp,
+						IECore.Color3fVectorData( [ randomC() for i in range( 10 ) ] ),
+						IECore.IntVectorData( [ random.randint( 0, 9 ) for i in range( varSize ) ] )
+					)
+				else:
+					oneInterp[name] = IECoreScene.PrimitiveVariable(
+						interp,
+						IECore.Color3fVectorData( [ randomC() for i in range( varSize ) ] )
+					)
+			oneInterp["labelSource"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.IntData( 1 ) )
 
-				# Create a source with all primvars set to the current interpolation, optionally indexed
-				oneInterp = source.copy()
-				for name in [ "A", "B", "C", "D", "E" ]:
-					varSize = source.variableSize( interp )
+			with IECore.CapturingMessageHandler() as mh:
+				merged = PrimitiveAlgo.mergePrimitives( [( allInterps, imath.M44f() ), ( oneInterp, imath.M44f() )] )
+			self.assertTrue( merged.arePrimitiveVariablesValid() )
 
-					if interp == Interpolation.Constant:
-						oneInterp[name] = IECoreScene.PrimitiveVariable( interp, IECore.Color3fData( randomC() ) )
-					elif indexed:
-						oneInterp[name] = IECoreScene.PrimitiveVariable(
-							interp,
-							IECore.Color3fVectorData( [ randomC() for i in range( 10 ) ] ),
-							IECore.IntVectorData( [ random.randint( 0, 9 ) for i in range( varSize ) ] )
+			allInterpsRef = allInterps.copy()
+			oneInterpRef = oneInterp.copy()
+
+			numDiscarded = 0
+			if isCurves:
+				# We don't support merging varying/vertex on curves ( the resampling required is more complicated,
+				# and can't be done losslessly )
+				messageTexts = [ i.message for i in mh.messages ]
+				for k in allInterps.keys():
+					mixedInterps = set( [ allInterpsRef[k].interpolation, oneInterpRef[k].interpolation ] )
+					if Interpolation.Vertex in mixedInterps and (
+							Interpolation.Varying in mixedInterps or Interpolation.FaceVarying in mixedInterps ):
+						del allInterpsRef[k]
+						del oneInterpRef[k]
+						numDiscarded += 1
+						self.assertIn(
+							'Discarding variable "%s" - Cannot mix Vertex and Varying curve variables.' % k,
+							messageTexts
 						)
-					else:
-						oneInterp[name] = IECoreScene.PrimitiveVariable(
-							interp,
-							IECore.Color3fVectorData( [ randomC() for i in range( varSize ) ] )
-						)
-				oneInterp["labelSource"] = IECoreScene.PrimitiveVariable( Interpolation.Constant, IECore.IntData( 1 ) )
+			self.assertEqual( len( mh.messages ), numDiscarded )
 
-				with IECore.CapturingMessageHandler() as mh:
-					merged = PrimitiveAlgo.mergePrimitives( [( allInterps, imath.M44f() ), ( oneInterp, imath.M44f() )] )
-				self.assertTrue( merged.arePrimitiveVariablesValid() )
+			for k in allInterpsRef.keys():
+				#if k == "P":
+					#continue
 
-				allInterpsRef = allInterps.copy()
-				oneInterpRef = oneInterp.copy()
+				kInterp = allInterps[k].interpolation
 
-				numDiscarded = 0
-				if isCurves:
-					# We don't support merging varying/vertex on curves ( the resampling required is more complicated,
-					# and can't be done losslessly )
-					messageTexts = [ i.message for i in mh.messages ]
-					for k in allInterps.keys():
-						mixedInterps = set( [ allInterpsRef[k].interpolation, oneInterpRef[k].interpolation ] )
-						if Interpolation.Vertex in mixedInterps and (
-								Interpolation.Varying in mixedInterps or Interpolation.FaceVarying in mixedInterps ):
-							del allInterpsRef[k]
-							del oneInterpRef[k]
-							numDiscarded += 1
-							self.assertIn(
-								'Discarding variable "%s" - Cannot mix Vertex and Varying curve variables.' % k,
-								messageTexts
-							)
-				self.assertEqual( len( mh.messages ), numDiscarded )
+				if isPoints:
+					expectedInterp = Interpolation.Vertex
+				elif k == "P":
+					expectedInterp = Interpolation.Vertex
+				elif k == "labelSource":
+					expectedInterp = Interpolation.Uniform
+				elif self.interpolationMatches( source, kInterp, interp ):
+					expectedInterp = interp
+				elif kInterp == Interpolation.Constant or ( not isMesh and kInterp == Interpolation.Uniform ):
+					expectedInterp = interp
+				elif interp == Interpolation.Constant or ( not isMesh and interp == Interpolation.Uniform ):
+					expectedInterp = kInterp
+				elif isMesh:
+					expectedInterp = Interpolation.FaceVarying
+				else:
+					# All cases are covered by previous branches
+					raise IECore.Exception( "%s %s" % ( kInterp, interp ) )
 
-				for k in allInterpsRef.keys():
-					if k == "P":
-						continue
+				if expectedInterp == Interpolation.Constant:
+					expectedInterp = Interpolation.Uniform
 
-					kInterp = allInterps[k].interpolation
-
-					if isPoints:
+				if isMesh:
+					if expectedInterp == Interpolation.Varying:
 						expectedInterp = Interpolation.Vertex
-					elif k == "P":
+				elif isCurves:
+					if expectedInterp == Interpolation.FaceVarying:
+						expectedInterp = Interpolation.Varying
+				else:
+					if expectedInterp == Interpolation.FaceVarying or expectedInterp == Interpolation.Varying:
 						expectedInterp = Interpolation.Vertex
-					elif k == "labelSource":
-						expectedInterp = Interpolation.Uniform
-					elif self.interpolationMatches( source, kInterp, interp ):
-						expectedInterp = interp
-					elif kInterp == Interpolation.Constant or ( not isMesh and kInterp == Interpolation.Uniform ):
-						expectedInterp = interp
-					elif interp == Interpolation.Constant or ( not isMesh and interp == Interpolation.Uniform ):
-						expectedInterp = kInterp
-					elif isMesh:
-						expectedInterp = Interpolation.FaceVarying
-					else:
-						raise IECore.Exception( "%s %s" % ( kInterp, interp ) )
-						expectedInterp = None
 
-					if expectedInterp == Interpolation.Constant:
-						expectedInterp = Interpolation.Uniform
+				self.resamplePrimVars( allInterpsRef, [ k ], expectedInterp )
+				self.resamplePrimVars( oneInterpRef, [ k ], expectedInterp )
 
-					if isMesh:
-						if expectedInterp == Interpolation.Varying:
-							expectedInterp = Interpolation.Vertex
-					elif isCurves:
-						if expectedInterp == Interpolation.FaceVarying:
-							expectedInterp = Interpolation.Varying
-					else:
-						if expectedInterp == Interpolation.FaceVarying or expectedInterp == Interpolation.Varying:
-							expectedInterp = Interpolation.Vertex
 
-					self.assertTrue( allInterpsRef.arePrimitiveVariablesValid() )
-					self.assertTrue( oneInterpRef.arePrimitiveVariablesValid() )
+			with self.subTest( mergeWithInterp = interp, indexed = indexed ):
 
-					self.resamplePrimVars( allInterpsRef, [ k ], expectedInterp )
-					self.resamplePrimVars( oneInterpRef, [ k ], expectedInterp )
-
-					self.assertTrue( allInterpsRef.arePrimitiveVariablesValid() )
-					self.assertTrue( oneInterpRef.arePrimitiveVariablesValid() )
-
-					needIndices = indexed or not self.interpolationMatches( source, kInterp, expectedInterp ) or not self.interpolationMatches( source, interp, expectedInterp )
-					self.assertEqual( merged[k].indices != None, needIndices )
-					self.assertEqual( merged[k].interpolation, expectedInterp )
+				self.assertTrue( allInterpsRef.arePrimitiveVariablesValid() )
+				self.assertTrue( oneInterpRef.arePrimitiveVariablesValid() )
 
 				if type( merged ) == IECoreScene.MeshPrimitive:
 					splitter = IECoreScene.MeshAlgo.MeshSplitter( merged, merged["labelSource"] )
@@ -502,10 +469,62 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 					GafferSceneTest.IECoreScenePreviewTest.MeshAlgoTessellateTest().assertMeshesPracticallyEqual( splitter.mesh( 1 ), oneInterpRef )
 
 				for k in allInterpsRef.keys():
-					self.assertEqual(
-						list( merged[k].expandedData() ),
-						list( allInterpsRef[k].expandedData() ) + list( oneInterpRef[k].expandedData() )
-					)
+					with self.subTest( interpolationA = allInterps[k].interpolation, interpolationB = interp, primVar = k ):
+						expectedInterp = allInterpsRef[k].interpolation
+						needIndices = (
+							oneInterp[k].indices != None or
+							#indexed or
+							not self.interpolationMatches( source, allInterps[k].interpolation, expectedInterp ) or
+							not self.interpolationMatches( source, oneInterp[k].interpolation, expectedInterp )
+						)
+
+						self.assertEqual( merged[k].indices != None, needIndices )
+						self.assertEqual( merged[k].interpolation, expectedInterp )
+
+						self.assertEqual(
+							list( merged[k].expandedData() ),
+							list( allInterpsRef[k].expandedData() ) + list( oneInterpRef[k].expandedData() )
+						)
+
+	def testMismatchedInterpolationMesh( self ):
+
+		file = IECoreScene.SceneInterface.create(
+			str( self.usdFileDir / "generalTestMesh.usd" ), IECore.IndexedIO.OpenMode.Read
+		)
+		meshSource = file.child( "object" ).readObject( 0.0 )
+		for k in meshSource.keys():
+			del meshSource[k]
+
+		self.runTestMismatchedInterpolation( meshSource )
+
+	def testMismatchedInterpolationCurvesLinear( self ):
+
+		source = IECoreScene.CurvesPrimitive(
+			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.linear(), False
+		)
+		self.runTestMismatchedInterpolation( source )
+
+	def testMismatchedInterpolationCurvesCubic( self ):
+		source = IECoreScene.CurvesPrimitive(
+			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.bSpline(), False
+		)
+		self.runTestMismatchedInterpolation( source )
+
+	def testMismatchedInterpolationCurvesPeriodicLinear( self ):
+		source = IECoreScene.CurvesPrimitive(
+			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.linear(), True
+		)
+		self.runTestMismatchedInterpolation( source )
+
+	def testMismatchedInterpolationCurvesPeriodicCubic( self ):
+		source = IECoreScene.CurvesPrimitive(
+			IECore.IntVectorData( [ 4, 5, 6, 5, 4] ), IECore.CubicBasisf.bSpline(), True
+		)
+		self.runTestMismatchedInterpolation( source )
+
+	def testMismatchedInterpolationPoints( self ):
+		source = IECoreScene.PointsPrimitive( 20 )
+		self.runTestMismatchedInterpolation( source )
 
 	def testMergeMeshes( self ) :
 
