@@ -310,6 +310,76 @@ bool interpolationMatches(
 	}
 }
 
+PrimitiveVariable::Interpolation mergeInterpolations(
+	IECoreScene::TypeId primType, PrimitiveVariable::Interpolation a, PrimitiveVariable::Interpolation b,
+	const IECore::InternedString &msgName
+)
+{
+	PrimitiveVariable::Interpolation result;
+	if( a == PrimitiveVariable::Invalid || b == PrimitiveVariable::Invalid )
+	{
+		// Invalid inputs are always invalid.
+		result = PrimitiveVariable::Invalid;
+	}
+	else if( primType == IECoreScene::PointsPrimitiveTypeId )
+	{
+		// On points, everything is output as Vertex
+		result = PrimitiveVariable::Vertex;
+	}
+	else if( interpolationMatches( primType, a, b ) )
+	{
+		// If they're the same, then we don't need to promote.
+		result = a;
+	}
+	else if( a == PrimitiveVariable::Constant || ( primType != IECoreScene::MeshPrimitiveTypeId && a == PrimitiveVariable::Uniform ) )
+	{
+		// If a is effectively constant, then we can just take b.
+		result = b;
+	}
+	else if( b == PrimitiveVariable::Constant || ( primType != IECoreScene::MeshPrimitiveTypeId && b == PrimitiveVariable::Uniform ) )
+	{
+		// If b is effectively constant, then we can just take a.
+		result = a;
+	}
+	else if( primType == IECoreScene::CurvesPrimitiveTypeId )
+	{
+		// Mixing Vertex/Varying on curves requires a lossy resample that would make things more complex.
+		msg( Msg::Warning, "mergePrimitives",
+			fmt::format(
+				"Discarding variable \"{}\" - Cannot mix Vertex and Varying curve variables.",
+				std::string( msgName )
+			)
+		);
+		result = PrimitiveVariable::Invalid;
+	}
+	else
+	{
+		// The only remaining possibility is that we're on a mesh has a FaceVarying primvar, or
+		// mixes Vertex and Uniform, which requires FaceVarying.
+		assert( primType == IECoreScene::MeshPrimitiveTypeId );
+		assert(
+			( a == PrimitiveVariable::Varying || b == PrimitiveVariable::FaceVarying ) ||
+			(
+				( interpolationMatches( primType, a, PrimitiveVariable::Vertex ) || interpolationMatches( primType, b, PrimitiveVariable::Vertex ) ) &&
+				( a == PrimitiveVariable::Uniform || b == PrimitiveVariable::Uniform )
+			)
+		);
+		result = PrimitiveVariable::FaceVarying;
+	}
+
+	// When merging interpolations, if the interpolation has synonymous names, we always choose the canonical one
+	if( interpolationMatches( primType, result, PrimitiveVariable::Vertex ) )
+	{
+		result = PrimitiveVariable::Vertex;
+	}
+	else if( interpolationMatches( primType, result, PrimitiveVariable::Varying ) )
+	{
+		result = PrimitiveVariable::Varying;
+	}
+
+	return result;
+}
+
 // Set up indices on the destination matching the source indices ( includes handling converting interpolations ).
 // Note that this only handles interpolations used by mergePrimitives ( ie. only promotion to more specific
 // interpolations, like Vertex -> FaceVarying, but it cann't do averaging ).
@@ -426,6 +496,7 @@ void copyIndices(
 	}
 }
 
+
 } // namespace
 
 
@@ -499,22 +570,14 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 	// Data we need to store for each primvar we output
 	struct PrimVarInfo
 	{
-		PrimVarInfo( IECore::TypeId t, GeometricData::Interpretation interpretation, int numMeshes )
-			: invalid( false ), needsVerts( false ), needsFaces( false ), needsCurveKnots( false ),
+		PrimVarInfo( PrimitiveVariable::Interpolation interpol, IECore::TypeId t, GeometricData::Interpretation interpretation, int numMeshes )
+			: interpolation( interpol ),
 			typeId( t ), interpret( interpretation ), interpretInvalid( false ), indexed( false ),
 			numData( numMeshes, 0 )
 		{
 		}
-		// Primitive variables that are invalid should be reported once when we first realize it's invalid,
-		// and subsequently ignored.
-		bool invalid;
 
-		// These flags determine what interpolation is necessary for the result
-		bool needsVerts;
-		bool needsFaces;
-		bool needsCurveKnots;
-
-		// Computed from the flags above.
+		// Interpolation is set to Invalid if a primitive variable is being ignored.
 		PrimitiveVariable::Interpolation interpolation;
 
 		// Need to track typeId so we can make sure everything matches
@@ -689,9 +752,9 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 				varTypeId = vectorDataTypeFromDataType( var.data.get() );
 			}
 
-			PrimVarInfo &varInfo = varInfos.try_emplace( name, varTypeId, interpret, primitives.size() ).first->second;
+			PrimVarInfo &varInfo = varInfos.try_emplace( name, var.interpolation, varTypeId, interpret, primitives.size() ).first->second;
 
-			if( varInfo.invalid )
+			if( varInfo.interpolation == PrimitiveVariable::Invalid )
 			{
 				continue;
 			}
@@ -704,7 +767,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 						std::string( name ), var.data->typeName()
 					)
 				);
-				varInfo.invalid = true;
+				varInfo.interpolation = PrimitiveVariable::Invalid;
 				continue;
 			}
 
@@ -718,7 +781,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 						IECore::RunTimeTyped::typeNameFromTypeId( var.data->typeId() )
 					)
 				);
-				varInfo.invalid = true;
+				varInfo.interpolation = PrimitiveVariable::Invalid;
 				continue;
 			}
 
@@ -738,40 +801,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 			// For meshes and curves, the interpolation we need depends on the interpolations of all the variables
 			// being combined.
-			if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-			{
-				switch( var.interpolation )
-				{
-					case PrimitiveVariable::Vertex:
-					case PrimitiveVariable::Varying:
-						varInfo.needsVerts = true;
-						break;
-					case PrimitiveVariable::Uniform:
-						varInfo.needsFaces = true;
-						break;
-					case PrimitiveVariable::FaceVarying:
-						varInfo.needsVerts = true;
-						varInfo.needsFaces = true;
-						break;
-					default:
-						break;
-				}
-			}
-			else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-			{
-				switch( var.interpolation )
-				{
-					case PrimitiveVariable::Vertex:
-						varInfo.needsVerts = true;
-						break;
-					case PrimitiveVariable::Varying:
-					case PrimitiveVariable::FaceVarying:
-						varInfo.needsCurveKnots = true;
-						break;
-					default:
-						break;
-				}
-			}
+			varInfo.interpolation = mergeInterpolations( resultTypeId, varInfo.interpolation, var.interpolation, name );
 		}
 	}
 
@@ -781,67 +811,20 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 	for( auto &[name, varInfo] : varInfos )
 	{
-		if( varInfo.invalid )
+		if( varInfo.interpolation == PrimitiveVariable::Invalid )
 		{
 			continue;
 		}
 
-		// Now that we've scanned all the primitives, we can decide which interpolation each variable needs.
+		// If we've processed all primitives, and this var is still just a Constant, promote it to at least
+		// Uniform, so we can represent different values from different primitives.
+		if( varInfo.interpolation == PrimitiveVariable::Constant )
+		{
+			varInfo.interpolation = PrimitiveVariable::Uniform;
+		}
 
-		if( resultTypeId == IECoreScene::MeshPrimitiveTypeId )
-		{
-			if( varInfo.needsFaces && varInfo.needsVerts )
-			{
-				varInfo.interpolation = PrimitiveVariable::FaceVarying;
-			}
-			else if( varInfo.needsVerts )
-			{
-				varInfo.interpolation = PrimitiveVariable::Vertex;
-			}
-			else
-			{
-				// We promote constant primvars to uniform so we can preserve values that differ
-				// between source primitives.
-				varInfo.interpolation = PrimitiveVariable::Uniform;
-			}
-		}
-		else if( resultTypeId == IECoreScene::CurvesPrimitiveTypeId )
-		{
-			if( varInfo.needsCurveKnots && varInfo.needsVerts )
-			{
-				msg( Msg::Warning, "mergePrimitives",
-					fmt::format(
-						"Discarding variable \"{}\" - Cannot mix Vertex and Varying curve variables.",
-						std::string( name )
-					)
-				);
-				varInfo.invalid = true;
-				continue;
-			}
-			else if( varInfo.needsCurveKnots )
-			{
-				varInfo.interpolation = PrimitiveVariable::Varying;
-			}
-			else if( varInfo.needsVerts )
-			{
-				varInfo.interpolation = PrimitiveVariable::Vertex;
-			}
-			else
-			{
-				// We promote constant primvars to uniform so we can preserve values that differ
-				// between source primitives.
-				varInfo.interpolation = PrimitiveVariable::Uniform;
-			}
-		}
-		else
-		{
-			// Even for constants, we want to preserve values that differ between source primitives,
-			// so for PointsPrimitive, everything must be promoted to Vertex.
-			varInfo.interpolation = PrimitiveVariable::Vertex;
-		}
 
 		// We also need to count the amount of data for this primvar contributed by each primitive.
-
 		for( unsigned int i = 0; i < primitives.size(); i++ )
 		{
 
@@ -1009,7 +992,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 
 	for( auto &[name, varInfo] : varInfos )
 	{
-		if( varInfo.invalid )
+		if( varInfo.interpolation == PrimitiveVariable::Invalid )
 		{
 			continue;
 		}
@@ -1061,7 +1044,7 @@ IECoreScene::PrimitivePtr PrimitiveAlgo::mergePrimitives(
 				// the destination primvar.
 				for( auto &[name, varInfo] : varInfos )
 				{
-					if( varInfo.invalid )
+					if( varInfo.interpolation == PrimitiveVariable::Invalid )
 					{
 						continue;
 					}
