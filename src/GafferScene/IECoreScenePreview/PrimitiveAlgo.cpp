@@ -294,7 +294,7 @@ bool interpolationMatches(
 		};
 		return isVertex( a ) && isVertex( b );
 	}
-	else if( primType == IECoreScene::MeshPrimitiveTypeId )
+	else if( primType == IECoreScene::CurvesPrimitiveTypeId )
 	{
 		auto isVarying = []( PrimitiveVariable::Interpolation x) {
 			return x == PrimitiveVariable::Varying || x == PrimitiveVariable::FaceVarying;
