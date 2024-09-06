@@ -91,7 +91,7 @@ class PrimitiveAlgoTest( GafferTest.TestCase ) :
 		vectorData.setInterpretation( IECore.GeometricData.Interpretation.Vector )
 		prim["vectorTest"] = IECoreScene.PrimitiveVariable( Interpolation.Vertex, vectorData )
 		numericData = prim["P"].data.copy()
-		numericData.setInterpretation( IECore.GeometricData.Interpretation.Numeric )
+		numericData.setInterpretation( IECore.GeometricData.Interpretation.None_ )
 		prim["numericTest"] = IECoreScene.PrimitiveVariable( Interpolation.Vertex, numericData )
 		prim["constantVectorTest"] = IECoreScene.PrimitiveVariable(
 			Interpolation.Constant, IECore.V3fData( imath.V3f( 1, 0, 0 ), IECore.GeometricData.Interpretation.Point )

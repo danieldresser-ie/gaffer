@@ -205,6 +205,7 @@ inline void copyElements( const Data *sourceData, size_t sourceIndex, Data *dest
 					auto *singleElementTypedSourceData = IECore::runTimeCast< const SingleElementDataType >( sourceData );
 					if( singleElementTypedSourceData )
 					{
+						assert( num == 1 );
 						if constexpr( std::is_same_v< SingleElementDataType, V3fData > )
 						{
 							// Fairly weird corner case, but technically Constant primvars could need transforming too
@@ -228,6 +229,9 @@ inline void copyElements( const Data *sourceData, size_t sourceIndex, Data *dest
 					}
 				}
 				const auto &typedSource = typedSourceData->readable();
+
+				assert( typedSource.size() >= sourceIndex + num );
+				assert( typedDest.size() >= destIndex + num );
 
 				if constexpr( std::is_same_v< DataType, V3fVectorData > )
 				{
@@ -303,6 +307,7 @@ bool interpolationMatches(
 	}
 	else
 	{
+		assert( primType == IECoreScene::PointsPrimitiveTypeId );
 		auto isVertex = []( PrimitiveVariable::Interpolation x) {
 			return x == PrimitiveVariable::Vertex || x == PrimitiveVariable::Varying || x == PrimitiveVariable::FaceVarying;
 		};
@@ -367,7 +372,7 @@ PrimitiveVariable::Interpolation mergeInterpolations(
 
 // Set up indices on the destination matching the source indices ( includes handling converting interpolations ).
 // Note that this only handles interpolations used by mergePrimitives ( ie. only promotion to more specific
-// interpolations, like Vertex -> FaceVarying, but it cann't do averaging ).
+// interpolations, like Vertex -> FaceVarying, but it can't do averaging ).
 void copyIndices(
 	const std::vector<int> *sourceIndices, int *destIndices,
 	IECoreScene::TypeId primTypeId,
@@ -881,7 +886,7 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 	{
 		PrimVarInfo( PrimitiveVariable::Interpolation interpol, IECore::TypeId t, GeometricData::Interpretation interpretation, int numPrimitives )
 			: interpolation( interpol ),
-			typeId( t ), interpret( interpretation ), interpretInvalid( false ), indexed( false ),
+			typeId( t ), interpretation( interpretation ), interpretationInvalid( false ), indexed( false ),
 			numData( numPrimitives, 0 )
 		{
 		}
@@ -892,8 +897,8 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 		// Need to track typeId so we can make sure everything matches
 		IECore::TypeId typeId;
 
-		GeometricData::Interpretation interpret;
-		bool interpretInvalid;
+		GeometricData::Interpretation interpretation;
+		bool interpretationInvalid;
 
 		// The only case where we don't index the output is if all the input interpolations match, and none
 		// of the inputs are indexed - hopefully this is the common case though.
@@ -934,7 +939,7 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 		// checking that existing entries match correctly
 		for( const auto &[name, var] : prim->variables )
 		{
-			GeometricData::Interpretation interpret = IECore::getGeometricInterpretation( var.data.get() );
+			GeometricData::Interpretation interpretation = IECore::getGeometricInterpretation( var.data.get() );
 
 			IECore::TypeId varTypeId = var.data->typeId();
 
@@ -943,7 +948,7 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 				varTypeId = vectorDataTypeFromDataType( var.data.get() );
 			}
 
-			PrimVarInfo &varInfo = varInfos.try_emplace( name, var.interpolation, varTypeId, interpret, primitives.size() ).first->second;
+			PrimVarInfo &varInfo = varInfos.try_emplace( name, var.interpolation, varTypeId, interpretation, primitives.size() ).first->second;
 
 			if( varInfo.interpolation == PrimitiveVariable::Invalid )
 			{
@@ -976,15 +981,15 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 				continue;
 			}
 
-			if( !varInfo.interpretInvalid )
+			if( !varInfo.interpretationInvalid )
 			{
-				if( interpret != varInfo.interpret )
+				if( interpretation != varInfo.interpretation )
 				{
-					varInfo.interpret = GeometricData::Interpretation::Numeric;
-					varInfo.interpretInvalid = true;
+					varInfo.interpretation = GeometricData::Interpretation::None;
+					varInfo.interpretationInvalid = true;
 					msg( Msg::Warning, "mergePrimitives",
 						fmt::format(
-							"Interpretation mismatch for primitive variable \"{}\", defaulting to \"Numeric\"", name
+							"Interpretation mismatch for primitive variable \"{}\", defaulting to \"None\"", name
 						)
 					);
 				}
@@ -1106,7 +1111,7 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 
 		p.data = IECore::runTimeCast<Data>( IECore::Object::create( varInfo.typeId ) );
 
-		IECore::setGeometricInterpretation( p.data.get(), varInfo.interpret );
+		IECore::setGeometricInterpretation( p.data.get(), varInfo.interpretation );
 		p.interpolation = varInfo.interpolation;
 		Canceller::check( canceller );
 		dataResize( p.data.get(), accumDataSize );
@@ -1161,17 +1166,14 @@ IECoreScene::PrimitivePtr mergePrimitivesInternal(
 						// We don't currently have a way to suppress zero-initialization of the data, so
 						// we don't need to initialize that here
 
-						if( varInfo.indexed )
-						{
-							Canceller::check( canceller );
+						Canceller::check( canceller );
 
-							// We always leave one data element for primitives that don't have the relevant
-							// primvar, so just write out all indices pointing to that element.
-							int *destIndices = &destVar.indices->writable()[ startIndex ];
-							for( size_t j = 0; j < numIndices; j++ )
-							{
-								*(destIndices++) = dataStart;
-							}
+						// We always leave one data element for primitives that don't have the relevant
+						// primvar, so just write out all indices pointing to that element.
+						int *destIndices = &destVar.indices->writable()[ startIndex ];
+						for( size_t j = 0; j < numIndices; j++ )
+						{
+							*(destIndices++) = dataStart;
 						}
 					}
 					else
