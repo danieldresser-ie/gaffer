@@ -1,6 +1,11 @@
 1.x.x.x (relative to 1.5.0.0a3)
 =======
 
+Features
+--------
+
+- Instancer : Added `inactiveIds` plug for selecting primitive variables to disable some instances.
+
 Improvements
 ------------
 
