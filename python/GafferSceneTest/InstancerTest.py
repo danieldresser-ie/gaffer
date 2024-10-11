@@ -1498,11 +1498,17 @@ parent["radius"] = ( 2 + context.getFrame() ) * 15
 		)
 
 	def testIds( self ) :
+		with self.subTest( useInt64 = False ):
+			self.runTestIds( False )
+		with self.subTest( useInt64 = True ):
+			self.runTestIds( True )
+
+	def runTestIds( self, useInt64 ) :
 
 		points = IECoreScene.PointsPrimitive( IECore.V3fVectorData( [ imath.V3f( x, 0, 0 ) for x in range( 0, 4 ) ] ) )
 		points["id"] = IECoreScene.PrimitiveVariable(
 			IECoreScene.PrimitiveVariable.Interpolation.Vertex,
-			IECore.IntVectorData( [ 10, 100, 111, 5 ] ),
+			( IECore.Int64VectorData if useInt64 else IECore.IntVectorData)( [ 10, 100, 111, 5 ] ),
 		)
 		points["index"] = IECoreScene.PrimitiveVariable(
 			IECoreScene.PrimitiveVariable.Interpolation.Vertex,
@@ -2429,6 +2435,29 @@ parent["radius"] = ( 2 + context.getFrame() ) * 15
 		self.assertEqual( uniqueCounts(), { "floatVar" : 5, "color4fVar" : 4, "seed" : 67, "" : 94 } )
 
 		self.assertEncapsulatedRendersSame( instancer )
+
+
+		# We get different results if we change the id the seeds are based on
+		points["idTest"] = IECoreScene.PrimitiveVariable(
+			IECoreScene.PrimitiveVariable.Interpolation.Vertex, IECore.IntVectorData(
+				[ i * 37 for i in range( 100 ) ]
+			)
+		)
+		pointsSource["object"].setValue( points )
+		instancer["id"].setValue( "idTest" )
+		self.assertEqual( uniqueCounts(), { "floatVar" : 5, "color4fVar" : 4, "seed" : 64, "" : 98 } )
+
+		# Works the same using int64 ids
+		points["idTest"] = IECoreScene.PrimitiveVariable(
+			IECoreScene.PrimitiveVariable.Interpolation.Vertex, IECore.Int64VectorData(
+				[ i * 37 for i in range( 100 ) ]
+			)
+		)
+		pointsSource["object"].setValue( points )
+		self.assertEqual( uniqueCounts(), { "floatVar" : 5, "color4fVar" : 4, "seed" : 64, "" : 98 } )
+
+		instancer["id"].setToDefault()
+
 
 		# Now turn on time offset as well and play with everything together
 		instancer["seeds"].setValue( 10 )

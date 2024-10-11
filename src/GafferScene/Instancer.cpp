@@ -272,8 +272,19 @@ int seedForPoint( int index, const PrimitiveVariable *primVar, int numSeeds, int
 	int id = index;
 	if( primVar )
 	{
-		// TODO - the exception this will throw on non-int primvars may not be very clear to users
-		id = PrimitiveVariable::IndexedView<int>( *primVar )[index];
+		if( primVar->data->typeId() == IntVectorData::staticTypeId() )
+		{
+			id = PrimitiveVariable::IndexedView<int>( *primVar )[index];
+		}
+		else if( primVar->data->typeId() == Int64VectorData::staticTypeId() )
+		{
+			id = PrimitiveVariable::IndexedView<int64_t>( *primVar )[index];
+		}
+		else
+		{
+			// We check the type of the primvar before we try to use it here
+			assert( false );
+		}
 	}
 
 	// numSeeds is set to 0 when we're just passing through the id
@@ -302,6 +313,59 @@ int seedForPoint( int index, const PrimitiveVariable *primVar, int numSeeds, int
 
 InternedString g_prototypeRootName( "root" );
 ConstInternedStringVectorDataPtr g_emptyNames = new InternedStringVectorData();
+
+struct IdData
+{
+	IdData() :
+		intElements( nullptr ), int64Elements( nullptr )
+	{
+	}
+
+	void initialize( const Primitive *primitive, const std::string &name )
+	{
+		if( const IntVectorData *intData = primitive->variableData<IntVectorData>( name ) )
+		{
+			intElements = &intData->readable();
+		}
+		else if( const Int64VectorData *int64Data = primitive->variableData<Int64VectorData>( name ) )
+		{
+			int64Elements = &int64Data->readable();
+		}
+
+	}
+
+	size_t size() const
+	{
+		if( intElements )
+		{
+			return intElements->size();
+		}
+		else if( int64Elements )
+		{
+			return int64Elements->size();
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	int element( int i ) const
+	{
+		if( intElements )
+		{
+			return (*intElements)[i];
+		}
+		else
+		{
+			return (*int64Elements)[i];
+		}
+	}
+
+	const std::vector<int> *intElements;
+	const std::vector<int64_t> *int64Elements;
+
+};
 
 }
 
@@ -337,7 +401,6 @@ class Instancer::EngineData : public Data
 				m_numPrototypes( 0 ),
 				m_numValidPrototypes( 0 ),
 				m_prototypeIndices( nullptr ),
-				m_ids( nullptr ),
 				m_positions( nullptr ),
 				m_orientations( nullptr ),
 				m_scales( nullptr ),
@@ -352,13 +415,10 @@ class Instancer::EngineData : public Data
 
 			initPrototypes( mode, prototypeIndexName, rootsVariable, rootsList, prototypes );
 
-			if( const IntVectorData *ids = m_primitive->variableData<IntVectorData>( idName ) )
+			m_ids.initialize( m_primitive.get(), idName );
+			if( m_ids.size() && m_ids.size() != numPoints() )
 			{
-				m_ids = &ids->readable();
-				if( m_ids->size() != numPoints() )
-				{
-					throw IECore::Exception( fmt::format( "Id primitive variable \"{}\" has incorrect size", idName ) );
-				}
+				throw IECore::Exception( fmt::format( "Id primitive variable \"{}\" has incorrect size", idName ) );
 			}
 
 			if( const V3fVectorData *p = m_primitive->variableData<V3fVectorData>( position ) )
@@ -396,11 +456,11 @@ class Instancer::EngineData : public Data
 				}
 			}
 
-			if( m_ids )
+			if( m_ids.size() )
 			{
 				for( size_t i = 0, e = numPoints(); i < e; ++i )
 				{
-					int id = (*m_ids)[i];
+					int id = m_ids.element(i);
 					auto ins = m_idsToPointIndices.try_emplace( id, i );
 					if( !ins.second )
 					{
@@ -443,12 +503,12 @@ class Instancer::EngineData : public Data
 
 		size_t instanceId( size_t pointIndex ) const
 		{
-			return m_ids ? (*m_ids)[pointIndex] : pointIndex;
+			return m_ids.size() ? m_ids.element( pointIndex ) : pointIndex;
 		}
 
 		size_t pointIndex( size_t i ) const
 		{
-			if( !m_ids )
+			if( !m_ids.size() )
 			{
 				if( i >= numPoints() )
 				{
@@ -488,7 +548,7 @@ class Instancer::EngineData : public Data
 				// If there are duplicates in the id list, then some point indices will be omitted - we
 				// need to check each point index to see if it got assigned an id correctly
 
-				int id = (*m_ids)[pointIndex];
+				int id = m_ids.element( pointIndex );
 
 				if( m_idsToPointIndices.at(id) != pointIndex )
 				{
@@ -915,7 +975,7 @@ class Instancer::EngineData : public Data
 		std::vector<int> m_prototypeIndexRemap;
 		std::vector<int> m_prototypeIndicesAlloc;
 		const std::vector<int> *m_prototypeIndices;
-		const std::vector<int> *m_ids;
+		IdData m_ids;
 		const std::vector<Imath::V3f> *m_positions;
 		const std::vector<Imath::Quatf> *m_orientations;
 		const std::vector<Imath::V3f> *m_scales;
@@ -1792,7 +1852,10 @@ void Instancer::compute( Gaffer::ValuePlug *output, const Gaffer::Context *conte
 			if( seedContextName != "" )
 			{
 				const PrimitiveVariable *idPrimVar = findVertexVariable( primitive.get(), idPlug()->getValue() );
-				if( idPrimVar && idPrimVar->data->typeId() != IntVectorDataTypeId )
+				if( idPrimVar &&
+					idPrimVar->data->typeId() != IntVectorDataTypeId &&
+					idPrimVar->data->typeId() != Int64VectorDataTypeId
+				)
 				{
 					idPrimVar = nullptr;
 				}

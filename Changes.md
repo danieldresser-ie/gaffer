@@ -44,6 +44,7 @@ Fixes
 - Cycles : Fixed issue where scaling unnormalized quad and disk lights would not affect their brightness.
 - SceneReader : Fixed crash reading facevarying normals skinned with UsdSkel. [^1]
 - ShaderView : Fixed crash caused by a SceneCreator returning `None`. [^1]
+- Instancer : Support 64 bit ints for ids ( matching what is loaded from USD ).
 
 Breaking Changes
 ----------------
