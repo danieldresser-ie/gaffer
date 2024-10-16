@@ -303,7 +303,7 @@ struct IdData
 		}
 	}
 
-	int element( int i ) const
+	int64_t element( int i ) const
 	{
 		if( intElements )
 		{
@@ -325,10 +325,10 @@ struct IdData
 // with a grouping pattern that can be changed with seedScramble
 int seedForPoint( int index, const IdData &idData, int numSeeds, int seedScramble )
 {
-	int id = index;
+	int64_t id = index;
 	if( idData.size() )
 	{
-		id = idData.element( id );
+		id = idData.element( index );
 	}
 
 	// numSeeds is set to 0 when we're just passing through the id
@@ -348,7 +348,19 @@ int seedForPoint( int index, const IdData &idData, int numSeeds, int seedScrambl
 
 		IECore::MurmurHash seedHash;
 		seedHash.append( seedScramble );
-		seedHash.append( id );
+
+		if( id <= INT32_MAX && id >= INT_MIN )
+		{
+			// This branch shouldn't be needed, we'd like to just treat ids as 64 bit now ...
+			// but if we just took the branch below, that would changing the seeding of existing
+			// scenes.
+			seedHash.append( (int)id );
+		}
+		else
+		{
+			seedHash.append( id );
+		}
+
 		id = int( ( double( seedHash.h1() ) / double( UINT64_MAX ) ) * double( numSeeds ) );
 		id = id % numSeeds;  // For the rare case h1 / max == 1.0, make sure we stay in range
 	}
@@ -448,7 +460,7 @@ class Instancer::EngineData : public Data
 			{
 				for( size_t i = 0, e = numPoints(); i < e; ++i )
 				{
-					int id = m_ids.element(i);
+					int64_t id = m_ids.element(i);
 					auto ins = m_idsToPointIndices.try_emplace( id, i );
 					if( !ins.second )
 					{
@@ -489,16 +501,16 @@ class Instancer::EngineData : public Data
 			return m_primitive ? m_primitive->variableSize( PrimitiveVariable::Vertex ) : 0;
 		}
 
-		size_t instanceId( size_t pointIndex ) const
+		int64_t instanceId( size_t pointIndex ) const
 		{
 			return m_ids.size() ? m_ids.element( pointIndex ) : pointIndex;
 		}
 
-		size_t pointIndex( size_t i ) const
+		size_t pointIndex( int64_t i ) const
 		{
 			if( !m_ids.size() )
 			{
-				if( i >= numPoints() )
+				if( i >= (int64_t)numPoints() || i < 0 )
 				{
 					throw IECore::Exception( fmt::format( "Instance id \"{}\" is invalid, instancer produces only {} children. Topology may have changed during shutter.", i, numPoints() ) );
 				}
@@ -536,7 +548,7 @@ class Instancer::EngineData : public Data
 				// If there are duplicates in the id list, then some point indices will be omitted - we
 				// need to check each point index to see if it got assigned an id correctly
 
-				int id = m_ids.element( pointIndex );
+				int64_t id = m_ids.element( pointIndex );
 
 				if( m_idsToPointIndices.at(id) != pointIndex )
 				{
@@ -969,7 +981,7 @@ class Instancer::EngineData : public Data
 		const std::vector<Imath::V3f> *m_scales;
 		const std::vector<float> *m_uniformScales;
 
-		using IdsToPointIndices = std::unordered_map <int, size_t>;
+		using IdsToPointIndices = std::unordered_map <int64_t, size_t>;
 		IdsToPointIndices m_idsToPointIndices;
 
 		boost::container::flat_map<InternedString, AttributeCreator> m_attributeCreators;
@@ -1743,7 +1755,7 @@ void Instancer::hash( const Gaffer::ValuePlug *output, const Gaffer::Context *co
 					for( size_t i = r.begin(); i != r.end(); ++i )
 					{
 						const size_t pointIndex = pointIndicesForPrototype[i];
-						size_t instanceId = engine->instanceId( pointIndex );
+						int64_t instanceId = engine->instanceId( pointIndex );
 						engine->setPrototypeContextVariables( pointIndex, scope );
 						IECore::MurmurHash instanceH;
 						instanceH.append( instanceId );
@@ -1993,7 +2005,7 @@ void Instancer::compute( Gaffer::ValuePlug *output, const Gaffer::Context *conte
 					for( size_t i = r.begin(); i != r.end(); ++i )
 					{
 						const size_t pointIndex = pointIndicesForPrototype[i];
-						size_t instanceId = engine->instanceId( pointIndex );
+						int64_t instanceId = engine->instanceId( pointIndex );
 						engine->setPrototypeContextVariables( pointIndex, scope );
 						ConstPathMatcherDataPtr instanceSet = prototypesPlug()->setPlug()->getValue();
 						PathMatcher pointInstanceSet = instanceSet->readable().subTree( *prototypeRoot );
@@ -2456,7 +2468,7 @@ IECore::ConstInternedStringVectorDataPtr Instancer::computeBranchChildNames( con
 		// the ids, not the point indices, and must be sorted. So we need to allocate a
 		// temp buffer of integer ids, before converting to strings.
 
-		std::vector<int> ids;
+		std::vector<int64_t> ids;
 		ids.reserve( pointIndicesForPrototype.size() );
 
 		const EngineData *engineData = esp->engine();
@@ -2472,7 +2484,7 @@ IECore::ConstInternedStringVectorDataPtr Instancer::computeBranchChildNames( con
 		InternedStringVectorDataPtr childNamesData = new InternedStringVectorData;
 		std::vector<InternedString> &childNames = childNamesData->writable();
 		childNames.reserve( ids.size() );
-		for( size_t id : ids )
+		for( int64_t id : ids )
 		{
 			childNames.emplace_back( id );
 		}
@@ -3031,7 +3043,7 @@ void Instancer::InstancerCapsule::render( IECoreScenePreview::Renderer *renderer
 					attribs = proto->m_rendererAttributes.get();
 				}
 
-				int instanceId = engines[0]->instanceId( pointIndex );
+				int64_t instanceId = engines[0]->instanceId( pointIndex );
 
 
 				if( !namePrefixLengths[protoIndex] )
@@ -3052,7 +3064,7 @@ void Instancer::InstancerCapsule::render( IECoreScenePreview::Renderer *renderer
 				// up being named when they use the non-encapsulated hierarchy.
 				std::string &name = names[ protoIndex ];
 				const int prefixLen = namePrefixLengths[ protoIndex ];
-				name.resize( namePrefixLengths[protoIndex] + std::numeric_limits< int >::digits10 + 1 );
+				name.resize( namePrefixLengths[protoIndex] + std::numeric_limits< int64_t >::digits10 + 1 );
 				name.resize( std::to_chars( &name[prefixLen], &(*name.end()), instanceId ).ptr - &name[0] );
 
 				IECoreScenePreview::Renderer::ObjectInterfacePtr objectInterface;

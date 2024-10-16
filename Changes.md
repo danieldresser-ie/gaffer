@@ -7,6 +7,11 @@ Improvements
 - Light Editor : Added `is_sphere` column for Cycles lights.
 - Windows : Gaffer now uses the TBB memory allocator for significantly better performance.
 
+Fixes
+-----
+
+- Instancer : Added support 64 bit ints for ids ( matching what is loaded from USD ).
+
 
 1.5.0.0a3 (relative to 1.5.0.0a2)
 =========
@@ -44,7 +49,6 @@ Fixes
 - Cycles : Fixed issue where scaling unnormalized quad and disk lights would not affect their brightness.
 - SceneReader : Fixed crash reading facevarying normals skinned with UsdSkel. [^1]
 - ShaderView : Fixed crash caused by a SceneCreator returning `None`. [^1]
-- Instancer : Support 64 bit ints for ids ( matching what is loaded from USD ).
 
 Breaking Changes
 ----------------
