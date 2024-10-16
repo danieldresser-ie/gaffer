@@ -264,53 +264,6 @@ struct UniqueHashPrototypeContextVariable
 	}
 };
 
-// We create a seed integer that corresponds to the id by hashing the id and then modulo'ing to
-// numSeeds, to create seeds in the range 0 .. numSeeds-1 that persistently correspond to the ids,
-// with a grouping pattern that can be changed with seedScramble
-int seedForPoint( int index, const PrimitiveVariable *primVar, int numSeeds, int seedScramble )
-{
-	int id = index;
-	if( primVar )
-	{
-		if( primVar->data->typeId() == IntVectorData::staticTypeId() )
-		{
-			id = PrimitiveVariable::IndexedView<int>( *primVar )[index];
-		}
-		else if( primVar->data->typeId() == Int64VectorData::staticTypeId() )
-		{
-			id = PrimitiveVariable::IndexedView<int64_t>( *primVar )[index];
-		}
-		else
-		{
-			// We check the type of the primvar before we try to use it here
-			assert( false );
-		}
-	}
-
-	// numSeeds is set to 0 when we're just passing through the id
-	if( numSeeds != 0 )
-	{
-		// The method used for random generation of seeds is actually rather important.
-		// We need a random access RNG which allows evaluating any input id independently,
-		// and should not create lattice artifacts if interpreted as a spacial attribute
-		// such as size.  This is actually a somewhat demanding set of criteria - many
-		// easy to seed RNGs with a small state space could create lattice artifacts.
-		//
-		// Using MurmurHash doesn't seem conceptually perfect, but it uses code we already
-		// have around, should perform fairly well ( might help if the constructor was inlined ),
-		// and I've tested for lattice artifacts by generating 200 000 points with Y set to
-		// seedId, and X set to point index.  These points looked good, with even distribution
-		// and no latticing, so this is probably a reasonable approach to stick with
-
-		IECore::MurmurHash seedHash;
-		seedHash.append( seedScramble );
-		seedHash.append( id );
-		id = int( ( double( seedHash.h1() ) / double( UINT64_MAX ) ) * double( numSeeds ) );
-		id = id % numSeeds;  // For the rare case h1 / max == 1.0, make sure we stay in range
-	}
-	return id;
-}
-
 InternedString g_prototypeRootName( "root" );
 ConstInternedStringVectorDataPtr g_emptyNames = new InternedStringVectorData();
 
@@ -366,6 +319,41 @@ struct IdData
 	const std::vector<int64_t> *int64Elements;
 
 };
+
+// We create a seed integer that corresponds to the id by hashing the id and then modulo'ing to
+// numSeeds, to create seeds in the range 0 .. numSeeds-1 that persistently correspond to the ids,
+// with a grouping pattern that can be changed with seedScramble
+int seedForPoint( int index, const IdData &idData, int numSeeds, int seedScramble )
+{
+	int id = index;
+	if( idData.size() )
+	{
+		id = idData.element( id );
+	}
+
+	// numSeeds is set to 0 when we're just passing through the id
+	if( numSeeds != 0 )
+	{
+		// The method used for random generation of seeds is actually rather important.
+		// We need a random access RNG which allows evaluating any input id independently,
+		// and should not create lattice artifacts if interpreted as a spacial attribute
+		// such as size.  This is actually a somewhat demanding set of criteria - many
+		// easy to seed RNGs with a small state space could create lattice artifacts.
+		//
+		// Using MurmurHash doesn't seem conceptually perfect, but it uses code we already
+		// have around, should perform fairly well ( might help if the constructor was inlined ),
+		// and I've tested for lattice artifacts by generating 200 000 points with Y set to
+		// seedId, and X set to point index.  These points looked good, with even distribution
+		// and no latticing, so this is probably a reasonable approach to stick with
+
+		IECore::MurmurHash seedHash;
+		seedHash.append( seedScramble );
+		seedHash.append( id );
+		id = int( ( double( seedHash.h1() ) / double( UINT64_MAX ) ) * double( numSeeds ) );
+		id = id % numSeeds;  // For the rare case h1 / max == 1.0, make sure we stay in range
+	}
+	return id;
+}
 
 }
 
@@ -692,7 +680,7 @@ class Instancer::EngineData : public Data
 
 				if( v.seedMode )
 				{
-					scope.setAllocated( v.name, seedForPoint( pointIndex, v.primVar, v.numSeeds, v.seedScramble ) );
+					scope.setAllocated( v.name, seedForPoint( pointIndex, m_ids, v.numSeeds, v.seedScramble ) );
 					continue;
 				}
 
@@ -720,7 +708,7 @@ class Instancer::EngineData : public Data
 		{
 			if( v.seedMode )
 			{
-				result.append( seedForPoint( pointIndex, v.primVar, v.numSeeds, v.seedScramble ) );
+				result.append( seedForPoint( pointIndex, m_ids, v.numSeeds, v.seedScramble ) );
 				return;
 			}
 
@@ -1851,18 +1839,12 @@ void Instancer::compute( Gaffer::ValuePlug *output, const Gaffer::Context *conte
 
 			if( seedContextName != "" )
 			{
-				const PrimitiveVariable *idPrimVar = findVertexVariable( primitive.get(), idPlug()->getValue() );
-				if( idPrimVar &&
-					idPrimVar->data->typeId() != IntVectorDataTypeId &&
-					idPrimVar->data->typeId() != Int64VectorDataTypeId
-				)
-				{
-					idPrimVar = nullptr;
-				}
-
 				int seeds = rawSeedPlug()->getValue() ? 0 : seedsPlug()->getValue();
 				int seedScramble = seedPermutationPlug()->getValue();
-				prototypeContextVariables.push_back( { seedContextName, idPrimVar, 0, false, true, seeds, seedScramble } );
+
+				// We set seedMode to true here, which means rather than reading a given primvar, this context
+				// variable will be driven by whatever is driving id.
+				prototypeContextVariables.push_back( { seedContextName, nullptr, 0, false, true, seeds, seedScramble } );
 			}
 
 			if( timeOffsetEnabled )
