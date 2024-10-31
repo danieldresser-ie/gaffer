@@ -522,7 +522,7 @@ void GafferSceneModule::bindIECoreScenePreview()
 	}
 
 	scope capturingRendererScope = IECorePython::RefCountedClass<CapturingRenderer, Renderer>( "CapturingRenderer" )
-		.def( init<Renderer::RenderType, const std::string &, const IECore::MessageHandlerPtr &>( ( arg( "renderType" ) = Renderer::RenderType::Interactive, arg( "fileName" ) = "", arg( "messageHandler") = IECore::MessageHandlerPtr() ) ) )
+		.def( init<Renderer::RenderType, const std::string &, const IECore::MessageHandlerPtr &, bool>( ( arg( "renderType" ) = Renderer::RenderType::Interactive, arg( "fileName" ) = "", arg( "messageHandler") = IECore::MessageHandlerPtr(), arg( "checkHashes" ) = false ) ) )
 		.def( "capturedObjectNames", &capturingRendererCapturedObjectNames )
 		.def( "capturedObject", &capturingRendererCapturedObject )
 	;

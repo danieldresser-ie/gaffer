@@ -224,7 +224,7 @@ class CapturingRendererTest( GafferTest.TestCase ) :
 				result[objectName] = capturedObject
 				continue
 
-			procRenderer = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch )
+			procRenderer = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch, "", None, True )
 
 			capturedObject.capturedSamples[0].render( procRenderer )
 			procExpanded = CapturingRendererTest.__expandCapturingRenderer( procRenderer, expandProcedurals = True )

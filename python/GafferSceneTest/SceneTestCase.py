@@ -412,12 +412,12 @@ class SceneTestCase( GafferImageTest.ImageTestCase ) :
 		# \todo - could be nice to have an option for using a Render node instead of a RenderController,
 		# which should have the same effect, but is a separate code path.
 
-		rendererA = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch )
+		rendererA = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch, "", None, True )
 		controllerA = GafferScene.RenderController( plugA, Gaffer.Context.current(), rendererA )
 		controllerA.setMinimumExpansionDepth( 1024 )
 		controllerA.update()
 
-		rendererB = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch )
+		rendererB = GafferScene.Private.IECoreScenePreview.CapturingRenderer( GafferScene.Private.IECoreScenePreview.Renderer.RenderType.Batch, "", None, True )
 		controllerB = GafferScene.RenderController( plugB, Gaffer.Context.current(), rendererB )
 		controllerB.setMinimumExpansionDepth( 1024 )
 		controllerB.update()

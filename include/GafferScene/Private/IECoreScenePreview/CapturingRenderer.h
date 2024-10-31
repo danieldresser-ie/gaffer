@@ -63,7 +63,8 @@ class GAFFERSCENE_API CapturingRenderer : public Renderer
 		CapturingRenderer(
 			RenderType type = RenderType::Interactive,
 			const std::string &fileName = "",
-			const IECore::MessageHandlerPtr &messageHandler = IECore::MessageHandlerPtr()
+			const IECore::MessageHandlerPtr &messageHandler = IECore::MessageHandlerPtr(),
+			bool checkHashes = false
 		);
 		~CapturingRenderer() override;
 
@@ -180,8 +181,12 @@ class GAFFERSCENE_API CapturingRenderer : public Renderer
 
 		RenderType m_renderType;
 		std::atomic_bool m_rendering;
+		bool m_checkHashes;
+
 		using ObjectMap = tbb::concurrent_hash_map<std::string, CapturedObject *>;
 		ObjectMap m_capturedObjects;
+		using ObjectMapByHash = tbb::concurrent_hash_map<IECore::MurmurHash, CapturedObject *>;
+		ObjectMapByHash m_capturedObjectsByHash;
 
 		static Renderer::TypeDescription<CapturingRenderer> g_typeDescription;
 

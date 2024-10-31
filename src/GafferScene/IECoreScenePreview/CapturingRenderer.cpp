@@ -36,6 +36,9 @@
 
 #include "GafferScene/Private/IECoreScenePreview/CapturingRenderer.h"
 
+// Obviously wrong
+#include "GafferScene/Capsule.h"
+
 #include "IECore/MessageHandler.h"
 #include "IECore/SimpleTypedData.h"
 
@@ -51,8 +54,8 @@ using namespace IECoreScenePreview;
 
 IECoreScenePreview::Renderer::TypeDescription<CapturingRenderer> CapturingRenderer::g_typeDescription( "Capturing" );
 
-CapturingRenderer::CapturingRenderer( RenderType type, const std::string &fileName, const IECore::MessageHandlerPtr &messageHandler )
-	:	m_messageHandler( messageHandler ), m_renderType( type ), m_rendering( false )
+CapturingRenderer::CapturingRenderer( RenderType type, const std::string &fileName, const IECore::MessageHandlerPtr &messageHandler, bool checkHashes )
+	:	m_messageHandler( messageHandler ), m_renderType( type ), m_rendering( false ), m_checkHashes( checkHashes )
 {
 }
 
@@ -140,6 +143,23 @@ Renderer::ObjectInterfacePtr CapturingRenderer::object( const std::string &name,
 	return this->object( name, { object }, {}, attributes );
 }
 
+namespace {
+bool objectsActuallyEqual( const IECore::Object *a, const IECore::Object *b )
+{
+	const GafferScene::Capsule *aTyped = IECore::runTimeCast< const GafferScene::Capsule >( a );
+	const GafferScene::Capsule *bTyped = IECore::runTimeCast< const GafferScene::Capsule >( b );
+	if( aTyped && bTyped )
+	{
+		return aTyped->scene() == bTyped->scene() && aTyped->root() == bTyped->root() && aTyped->context() == bTyped->context();
+	}
+	else
+	{
+		return *a == *b;
+	}
+}
+
+} // namespace
+
 Renderer::ObjectInterfacePtr CapturingRenderer::object( const std::string &name, const std::vector<const IECore::Object *> &samples, const std::vector<float> &times, const AttributesInterface *attributes )
 {
 	IECore::MessageHandler::Scope s( m_messageHandler.get() );
@@ -172,6 +192,50 @@ Renderer::ObjectInterfacePtr CapturingRenderer::object( const std::string &name,
 		// capture it for later examination. Add a reference to keep it alive.
 		// See ~CapturingRenderer for the associated `removeRef()`.
 		a->second->addRef();
+	}
+
+
+	if( m_checkHashes )
+	{
+		IECore::MurmurHash h;
+		for( const IECore::Object *i : samples )
+		{
+			h.append( i->hash() );
+		}
+		for( float i : times )
+		{
+			h.append( i );
+		}
+
+		ObjectMapByHash::accessor ah;
+		if( !m_capturedObjectsByHash.insert( ah, h ) )
+		{
+			bool match = true;
+
+			if( ah->second->capturedSamples().size() != result->capturedSamples().size() )
+			{
+				match = false;
+			}
+			else
+			{
+				for( unsigned int i = 0; i < ah->second->capturedSamples().size(); i++ )
+				{
+					match &= objectsActuallyEqual( ah->second->capturedSamples()[i].get(), result->capturedSamples()[i].get() );
+				}
+			}
+
+			if( !match )
+			{
+				throw IECore::Exception( fmt::format(
+					"Object \"{}\" has the same hash as \"{}\", but they don't match",
+					name, ah->second->capturedName()
+				) );
+			}
+		}
+		else
+		{
+			ah->second = result.get();
+		}
 	}
 
 	return result;
