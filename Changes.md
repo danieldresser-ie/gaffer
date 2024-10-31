@@ -5,6 +5,7 @@ Fixes
 -----
 
 - CyclesShader : Fixed broken presets menus.
+- Instancer : Fixed issue where wrong prototypes were sometimes used in encapsulated render.
 
 1.5.0.0 (relative to 1.4.15.0)
 =======
