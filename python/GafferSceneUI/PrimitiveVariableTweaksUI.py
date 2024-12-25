@@ -95,8 +95,9 @@ Gaffer.Metadata.registerNode(
 
 			"description",
 			"""
-			Choose how to select which elements are affected. Only takes effect if you
-			choose an interpolation other than "Any" or "Constant".
+			Chooses how to select which elements are affected. Only takes effect if you
+			choose an interpolation other than "Any" or "Constant". "Id List" shows a
+			list plug to manually select a TODO
 			""",
 
 			"preset:All", GafferScene.PrimitiveVariableTweaks.SelectionMode.All,
@@ -175,9 +176,8 @@ Gaffer.Metadata.registerNode(
 
 			"description",
 			"""
-			The tweaks to be made to the options. Arbitrary numbers of user defined
-			tweaks may be added as children of this plug via the user interface, or
-			using the OptionTweaks API via python.
+			The tweaks to be made to the primitive variables. Arbitrary numbers of user defined
+			tweaks may be added as children of this plug.
 			""",
 
 			"plugValueWidget:type", "GafferUI.LayoutPlugValueWidget",
@@ -267,11 +267,6 @@ class _TweaksFooter( GafferUI.PlugValueWidget ) :
 				Gaffer.V3iPlug,
 				Gaffer.V2fPlug,
 				Gaffer.V3fPlug,
-				# \todo - specifying interpretation is only necessary for Create mode - is having these options
-				# in the menu worth it?
-				IECore.V3fData( imath.V3f( 0 ), IECore.GeometricData.Interpretation.Point ),
-				IECore.V3fData( imath.V3f( 0 ), IECore.GeometricData.Interpretation.Vector ),
-				IECore.V3fData( imath.V3f( 0 ), IECore.GeometricData.Interpretation.Normal ),
 				"VectorDivider",
 				Gaffer.Color3fPlug,
 				Gaffer.Color4fPlug,
