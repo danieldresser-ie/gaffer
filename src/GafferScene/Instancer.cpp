@@ -2467,17 +2467,93 @@ void Instancer::hashObject( const ScenePath &path, const Gaffer::Context *contex
 		if( branchPath.size() == 1 )
 		{
 			BranchCreator::hashBranchObject( sourcePath, branchPath, context, h );
-			h.append( reinterpret_cast<uint64_t>( this ) );
-			/// We need to include anything that will affect how the capsule will expand.
-			for( const auto &prototypePlug : ValuePlug::Range( *prototypesPlug() ) )
+
+			// TODO - there's another existing bug here, we're only checking the engine at one time, not at every
+			// shutter sample.
+			engineHash( sourcePath, context, h );
+
+			GafferScene::Private::RendererAlgo::RenderOptions renderOptions = GafferScene::Private::RendererAlgo::RenderOptions( prototypesPlug() );
+
+			const vector<float> sampleTimes = [this, &sourcePath, &renderOptions, &context]()
 			{
-				if( prototypePlug != prototypesPlug()->globalsPlug() )
+				vector<float> result;
+				const ConstCompoundObjectPtr sceneAttributes = inPlug()->fullAttributes( sourcePath );
+				GafferScene::Private::RendererAlgo::transformMotionTimes( renderOptions, sceneAttributes.get(), result );
+
+				if( result.size() == 0 )
 				{
-					h.append( prototypePlug->dirtyCount() );
+					result.push_back( context->getFrame() );
+				}
+
+				return result;
+			}();
+
+			ConstEngineDataPtr engineData = engine( sourcePath, context );
+
+			bool accurateHash = true;
+			if( engineData->hasContextVariables() )
+			{
+				accurateHash = false;
+			}
+			else
+			{
+				float onFrameTime = context->getFrame();
+				ScenePlug::PathScope pathScope( context );
+
+				// TODO - multithread?
+				for( size_t i = 0; i < engineData->numValidPrototypes(); i++ )
+				{
+					const ScenePlug::ScenePath *prototypeRoot = engineData->prototypeRoot( i );
+					pathScope.setPath( prototypeRoot );
+					pathScope.setFrame( onFrameTime );
+					if( !prototypesPlug()->existsPlug()->getValue() )
+					{
+						throw IECore::Exception( fmt::format( "Prototype root \"{}\" does not exist in the `prototypes` scene", ScenePlug::pathToString( *prototypeRoot ) ) );
+					}
+					if( prototypesPlug()->childNamesPlug()->getValue()->readable().size() != 0 )
+					{
+						accurateHash = false;
+						break;
+					}
+
+					ConstCompoundObjectPtr attributes = prototypesPlug()->attributesPlug()->getValue();
+					if( !renderOptions.purposeIncluded( attributes.get() ) )
+					{
+						continue;
+					}
+
+					prototypesPlug()->attributesPlug()->hash( h );
+
+					for( float t : sampleTimes )
+					{
+						pathScope.setFrame( t );
+						prototypesPlug()->transformPlug()->hash( h );
+					}
+
+					std::vector<float> objectSampleTimes;
+					GafferScene::Private::RendererAlgo::deformationMotionTimes( renderOptions, attributes.get(), objectSampleTimes );
+					for( float t : objectSampleTimes )
+					{
+						pathScope.setFrame( t );
+						prototypesPlug()->objectPlug()->hash( h );
+					}
 				}
 			}
-			engineHash( sourcePath, context, h );
-			h.append( context->hash() );
+
+			if( !accurateHash )
+			{
+				h.append( reinterpret_cast<uint64_t>( this ) );
+				/// We need to include anything that will affect how the capsule will expand.
+				for( const auto &prototypePlug : ValuePlug::Range( *prototypesPlug() ) )
+				{
+					if( prototypePlug != prototypesPlug()->globalsPlug() )
+					{
+						h.append( prototypePlug->dirtyCount() );
+					}
+				}
+				h.append( context->hash() );
+			}
+
 			outPlug()->boundPlug()->hash( h );
 			return;
 		}
