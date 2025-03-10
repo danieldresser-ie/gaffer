@@ -39,6 +39,7 @@ import IECore
 import Gaffer
 import GafferUI
 import GafferScene
+import GafferImage
 
 ## Base class to simplify the creation of Editors which operate on ScenePlugs.
 class SceneEditor( GafferUI.NodeSetEditor ) :
@@ -63,7 +64,7 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 
 		GafferUI.NodeSetEditor.__init__( self, topLevelWidget, scriptNode, nodeSet = scriptNode.focusSet(), **kw )
 
-		self.__parentingConnections = {}
+		self.__connections = {}
 
 		self.__globalEditTargetLinked = False
 		self.parentChangedSignal().connect( Gaffer.WeakMethod( self.__parentChanged ) )
@@ -82,8 +83,10 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 
 		# Find ScenePlugs and connect them to `settings()["in"]`.
 
-		updatedParentingConnections = {}
+		updatedConnections = {}
 		inputsToFill = [ self.settings()["in"] ] if isinstance( self.settings()["in"], GafferScene.ScenePlug ) else list( self.settings()["in"].children() )
+
+		updatedImageDirtiedConnections = {}
 
 		with Gaffer.DirtyPropagationScope() :
 
@@ -93,22 +96,39 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 					( p for p in GafferScene.ScenePlug.RecursiveOutputRange( node ) if not p.getName().startswith( "__" ) ),
 					None
 				)
+				if outputScenePlug is None:
+					outputImagePlug = next(
+						( p for p in GafferImage.ImagePlug.RecursiveOutputRange( node ) if not p.getName().startswith( "__" ) ),
+						None
+					)
+					if outputImagePlug:
+						try:
+							with self.context():
+								outputScenePlug = GafferScene.SceneAlgo.sourceScene( outputImagePlug )
+						except:
+							# The call to sourceScene could easily fail ( for example, because you're looking
+							# at an ImageReader with an invalid file path, so you can't read the metadata ).
+							# If the image is invalid, then there is no corresponding scene, and it's correct
+							# to leave outputScenePlug set to None
+							pass
+
 				if outputScenePlug is not None :
 					inputsToFill.pop( 0 ).setInput( outputScenePlug )
-					plugConnection = self.__parentingConnections.get( outputScenePlug )
+					plugConnection = self.__connections.get( outputScenePlug )
 					if plugConnection is None :
 						plugConnection = outputScenePlug.parentChangedSignal().connect(
 							Gaffer.WeakMethod( self.__scenePlugParentChanged ), scoped = True
 						)
-					updatedParentingConnections[outputScenePlug] = plugConnection
+					updatedConnections[outputScenePlug] = plugConnection
 
-				nodeConnections = self.__parentingConnections.get( node )
-				if nodeConnections is None :
-					nodeConnections = [
+				connections = self.__connections.get( node )
+				if connections is None :
+					connections = [
 						node.childAddedSignal().connect( Gaffer.WeakMethod( self.__childAddedOrRemoved ), scoped = True ),
 						node.childRemovedSignal().connect( Gaffer.WeakMethod( self.__childAddedOrRemoved ), scoped = True ),
+						node.plugDirtiedSignal().connect( Gaffer.WeakMethod( self.__plugDirtied ), scoped = True ),
 					]
-				updatedParentingConnections[node] = nodeConnections
+				updatedConnections[node] = connections
 
 			for unfilledInput in inputsToFill :
 				unfilledInput.setInput( None )
@@ -117,11 +137,15 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 		# into infinite loops. We are called from the very signals we are
 		# connecting to, so if we made _new_ connections then we would be called
 		# _again_ for the same invocation of the signal.
-		self.__parentingConnections = updatedParentingConnections
+		self.__connections = updatedConnections
 
 		# Called last, because it will call `_titleFormat()`, which depends on
 		# the inputs we just created.
 		GafferUI.NodeSetEditor._updateFromSet( self )
+
+	@GafferUI.LazyMethod()
+	def __lazyUpdateFromSet( self ) :
+		self._updateFromSet()
 
 	def _titleFormat( self ) :
 
@@ -155,3 +179,19 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 
 		if isinstance( child, GafferScene.ScenePlug ) :
 			self._updateFromSet()
+
+
+	def __plugDirtied( self, plug ) :
+
+		# If the node we're editing has an image output, then we might be using that image's metadata
+		# to find an appropriate scene to edit - in which case a change to that metadata requires an
+		# update.
+		if (
+			plug.direction() == Gaffer.Plug.Direction.Out and
+			type( plug.parent() ) == GafferImage.ImagePlug and
+			plug == plug.parent()["metadata"]
+		):
+			# _updateFromSet may need to rewire the graph in order to connect to the source scene
+			# of an image. It's important that we don't try to perform this rewiring while we're in
+			# the middle of a dirty propagation, so we use a lazy method to call _updateFromSet
+			self.__lazyUpdateFromSet()
