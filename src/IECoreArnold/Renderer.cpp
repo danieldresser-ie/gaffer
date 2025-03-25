@@ -440,7 +440,7 @@ class ArnoldRendererBase : public IECoreScenePreview::Renderer
 namespace
 {
 
-const IECore::InternedString g_cameraOverrideInternedString( "cameraOverride" );
+const IECore::InternedString g_cameraOverrideInternedString( "__cameraOverride" );
 const IECore::InternedString g_customAttributesInternedString( "customAttributes" );
 const IECore::InternedString g_driverNodeTypeInternedString( "driverNodeType" );
 const IECore::InternedString g_fileNameInternedString( "fileName" );
@@ -503,9 +503,6 @@ class ArnoldDriver : public IECore::RefCounted
 				ParameterAlgo::setParameter( m_driver.get(), g_customAttributesArnoldString, customAttributes, /* messageContext = */ m_name.string() );
 			}
 
-			const IECore::BoolData *updateInteractivelyData = parameters->member<IECore::BoolData>( g_updateInteractivelyInternedString );
-			m_updateInteractively = updateInteractivelyData ? updateInteractivelyData->readable() : false;
-
 			std::string filterPrefix( "filter" );
 			for( const auto &it : parameters->readable() )
 			{
@@ -515,8 +512,7 @@ class ArnoldDriver : public IECore::RefCounted
 					name == g_driverNodeTypeInternedString ||
 					name == g_customAttributesInternedString ||
 					boost::starts_with( it.first.string(), filterPrefix ) ||
-					name == g_cameraOverrideInternedString ||
-					name == g_updateInteractivelyInternedString
+					name == g_cameraOverrideInternedString
 				)
 				{
 					// Some parameters have special handling so we don't want to use the generic way of outputting
@@ -528,8 +524,6 @@ class ArnoldDriver : public IECore::RefCounted
 					// - cameraOverride - this parameter isn't intended for us to do anything with, it just gets
 					//     put in driverParameters because we want to flag the issue that would occur if we tried
 					//     to merge outputs with different cameras
-					// - updateInteractively - this isn't a parameter on the driver in Arnold, it's something
-					//     we query ourselves in updateCamera to decide whether to call AiRenderAddInteractiveOutput
 					continue;
 				}
 
@@ -607,11 +601,6 @@ class ArnoldDriver : public IECore::RefCounted
 			return AiNodeGetName( m_filter.get() );
 		}
 
-		bool updateInteractively() const
-		{
-			return m_updateInteractively;
-		}
-
 	private :
 
 		AtUniverse *m_universe;
@@ -619,8 +608,6 @@ class ArnoldDriver : public IECore::RefCounted
 		NodeDeleter m_nodeDeleter;
 		SharedAtNodePtr m_driver;
 		SharedAtNodePtr m_filter;
-
-		bool m_updateInteractively;
 };
 
 IE_CORE_DECLAREPTR( ArnoldDriver )
@@ -702,9 +689,12 @@ class ArnoldOutput : public IECore::RefCounted
 					}
 				}
 
-				if( it->first.string() == "layerName" || it->first.string() == "layerPerLightGroup" )
+				if(
+					it->first.string() == "layerName" || it->first.string() == "layerPerLightGroup" ||
+					it->first == g_updateInteractivelyInternedString
+				)
 				{
-					// Layer names and light groups are handled by the output, not the driver
+					// Layer names, light groups and updateInteractively are handled by the output, not the driver
 					continue;
 				}
 
@@ -3743,11 +3733,10 @@ class ArnoldGlobals
 						m_imager = m_shaderCache->get( d, IECore::InternedString(), nullptr );
 					}
 				}
-				// \todo - this didn't trip any tests when disabled ... suggests need for better test coverage here
-				for( const auto &driver : m_drivers )
-				{
-					driver.second->updateImager( m_imager ? m_imager->root() : nullptr );
-				}
+
+				// NOTE : If we weren't always updating the drivers, we would need to flag here that the driver
+				// has been dirtied. However, currently, we've been unable to observe any perceptible cost to just
+				// updating the drivers every time we render, so we don't need to flag anything here.
 				return;
 			}
 			else if( boost::starts_with( name.c_str(), "ai:aov_shader:" ) )
@@ -4140,7 +4129,7 @@ class ArnoldGlobals
 				if( outputCamera == cameraName )
 				{
 					// We're relying on updateDrivers being called before updateCamera
-					if( m_drivers.at( it.second->driverName() )->updateInteractively() )
+					if( it.second->updateInteractively() )
 					{
 						interactiveIndices.push_back( outputs->writable().size() );
 					}
@@ -4297,13 +4286,10 @@ class ArnoldGlobals
 
 			struct SharedDriverParameters
 			{
-				SharedDriverParameters() : updateInteractively( false ) {}
-
 				std::vector< std::string > outputNames;
 				std::string name;
 				std::vector< std::string > outputIds;
 				IECore::StringDataPtr outputIdsString;
-				bool updateInteractively;
 			};
 
 			std::map< std::string, SharedDriverParameters > sharedDriverParameters;
@@ -4317,7 +4303,6 @@ class ArnoldGlobals
 				{
 					shared.outputIds.push_back( outputIdData->readable() );
 				}
-				shared.updateInteractively |= output->updateInteractively();
 			}
 
 			for( auto& [ driverName, shared ] : sharedDriverParameters )
@@ -4336,7 +4321,6 @@ class ArnoldGlobals
 				IECore::CompoundDataMap &currentParameters = currentParametersData->writable();
 				SharedDriverParameters &shared = sharedDriverParameters.at( output->driverName() );
 				currentParameters[g_gafferOutputIDInternedString] = shared.outputIdsString;
-				currentParameters[g_updateInteractivelyInternedString] = new IECore::BoolData( shared.updateInteractively );
 
 				auto existingDriver = requiredDrivers.find( output->driverName() );
 				if( existingDriver != requiredDrivers.end() )
