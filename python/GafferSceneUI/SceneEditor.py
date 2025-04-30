@@ -154,11 +154,24 @@ class SceneEditor( GafferUI.NodeSetEditor ) :
 		else :
 			numInputs = sum( 1 for p in self.settings()["in"] if p.getInput() is not None )
 
+		hasSceneInput = False
+
+		for node in self.getNodeSet()[-numInputs:] :
+
+			hasSceneInput |= any(
+				[ not p.getName().startswith( "__" ) for p in GafferScene.ScenePlug.RecursiveOutputRange( node )]
+			)
+
+		overrideNodeSet = None
+		if not hasSceneInput:
+			overrideNodeSet = Gaffer.StandardSet( [ self.settings()["in"].source().node() ] )
+
 		return GafferUI.NodeSetEditor._titleFormat(
 			self,
 			_maxNodes = numInputs,
 			_reverseNodes = True,
-			_ellipsis = False
+			_ellipsis = False,
+			_overrideNodeSet = overrideNodeSet
 		)
 
 	def __parentChanged( self, widget ) :

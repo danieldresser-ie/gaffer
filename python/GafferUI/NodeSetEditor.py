@@ -194,33 +194,38 @@ class NodeSetEditor( GafferUI.Editor ) :
 	## May be reimplemented by derived classes to specify a combination of
 	# strings and node names to use in building the title. The NodeSetEditor
 	# will take care of updating the title appropriately as the nodes are renamed.
-	def _titleFormat( self, _prefix = None, _maxNodes = 2, _reverseNodes = False, _ellipsis = True ) :
+	def _titleFormat( self, _prefix = None, _maxNodes = 2, _reverseNodes = False, _ellipsis = True, _overrideNodeSet = None ) :
 
 		if _prefix is None :
 			result = [ IECore.CamelCase.toSpaced( self.__class__.__name__ ) ]
 		else :
 			result = [ _prefix ]
 
+		if _overrideNodeSet:
+			nodeSet = _overrideNodeSet
+		else:
+			nodeSet = self.getNodeSet()
+
 		# Only add node names if we're pinned in some way shape or form
-		if self.getNodeSet() != self.scriptNode().focusSet() and self.getNodeSet() != self.scriptNode().selection():
+		if nodeSet != self.scriptNode().focusSet() and nodeSet != self.scriptNode().selection():
 
 			result.append( " [" )
 
-			numNames = min( _maxNodes, len( self.__nodeSet ) )
+			numNames = min( _maxNodes, len( nodeSet ) )
 			if numNames :
 
 				if _reverseNodes :
-					nodes = self.__nodeSet[len(self.__nodeSet)-numNames:]
+					nodes = nodeSet[len(nodeSet)-numNames:]
 					nodes.reverse()
 				else :
-					nodes = self.__nodeSet[:numNames]
+					nodes = nodeSet[:numNames]
 
 				for i, node in enumerate( nodes ) :
 					result.append( node )
 					if i < numNames - 1 :
 						result.append( ", " )
 
-				if _ellipsis and len( self.__nodeSet ) > _maxNodes :
+				if _ellipsis and len( nodeSet ) > _maxNodes :
 					result.append( "..." )
 
 			result.append( "]" )
