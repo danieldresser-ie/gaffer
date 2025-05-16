@@ -47,6 +47,11 @@
 #include "GafferImage/ImageWriter.h"
 #include "GafferImage/Text.h"
 
+// TODO - we're not supposed to depend on GafferScene, are we?
+#include "GafferScene/InteractiveRender.h"
+#include "GafferScene/RenderManifest.h"
+#include "GafferScene/SceneAlgo.h"
+
 #include "Gaffer/ArrayPlug.h"
 #include "Gaffer/Context.h"
 #include "Gaffer/DownstreamIterator.h"
@@ -98,7 +103,7 @@ namespace
 	};
 	IE_CORE_DECLAREPTR( ImageIndexMapData )
 
-	std::string g_isRenderingMetadataName = "gaffer:isRendering";
+	IECore::InternedString g_isRenderingMetadataName = "gaffer:isRendering";
 	std::string g_emptyString( "" );
 	std::string g_outputPrefix( "output:" );
 	IECore::InternedString g_imageNameContextName( "catalogue:imageName" );
@@ -229,6 +234,24 @@ class Catalogue::InternalImage : public ImageNode
 			else if( numDisplays )
 			{
 				m_saver = AsynchronousSaver::create( this );
+
+				ConstBoolDataPtr isRenderingData = other->outPlug()->metadata()->member<BoolData>( g_isRenderingMetadataName );
+				std::cerr << "TEST " << other->outPlug()->fullName() << "\n";
+				if( isRenderingData && isRenderingData->readable() )
+				{
+					// Const cast is safe here since source scene only needs a non-const input in order to
+					// return a non-const result, and we treat the result as const.
+					const GafferScene::ScenePlug *scenePlug = GafferScene::SceneAlgo::sourceScene( const_cast<ImagePlug*>( other->outPlug() ) );
+
+					if( scenePlug )
+					{
+						const GafferScene::InteractiveRender *interactiveRenderNode = IECore::runTimeCast<const GafferScene::InteractiveRender>( scenePlug->node() );
+						if( interactiveRenderNode )
+						{
+							m_saver->storeLiveRenderManifestIfNeeded( interactiveRenderNode->renderManifest() );
+						}
+					}
+				}
 			}
 
 			m_renderID = "invalid"; // Make sure `insertDriver()` will reject new drivers
@@ -555,13 +578,29 @@ class Catalogue::InternalImage : public ImageNode
 				m_clients.erase( client );
 			}
 
+			void storeLiveRenderManifestIfNeeded( const std::shared_ptr<const GafferScene::RenderManifest> &liveRenderManifest )
+			{
+				if( !m_manifestDest.empty() )
+				{
+					// We don't make a copy of this in the foreground thread to avoid the delay.
+					// RenderManifest is thread-safe in the sense that it uses a mutex to prevent
+					// simultaneous read/writes - so the manifest will be valid. There is a risk
+					// that the manifest may not correspond exactly to the manifest when the image
+					// was snapshotted, but it would likely just contain some extra ids if new
+					// objects are being added to the scene while the write occurs - this shouldn't
+					// cause any actual problems, and the slight weirdness is probably acceptable in
+					// exchange for performance?
+					m_liveRenderManifest = liveRenderManifest;
+				}
+			}
+
 			using TileIndex = std::pair<std::string, Imath::V2i>;
 			using ChannelDataHashes = boost::unordered_map<TileIndex, IECore::MurmurHash>;
 			ChannelDataHashes channelDataHashes;
 
 			private :
 
-				AsynchronousSaver( InternalImagePtr imageCopy, const std::filesystem::path &fileName )
+				AsynchronousSaver( InternalImagePtr imageCopy, const std::filesystem::path &filePath )
 					:	m_imageCopy( imageCopy )
 				{
 					// Set up an ImageWriter to do the actual saving.
@@ -573,7 +612,7 @@ class Catalogue::InternalImage : public ImageNode
 
 					m_writer = new ImageWriter;
 					m_writer->inPlug()->setInput( m_modifyMetadata->outPlug() );
-					m_writer->fileNamePlug()->setValue( fileName );
+					m_writer->fileNamePlug()->setValue( filePath );
 
 					StringPlug *dataTypePlug = m_writer->fileFormatSettingsPlug( "openexr" )->getChild<StringPlug>( "dataType" );
 
@@ -592,15 +631,10 @@ class Catalogue::InternalImage : public ImageNode
 					{
 						m_manifestSource = manifestPath->readable();
 
-						std::string manifestFilename = fileName.filename().generic_string();
-
-						// Remove ".exr"
-						manifestFilename.resize( manifestFilename.size() - 4);
-
 						// Add manifest suffix
-						manifestFilename = manifestFilename + "_manifest.exr";
+						std::string manifestFilename = filePath.stem().generic_string() + "_manifest.exr";
 
-						m_manifestDest = fileName;
+						m_manifestDest = filePath;
 						m_manifestDest.replace_filename( manifestFilename );
 
 						m_modifyMetadata->metadataPlug()->addChild(
@@ -615,21 +649,32 @@ class Catalogue::InternalImage : public ImageNode
 				{
 					if( !m_manifestDest.empty() )
 					{
-						// Copy the manifest to a location relative to this saved image ( this will
+						// Save the manifest to a location relative to this saved image ( this will
 						// ensure we keep an accurate manifest matching this image, even if a future
 						// render overwrites the source location ).
-						try
+
+						if( m_liveRenderManifest )
 						{
-							std::filesystem::copy( m_manifestSource, m_manifestDest );
+							// If we are saving an image that is currently being rendered, then we can
+							// get an accurate render manifest directly from Gaffer's in memory manifest.
+							m_liveRenderManifest->writeEXRManifest( m_manifestDest );
 						}
-						catch( std::filesystem::filesystem_error &e )
+						else
 						{
-							// The most likely cause of this is snapshotting a render in progress, which
-							// won't have written its manifest yet. If we wanted this to work, we would
-							// need to trigger a signal in InternalImage::driverClosed which something
-							// could listen to and tell the RenderController to dump its current manifest
-							// before we try this copy.
-							IECore::msg( IECore::Msg::Error, "Saving Catalogue image manifest", e.what() );
+							// If there isn't a live manifest, that should mean that the render is
+							// finished, and there should be a manifest on disk to copy.
+							try
+							{
+								std::filesystem::copy( m_manifestSource, m_manifestDest );
+							}
+							catch( std::filesystem::filesystem_error &e )
+							{
+								// This failure should now be quite unlikely ... it might be possible to
+								// trigger via a race condition where you snapshot an image at the same
+								// instant it finishes rendering. Or by manually deleting the on disk
+								// manifest before snapshotting.
+								IECore::msg( IECore::Msg::Error, "Saving Catalogue image manifest", e.what() );
+							}
 						}
 					}
 
@@ -706,6 +751,7 @@ class Catalogue::InternalImage : public ImageNode
 				ImageWriterPtr m_writer;
 
 
+				std::shared_ptr<const GafferScene::RenderManifest> m_liveRenderManifest;
 				std::filesystem::path m_manifestSource;
 				std::filesystem::path m_manifestDest;
 
