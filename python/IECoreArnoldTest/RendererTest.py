@@ -757,6 +757,8 @@ class RendererTest( GafferTest.TestCase ) :
 			self.assertEqual( arnold.AiNodeEntryGetName( arnold.AiNodeGetNodeEntry( f ) ), "gaussian_filter" )
 			self.assertEqual( arnold.AiNodeGetFlt( f, "width" ), 3.5 )
 
+	def testOutputFiltersMatching( self ):
+
 		# With matching parameters, we still just get one filter
 		r = GafferScene.Private.IECoreScenePreview.Renderer.create(
 			"Arnold",
@@ -806,6 +808,8 @@ class RendererTest( GafferTest.TestCase ) :
 			self.assertEqual( arnold.AiNodeGetName( f ), 'ieCoreArnold:filter:gaussian_filter1' )
 			self.assertEqual( arnold.AiNodeEntryGetName( arnold.AiNodeGetNodeEntry( f ) ), "gaussian_filter" )
 			self.assertEqual( arnold.AiNodeGetFlt( f, "width" ), 3.5 )
+
+	def testOutputFiltersNotMatching( self ):
 
 		# With mismatched parameters, we get two filters
 		r = GafferScene.Private.IECoreScenePreview.Renderer.create(
@@ -1005,9 +1009,9 @@ class RendererTest( GafferTest.TestCase ) :
 				"A RGB ieCoreArnold:filter:gaussian_filter1 ieCoreArnold:display:testA,testB",
 				"B RGB ieCoreArnold:filter:gaussian_filter1 ieCoreArnold:display:testA,testB",
 				"C RGB ieCoreArnold:filter:gaussian_filter1 ieCoreArnold:display:testC",
-				"D RGB ieCoreArnold:filter:catrom_filter2 ieCoreArnold:display:testD,testE,testF",
+				"D RGB ieCoreArnold:filter:catrom_filter1 ieCoreArnold:display:testD,testE,testF",
 				"E RGB ieCoreArnold:filter:box_filter1 ieCoreArnold:display:testD,testE,testF",
-				"F RGB ieCoreArnold:filter:catrom_filter1 ieCoreArnold:display:testD,testE,testF"
+				"F RGB ieCoreArnold:filter:catrom_filter2 ieCoreArnold:display:testD,testE,testF"
 			] ) )
 
 

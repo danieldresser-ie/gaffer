@@ -450,9 +450,6 @@ const IECore::InternedString g_filterwidthInternedString( "filterwidth" );
 const IECore::InternedString g_gafferOutputIDInternedString( "gaffer:outputID" );
 const IECore::InternedString g_updateInteractivelyInternedString( "updateInteractively" );
 
-const std::string g_filterPrefix( "filter" );
-
-
 class ArnoldDriver : public IECore::RefCounted
 {
 	public :
@@ -552,100 +549,118 @@ class ArnoldDriver : public IECore::RefCounted
 IE_CORE_DECLAREPTR( ArnoldDriver )
 using DriverMap = std::map<std::string, ArnoldDriverPtr>;
 
-class ArnoldFilter : public IECore::RefCounted
+const std::string g_filterPrefix( "filter" );
+
+class FilterCache
 {
+
 	public :
 
-		ArnoldFilter( AtUniverse *universe, std::map< std::string, int > &filterNameIndices, const IECore::CompoundData* parameters, NodeDeleter nodeDeleter )
+		FilterCache( NodeDeleter nodeDeleter, AtUniverse *universe )
+			: m_nodeDeleter( nodeDeleter ), m_universe( universe )
 		{
-			// Create a filter node, or reuse an existing one if we can.
+		}
 
-			std::string filterNodeType = parameter<std::string>( parameters->readable(), "filter", "gaussian" );
+		SharedAtNodePtr acquireFilter( const IECore::CompoundDataMap &outputParameters )
+		{
+			// The key for looking up filters depends on all parameters that are filter related
+			IECore::MurmurHash filterKey;
+			for( auto &parm : outputParameters )
+			{
+				if( !boost::starts_with( parm.first.string(), g_filterPrefix ) )
+				{
+					continue;
+				}
+
+				filterKey.append( parm.first );
+				parm.second->hash( filterKey );
+			}
+
+			SharedAtNodePtr &filterPtr = m_filters[ filterKey ];
+
+			if( filterPtr )
+			{
+				return filterPtr;
+			}
+
+			// No existing filter with these parameters, need to create a new filter
+
+			std::string filterNodeType = parameter<std::string>( outputParameters, "filter", "gaussian" );
 
 			if( AiNodeEntryGetType( AiNodeEntryLookUp( AtString( filterNodeType.c_str() ) ) ) != AI_NODE_FILTER )
 			{
 				filterNodeType = filterNodeType + "_filter";
 			}
 
-			int nameIndex = ++filterNameIndices[ filterNodeType ];
+			int nameIndex = ++m_filterNameIndices[ filterNodeType ];
 
-			// Create
+			// Create the Arnold node
 			const std::string filterNodeName = fmt::format( "ieCoreArnold:filter:{}{}", filterNodeType, nameIndex );
-			m_filter.reset(
-				AiNode( universe, AtString( filterNodeType.c_str() ), AtString( filterNodeName.c_str() ) ),
-				nodeDeleter
+			filterPtr.reset(
+				AiNode( m_universe, AtString( filterNodeType.c_str() ), AtString( filterNodeName.c_str() ) ),
+				m_nodeDeleter
 			);
-			if( AiNodeEntryGetType( AiNodeGetNodeEntry( m_filter.get() ) ) != AI_NODE_FILTER )
+			if( AiNodeEntryGetType( AiNodeGetNodeEntry( filterPtr.get() ) ) != AI_NODE_FILTER )
 			{
 				throw IECore::Exception( fmt::format( "Unable to create filter of type \"{}\"", filterNodeType ) );
 			}
 
 			// Set filter parameters.
 
-			for( auto &it : parameters->readable() )
+			for( auto &parm : outputParameters )
 			{
-				if( it.first == g_filterInternedString )
+				if( !boost::starts_with( parm.first.string(), g_filterPrefix ) )
 				{
 					continue;
 				}
 
-				if( it.first == g_filterwidthInternedString )
+				if( parm.first == g_filterInternedString )
+				{
+					continue;
+				}
+
+				if( parm.first == g_filterwidthInternedString )
 				{
 					// Special case to convert RenderMan style `float filterwidth[2]` into
 					// Arnold style `float width`.
-					if( const IECore::V2fData *v = IECore::runTimeCast<const IECore::V2fData>( it.second.get() ) )
+					if( const IECore::V2fData *v = IECore::runTimeCast<const IECore::V2fData>( parm.second.get() ) )
 					{
 						if( v->readable().x != v->readable().y )
 						{
 							IECore::msg( IECore::Msg::Warning, "IECoreArnold::Renderer", "Non-square filterwidth not supported" );
 						}
-						AiNodeSetFlt( m_filter.get(), g_widthArnoldString, v->readable().x );
+						AiNodeSetFlt( filterPtr.get(), g_widthArnoldString, v->readable().x );
 						continue;
 					}
 				}
 
-				ParameterAlgo::setParameter( m_filter.get(), it.first.c_str() + g_filterPrefix.size(), it.second.get(), /* messageContext = */ filterNodeName );
+				ParameterAlgo::setParameter( filterPtr.get(), parm.first.c_str() + g_filterPrefix.size(), parm.second.get(), /* messageContext = */ filterNodeName );
 			}
+
+			return filterPtr;
 		}
 
-		std::string nodeName() const
+		void clear()
 		{
-			return AiNodeGetName( m_filter.get() );
+			m_filters.clear();
 		}
 
 	private :
 
-		SharedAtNodePtr m_filter;
-};
+		NodeDeleter m_nodeDeleter;
+		AtUniverse *m_universe;
+		std::unordered_map< IECore::MurmurHash, SharedAtNodePtr > m_filters;
+		std::map< std::string, int > m_filterNameIndices;
 
-struct CompoundDataPtrHashFunc
-{
-	size_t operator()( const IECore::ConstCompoundDataPtr &p ) const
-	{
-		IECore::MurmurHash h;
-		p->hash( h );
-		return h.h1();
-	}
 };
-
-struct CompoundDataPtrCompareFunc
-{
-	size_t operator()( const IECore::ConstCompoundDataPtr &a, const IECore::ConstCompoundDataPtr &b ) const
-	{
-		return *a == *b;
-	}
-};
-
-IE_CORE_DECLAREPTR( ArnoldFilter )
-using FilterMap = std::unordered_map< IECore::ConstCompoundDataPtr, ArnoldFilterPtr, CompoundDataPtrHashFunc, CompoundDataPtrCompareFunc >;
 
 class ArnoldOutput : public IECore::RefCounted
 {
 
 	public :
 
-		ArnoldOutput( const IECore::InternedString &name, const IECoreScene::Output *output )
-			:	m_name( name )
+		ArnoldOutput( const IECore::InternedString &name, const IECoreScene::Output *output, FilterCache &filterCache )
+			:	m_name( name ), m_filterCache( filterCache )
 		{
 			if( m_name.string().find( " " ) != std::string::npos )
 			{
@@ -677,7 +692,6 @@ class ArnoldOutput : public IECore::RefCounted
 			m_driverParameters->writable()[g_driverNodeTypeInternedString] = new IECore::StringData( driverNodeType );
 			m_driverParameters->writable()[g_fileNameInternedString] = new IECore::StringData( output->getName() );
 
-			m_filterParameters = new IECore::CompoundData();
 
 			IECore::StringVectorDataPtr customAttributesData;
 			if( const IECore::StringVectorData *d = output->parametersData()->member<IECore::StringVectorData>( g_customAttributesInternedString ) )
@@ -726,9 +740,9 @@ class ArnoldOutput : public IECore::RefCounted
 					continue;
 				}
 
+
 				if( boost::starts_with( it->first.string(), g_filterPrefix ) )
 				{
-					m_filterParameters->writable()[ it->first ] = it->second;
 					continue;
 				}
 
@@ -850,21 +864,17 @@ class ArnoldOutput : public IECore::RefCounted
 				output->parameters(), g_updateInteractivelyInternedString,
 				m_data == "RGBA" || m_data == "RGB"
 			);
+
+			m_filterNode = m_filterCache.acquireFilter( output->parameters() );
 		}
 
-		void append( std::vector<std::string> &outputs, std::vector<std::string> &lightPathExpressions, const DriverMap &drivers, FilterMap &filters, std::map< std::string, int > &filterNameIndices, AtUniverse *universe, IECoreScenePreview::Renderer::RenderType renderType )
+		void append( std::vector<std::string> &outputs, std::vector<std::string> &lightPathExpressions, const DriverMap &drivers ) const
 		{
 			const string layerNameSuffix = m_layerName.size() ? " " + m_layerName : "";
 
 			const ArnoldDriver &driver = *drivers.at( m_driverName );
 
-			ArnoldFilterPtr &filterPtr = filters[ m_filterParameters ];
-			if( !filterPtr )
-			{
-				filterPtr = new ArnoldFilter( universe, filterNameIndices, m_filterParameters.get(), nodeDeleter( renderType ) );
-			}
-
-			outputs.push_back( fmt::format( "{} {} {} {}{}", m_data, m_type, filterPtr->nodeName(), driver.nodeName(), layerNameSuffix ) );
+			outputs.push_back( fmt::format( "{} {} {} {}{}", m_data, m_type, AiNodeGetName( m_filterNode.get() ), driver.nodeName(), layerNameSuffix ) );
 
 			if( m_lpeValue.size() )
 			{
@@ -897,11 +907,6 @@ class ArnoldOutput : public IECore::RefCounted
 			return m_driverParameters.get();
 		}
 
-		const IECore::CompoundData* filterParameters()
-		{
-			return m_filterParameters.get();
-		}
-
 	private :
 
 		const IECore::InternedString m_name;
@@ -909,7 +914,8 @@ class ArnoldOutput : public IECore::RefCounted
 		IECore::InternedString m_driverName;
 		IECore::CompoundDataPtr m_driverParameters;
 
-		IECore::CompoundDataPtr m_filterParameters;
+		FilterCache &m_filterCache;
+		SharedAtNodePtr m_filterNode;
 
 		std::string m_data;
 		std::string m_type;
@@ -3481,6 +3487,7 @@ class ArnoldGlobals
 				m_consoleFlags( g_consoleFlagsDefault ),
 				m_enableProgressiveRender( true ),
 				m_shaderCache( new ShaderCache( nodeDeleter( renderType ), m_universeBlock->universe(), /* parentNode = */ nullptr ) ),
+				m_filterCache(  nodeDeleter( renderType ), m_universeBlock->universe() ),
 				m_renderBegun( false ),
 				m_fileName( fileName )
 		{
@@ -3520,9 +3527,9 @@ class ArnoldGlobals
 
 			// Delete nodes we own before universe is destroyed.
 			m_shaderCache.reset();
+			m_filterCache.clear();
 			m_outputs.clear();
 			m_drivers.clear();
-			m_filters.clear();
 			m_aovShaders.clear();
 			m_colorManager.reset();
 			m_atmosphere.reset();
@@ -3963,7 +3970,7 @@ class ArnoldGlobals
 				}
 				else
 				{
-					arnoldOutput = new ArnoldOutput( name, output );
+					arnoldOutput = new ArnoldOutput( name, output, m_filterCache );
 				}
 			}
 			catch( const std::exception &e )
@@ -4239,7 +4246,7 @@ class ArnoldGlobals
 					{
 						interactiveIndices.push_back( outputs->writable().size() );
 					}
-					it.second->append( outputs->writable(), lpes->writable(), m_drivers, m_filters, m_filterNameIndices, m_universeBlock->universe(), m_renderType );
+					it.second->append( outputs->writable(), lpes->writable(), m_drivers );
 				}
 			}
 
@@ -4551,8 +4558,6 @@ class ArnoldGlobals
 		std::optional<unsigned> m_messageCallbackId;
 
 		DriverMap m_drivers;
-		FilterMap m_filters;
-		std::map< std::string, int > m_filterNameIndices;
 		OutputMap m_outputs;
 
 		using AOVShaderMap = std::map<IECore::InternedString, ArnoldShaderPtr>;
@@ -4576,6 +4581,7 @@ class ArnoldGlobals
 		bool m_enableProgressiveRender;
 		std::optional<int> m_progressiveMinAASamples;
 		ShaderCachePtr m_shaderCache;
+		FilterCache m_filterCache;
 
 		bool m_renderBegun;
 
