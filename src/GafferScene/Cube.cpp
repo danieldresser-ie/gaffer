@@ -53,6 +53,7 @@ Cube::Cube( const std::string &name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 	addChild( new V3fPlug( "dimensions", Plug::In, V3f( 1.0f ), V3f( 0.0f ) ) );
+	addChild( new V3iPlug( "divisions", Plug::In, V3i( 1 ), V3i( 1 ) ) );
 }
 
 Cube::~Cube()
@@ -69,11 +70,24 @@ const Gaffer::V3fPlug *Cube::dimensionsPlug() const
 	return getChild<V3fPlug>( g_firstPlugIndex );
 }
 
+Gaffer::V3iPlug *Cube::divisionsPlug()
+{
+	return getChild<V3iPlug>( g_firstPlugIndex + 1 );
+}
+
+const Gaffer::V3iPlug *Cube::divisionsPlug() const
+{
+	return getChild<V3iPlug>( g_firstPlugIndex + 1 );
+}
+
 void Cube::affects( const Plug *input, AffectedPlugsContainer &outputs ) const
 {
 	ObjectSource::affects( input, outputs );
 
-	if( input->parent<V3fPlug>() == dimensionsPlug() )
+	if(
+		input->parent<V3fPlug>() == dimensionsPlug() ||
+		input->parent<V3fPlug>() == divisionsPlug()
+	)
 	{
 		outputs.push_back( sourcePlug() );
 	}
@@ -82,10 +96,86 @@ void Cube::affects( const Plug *input, AffectedPlugsContainer &outputs ) const
 void Cube::hashSource( const Gaffer::Context *context, IECore::MurmurHash &h ) const
 {
 	dimensionsPlug()->hash( h );
+	divisionsPlug()->hash( h );
 }
 
 IECore::ConstObjectPtr Cube::computeSource( const Context *context ) const
 {
 	V3f dimensions = dimensionsPlug()->getValue();
-	return MeshPrimitive::createBox( Box3f( -dimensions / 2.0f, dimensions / 2.0f ) );
+	V3i divisions = divisionsPlug()->getValue();
+
+   std::string interpolation = "linear";
+	vector< V3f > p;
+	std::vector<int> verticesPerFace {
+		4, 4, 4, 4, 4, 4
+	};
+	std::vector<int> vertexIds {
+		3,2,1,0,
+		1,2,5,4,
+		4,5,7,6,
+		6,7,3,0,
+		2,3,7,5,
+		0,1,4,6
+	};
+
+	p.push_back( V3f( b.min.x, b.min.y, b.min.z ) );    // 0
+	p.push_back( V3f( b.max.x, b.min.y, b.min.z ) );    // 1
+	p.push_back( V3f( b.max.x, b.max.y, b.min.z ) );    // 2
+	p.push_back( V3f( b.min.x, b.max.y, b.min.z ) );    // 3
+	p.push_back( V3f( b.max.x, b.min.y, b.max.z ) );    // 4
+	p.push_back( V3f( b.max.x, b.max.y, b.max.z ) );    // 5
+	p.push_back( V3f( b.min.x, b.min.y, b.max.z ) );    // 6
+	p.push_back( V3f( b.min.x, b.max.y, b.max.z ) );    // 7
+
+	MeshPrimitivePtr result = new MeshPrimitive( new IntVectorData(verticesPerFace), new IntVectorData(vertexIds), interpolation, new V3fVectorData(p) );
+
+	V2fVectorDataPtr uvData = new V2fVectorData;
+	uvData->setInterpretation( GeometricData::UV );
+	std::vector<Imath::V2f> &uvs = uvData->writable();
+
+	for( int i = 0; i < 5; i++ )
+	{
+		uvs.push_back( Imath::V2f( 0.375f, 0.25f * i ) );
+		uvs.push_back( Imath::V2f( 0.625f, 0.25f * i ) );
+	}
+
+	for( int i = 0; i < 2; i++ )
+	{
+		uvs.push_back( Imath::V2f( 0.125f, 0.25f * i ) );
+		uvs.push_back( Imath::V2f( 0.875f, 0.25f * i ) );
+	}
+
+	std::vector<int> uvIndices {
+		4,5,7,6,
+		11,13,3,1,
+		1,3,2,0,
+		0,2,12,10,
+		5,4,2,3,
+		6,7,9,8,
+	};
+
+	result->variables["uv"] = PrimitiveVariable( PrimitiveVariable::FaceVarying, uvData, new IntVectorData ( uvIndices ) );
+
+
+   std::vector<Imath::V3f> normals {
+		Imath::V3f( 0, 0, 1 ),
+		Imath::V3f( 0, 0, -1 ),
+		Imath::V3f( 0, 1, 0 ),
+		Imath::V3f( 0, -1, 0 ),
+		Imath::V3f( 1, 0, 0 ),
+		Imath::V3f( -1, 0, 0 ),
+	};
+
+	std::vector<int> nIndices {
+		1,1,1,1,
+		4,4,4,4,
+		0,0,0,0,
+		5,5,5,5,
+		2,2,2,2,
+		3,3,3,3,
+	};
+
+	result->variables["N"] = PrimitiveVariable( PrimitiveVariable::FaceVarying, new V3fVectorData( normals, GeometricData::Normal ), new IntVectorData ( nIndices ) );
+
+	return result;
 }
