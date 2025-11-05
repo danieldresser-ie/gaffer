@@ -46,25 +46,22 @@ using namespace IECoreScene;
 
 namespace {
 
-void addCorner( const V3f &p, std::vector< V3f > &ps, std::vector< std::vector< int > > &perFaceIndices, const std::vector< Imath::V2i > &faceSizes ) //, std::tuple< Imath::V3i, Imath::V3i, Imath::V3i > inds )
+void addCorner( const V3f &p, std::vector< V3f > &ps, std::vector< std::vector< int > > &perFaceIndices, const V3i &vertsPer )
 {
 	int cornerIndex  = ps.size();
 	ps.push_back( p );
 
-	int xFace = p.x != 0.0f;
-	perFaceIndices[ xFace ][
-		( p.y > 0 ) * ( faceSizes[ xFace ].x - 1 ) +
-		( p.z > 0 ) * ( faceSizes[ xFace ].y - 1 ) * faceSizes[ xFace ].x
+	perFaceIndices[ p.x != 0.0f ][
+		( p.y > 0 ) * ( vertsPer.y - 1 ) +
+		( p.z > 0 ) * ( vertsPer.z - 1 ) * vertsPer.y
 	] = cornerIndex;
-	int yFace = 2 + ( p.y != 0.0f );
-	perFaceIndices[ yFace ][
-		( p.y > 0 ) * ( faceSizes[ yFace ].x - 1 ) +
-		( p.z > 0 ) * ( faceSizes[ yFace ].y - 1 ) * faceSizes[ yFace ].x
+	perFaceIndices[ 2 + ( p.y != 0.0f ) ][
+		( p.x > 0 ) * ( vertsPer.x - 1 ) +
+		( p.z > 0 ) * ( vertsPer.z - 1 ) * vertsPer.x
 	] = cornerIndex;
-	int zFace = 4 + ( p.z != 0.0f );
-	perFaceIndices[ zFace ][
-		( p.y > 0 ) * ( faceSizes[ zFace ].x - 1 ) +
-		( p.z > 0 ) * ( faceSizes[ zFace ].y - 1 ) * faceSizes[ zFace ].x
+	perFaceIndices[ 4 + ( p.z != 0.0f ) ][
+		( p.x > 0 ) * ( vertsPer.x - 1 ) +
+		( p.y > 0 ) * ( vertsPer.y - 1 ) * vertsPer.x
 	] = cornerIndex;
 }
 
@@ -104,6 +101,42 @@ void addZEdge( const V3f &p, std::vector< V3f > &ps, std::vector< std::vector< i
 	}
 }
 
+void addXFace( float p, std::vector< V3f > &ps, std::vector< std::vector< int > > &perFaceIndices, const V3i &vertsPer )
+{
+	for( int j = 1; j < vertsPer.z - 1; j++ )
+	{
+		for( int i = 1; i < vertsPer.y - 1; i++ )
+		{
+			perFaceIndices[ ( p != 0.0f ) ][ i + j * vertsPer.y ] = ps.size();
+			ps.push_back( V3f( p, i / float( vertsPer.y - 1 ), j / float( vertsPer.z - 1 ) ) );
+		}
+	}
+}
+
+void addYFace( float p, std::vector< V3f > &ps, std::vector< std::vector< int > > &perFaceIndices, const V3i &vertsPer )
+{
+	for( int j = 1; j < vertsPer.z - 1; j++ )
+	{
+		for( int i = 1; i < vertsPer.x - 1; i++ )
+		{
+			perFaceIndices[ 2 + ( p != 0.0f ) ][ i + j * vertsPer.x ] = ps.size();
+			ps.push_back( V3f( i / float( vertsPer.x - 1 ), p, j / float( vertsPer.z - 1 ) ) );
+		}
+	}
+}
+
+void addZFace( float p, std::vector< V3f > &ps, std::vector< std::vector< int > > &perFaceIndices, const V3i &vertsPer )
+{
+	for( int j = 1; j < vertsPer.y - 1; j++ )
+	{
+		for( int i = 1; i < vertsPer.x - 1; i++ )
+		{
+			perFaceIndices[ 4 + ( p != 0.0f ) ][ i + j * vertsPer.x ] = ps.size();
+			ps.push_back( V3f( i / float( vertsPer.x - 1 ), j / float( vertsPer.y - 1 ), p ) );
+		}
+	}
+}
+
 MeshPrimitivePtr createDividedBox( const Box3f &b, const Imath::V3f &divisions )
 {
 	V3i vertsPer = divisions + V3i(1);
@@ -119,24 +152,24 @@ MeshPrimitivePtr createDividedBox( const Box3f &b, const Imath::V3f &divisions )
 	std::vector< std::vector< int > > perFaceIndices;
 
 	perFaceIndices.resize( 6 );
-	//size_t numFaces = 0;
+	size_t numFaces = 0;
 	for( int i = 0; i < 6; i++ )
 	{
 		perFaceIndices[i].resize( faceSizes[i].x * faceSizes[i].y, -1 ); // TODO - no init
-		//numFaces += faceSizes[i].x * faceSizes[i].y; NOT
+		numFaces += ( faceSizes[i].x - 1 ) * ( faceSizes[i].y - 1 );
 	}
 
 	V3fVectorDataPtr pData = new V3fVectorData;
 	std::vector< V3f > &ps = pData->writable();
 
-	addCorner( V3f( 0, 0, 0 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 1, 0, 0 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 1, 1, 0 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 0, 1, 0 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 1, 0, 1 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 1, 1, 1 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 0, 0, 1 ), ps, perFaceIndices, faceSizes );
-	addCorner( V3f( 0, 1, 1 ), ps, perFaceIndices, faceSizes );
+	addCorner( V3f( 0, 0, 0 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 1, 0, 0 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 1, 1, 0 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 0, 1, 0 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 1, 0, 1 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 1, 1, 1 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 0, 0, 1 ), ps, perFaceIndices, vertsPer );
+	addCorner( V3f( 0, 1, 1 ), ps, perFaceIndices, vertsPer );
 
 	addXEdge( V3f( 0, 0, 0 ), ps, perFaceIndices, vertsPer );
 	addXEdge( V3f( 0, 0, 1 ), ps, perFaceIndices, vertsPer );
@@ -152,6 +185,15 @@ MeshPrimitivePtr createDividedBox( const Box3f &b, const Imath::V3f &divisions )
 	addZEdge( V3f( 0, 1, 0 ), ps, perFaceIndices, vertsPer );
 	addZEdge( V3f( 1, 0, 0 ), ps, perFaceIndices, vertsPer );
 	addZEdge( V3f( 1, 1, 0 ), ps, perFaceIndices, vertsPer );
+
+	addXFace( 0, ps, perFaceIndices, vertsPer );
+	addXFace( 1, ps, perFaceIndices, vertsPer );
+
+	addYFace( 0, ps, perFaceIndices, vertsPer );
+	addYFace( 1, ps, perFaceIndices, vertsPer );
+
+	addZFace( 0, ps, perFaceIndices, vertsPer );
+	addZFace( 1, ps, perFaceIndices, vertsPer );
 
    std::string interpolation = "linear";
 	/*std::vector<int> verticesPerFace {
@@ -181,11 +223,8 @@ MeshPrimitivePtr createDividedBox( const Box3f &b, const Imath::V3f &divisions )
 		p = b.min + b.size() * p ;
 	}
 
-	MeshPrimitivePtr result = new MeshPrimitive( new IntVectorData(), new IntVectorData(), interpolation, pData );
-
 
 	std::cerr << "INTERMEDIATE INDICES";
-
 	for( size_t i = 0; i < perFaceIndices.size(); i++ )
 	{
 		std::cerr << "\n\n";
@@ -198,6 +237,32 @@ MeshPrimitivePtr createDividedBox( const Box3f &b, const Imath::V3f &divisions )
 			std::cerr << "\n";
 		}
 	}
+
+	IntVectorDataPtr verticesPerFaceData = new IntVectorData();
+	verticesPerFaceData->writable().resize( numFaces, 4 );
+
+	IntVectorDataPtr vertexIdsData = new IntVectorData();
+	std::vector<int> &vertexIds = vertexIdsData->writable();
+	vertexIds.reserve( numFaces * 4 );
+
+	for( size_t i = 0; i < perFaceIndices.size(); i++ )
+    {
+		const std::vector<int> &fi = perFaceIndices[i];
+        for( int y = 0; y < faceSizes[i].y - 1; y++ )
+        {
+            for( int x = 0; x < faceSizes[i].x - 1; x++ )
+            {
+				vertexIds.push_back( fi[y * faceSizes[i].x + x] );
+				vertexIds.push_back( fi[y * faceSizes[i].x + x + 1] );
+				vertexIds.push_back( fi[( y + 1 ) * faceSizes[i].x + x + 1] );
+				vertexIds.push_back( fi[( y + 1 ) * faceSizes[i].x + x] );
+            }
+        }
+    }
+
+	MeshPrimitivePtr result = new MeshPrimitive( verticesPerFaceData, vertexIdsData, interpolation, pData );
+
+
 
 	/*V2fVectorDataPtr uvData = new V2fVectorData;
 	uvData->setInterpretation( GeometricData::UV );
