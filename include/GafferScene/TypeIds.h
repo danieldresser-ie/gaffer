@@ -207,6 +207,8 @@ enum TypeId
 	PointInstancerCoreTypeId = 120162,
 	VisibilityQueryTypeId = 120163,
 	PrimitiveVariableTypeTypeId = 120164,
+	PrimitiveVariablePaintTypeId = 120165,
+	PaintOperationTypeId = 120166,
 
 	LastTypeId = 120999
 };
