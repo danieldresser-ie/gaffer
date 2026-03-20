@@ -163,6 +163,74 @@ V2i glViewportSize()
 	return V2i( currentViewport[2] - currentViewport[0], currentViewport[3] - currentViewport[1] );
 }
 
+class FrameRateGadget : public GafferUI::Gadget
+{
+
+	public :
+
+		FrameRateGadget()
+			:   Gadget(), m_prevTime( std::chrono::system_clock::now() )
+		{
+		}
+
+		Imath::Box3f bound() const override
+		{
+			// We draw in raster space so don't have a sensible bound
+			return Box3f();
+		}
+
+	protected :
+
+		void renderLayer( Layer layer, const Style *style, RenderReason reason ) const override
+		{
+			if( layer != Layer::Front || isSelectionRender( reason ) )
+			{
+				return;
+			}
+
+			std::chrono::time_point<std::chrono::system_clock> now = std::chrono::system_clock::now();
+
+			int milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>( now - m_prevTime ).count();
+
+			m_prevTime = now;
+
+			/// \todo Would it make sense for the ViewportGadget to have a way
+			/// of adding a child as an overlay, so we didn't have to do the
+			/// raster scope bit manually?
+			ViewportGadget::RasterScope rasterScope( ancestor<ViewportGadget>() );
+
+			glPushAttrib( GL_CURRENT_BIT | GL_LINE_BIT | GL_ENABLE_BIT );
+
+			float size = 15.0f;
+			Imath::Color4f textColor( 0.5f, 0.5f, 0.5f, 1.0f );
+
+			glPushMatrix();
+			glTranslatef( 40.0f, 40.0f + size, 0.0f );
+			glScalef( size, -size, 1.0f );
+			style->renderText( Style::LabelText, fmt::format( "{}", milliseconds ), Style::NormalState, &textColor );
+			glPopMatrix();
+
+			glPopAttrib();
+
+		}
+
+		unsigned layerMask() const override
+		{
+			return (unsigned)Layer::Front;
+		}
+
+		Imath::Box3f renderBound() const override
+		{
+			Box3f b;
+			b.makeInfinite();
+			return b;
+		}
+
+	private :
+
+		mutable std::chrono::time_point<std::chrono::system_clock> m_prevTime;
+};
+
 } // namespace
 
 //////////////////////////////////////////////////////////////////////////
@@ -848,6 +916,8 @@ ViewportGadget::ViewportGadget( GadgetPtr primaryChild )
 	wheelSignal().connect( boost::bind( &ViewportGadget::wheel, this, ::_1, ::_2 ) );
 	keyPressSignal().connect( boost::bind( &ViewportGadget::keyPress, this, ::_1, ::_2 ) );
 	keyReleaseSignal().connect( boost::bind( &ViewportGadget::keyRelease, this, ::_1, ::_2 ) );
+
+	setChild( "__frameRate", new FrameRateGadget );
 }
 
 ViewportGadget::~ViewportGadget()
