@@ -547,6 +547,61 @@ bool applyPaint( std::vector< T > &outValue, std::vector<float> &outOpacity, con
 	return modified;
 }
 
+void triangulatedMeshIndices(
+	const IECoreScene::MeshPrimitive *mesh,
+	IECoreScene::PrimitiveVariable::Interpolation varInterpolation,
+	std::vector<int> &newIds,
+	const IECore::Canceller *canceller
+)
+{
+	const std::vector<int> &verticesPerFace = mesh->verticesPerFace()->readable();
+
+	newIds.clear();
+
+	int numTris = 0;
+	for( auto n : verticesPerFace )
+	{
+		numTris += n - 2;
+	}
+
+	newIds.reserve( numTris * 3 );
+
+	int faceVertexIdStart = 0;
+	for( int faceIdx = 0; faceIdx < (int)verticesPerFace.size(); faceIdx++ )
+	{
+		if( ( faceIdx % 100 ) == 0 )
+		{
+			IECore::Canceller::check( canceller );
+		}
+
+		int numFaceVerts = verticesPerFace[ faceIdx ];
+
+		const int i0 = faceVertexIdStart + 0;
+
+		for( int i = 1; i < numFaceVerts - 1; i++ )
+		{
+			const int i1 = faceVertexIdStart + i;
+			const int i2 = faceVertexIdStart + i + 1;
+
+			/// Store the indices required to rebuild the facevarying primvars
+			newIds.push_back( i0 );
+			newIds.push_back( i1 );
+			newIds.push_back( i2 );
+		}
+
+		faceVertexIdStart += numFaceVerts;
+	}
+
+	if( varInterpolation == IECoreScene::PrimitiveVariable::Vertex || varInterpolation == IECoreScene::PrimitiveVariable::Varying )
+	{
+		const std::vector<int> &vertexIds = mesh->vertexIds()->readable();
+		for( int &i : newIds )
+		{
+			i = vertexIds[i];
+		}
+	}
+}
+
 
 } // namespace
 
@@ -748,7 +803,8 @@ class PaintTool::PaintGadget : public Gadget
 
 			// Loop through current selection
 
-			for( const auto &location : m_tool->selection() )
+			// TODO const?
+			for( auto &location : m_tool->selection() )
 			{
 				ScenePlug::PathScope scope( location.context(), &location.path() );
 
@@ -769,19 +825,7 @@ class PaintTool::PaintGadget : public Gadget
 					}
 					else
 					{
-						//TODO - should the cache be inside the paint or something?
-						const PrimitiveVariablePaint *primVarPaint = IECore::runTimeCast<PrimitiveVariablePaint>( (*location.m_paintEdit->dataPlug()->outputs().begin())->node() );
-						if( !primVarPaint )
-						{
-							throw IECore::Exception( "TODO QQQQQQ" );
-						}
-
-						// Check path exists
-						if( !primVarPaint->outPlug()->existsPlug()->getValue() )
-						{
-							continue;
-						}
-						mesh = IECore::runTimeCast< const IECoreScene::MeshPrimitive>( primVarPaint->outPlug()->object( location.upstreamPath() ) );
+						mesh = location.sourceMesh();
 					}
 
 					if( !mesh )
@@ -813,21 +857,36 @@ class PaintTool::PaintGadget : public Gadget
 					vData = vIt->second.data;
 				}
 
+				size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
 
 				// Retrieve cached IECoreGL mesh primitive
-				auto meshGL = runTimeCast<const IECoreGL::MeshPrimitive>( converter->convert( mesh.get() ) );
+				if( !location.m_meshIndicesGL )
+				{
+
+					std::cerr << "PREP verts" << numVerts << "\n";
+					IntVectorDataPtr meshIndices = new IntVectorData();
+					triangulatedMeshIndices( mesh.get(), IECoreScene::PrimitiveVariable::Interpolation::Vertex, meshIndices->writable(), nullptr );
+
+					TODO store triangulated size
+
+					location.m_meshIndicesGL = runTimeCast<const IECoreGL::Buffer>( converter->convert( meshIndices.get() ) );
+					ConstV3fVectorDataPtr pData = mesh->expandedVariableData<V3fVectorData>( g_pName, IECoreScene::PrimitiveVariable::Interpolation::Vertex, true );
+					location.m_meshPosGL = runTimeCast<const IECoreGL::Buffer>( converter->convert( pData.get() ) );
+				}
+
+				/*auto meshGL = runTimeCast<const IECoreGL::MeshPrimitive>( converter->convert( mesh.get() ) );
 				if( !meshGL )
 				{
 					continue;
-				}
+				}*/
 
 				// Find opengl "P" buffer data
 
-				IECoreGL::ConstBufferPtr pBuffer = meshGL->getVertexBuffer( g_pName );
+				/*IECoreGL::ConstBufferPtr pBuffer = meshGL->getVertexBuffer( g_pName );
 				if( !pBuffer )
 				{
 					continue;
-				}
+				}*/
 
 				GLsizei components = 0;
 				GLenum type = GL_FLOAT;
@@ -845,13 +904,12 @@ class PaintTool::PaintGadget : public Gadget
 				IECoreGL::ConstBufferPtr vBuffer;
 				if( activeVisualiseMode == 0 && location.m_currentStrokeDirty )
 				{
-					if( !location.m_triangulatedTemp )
+					/*if( !location.m_triangulatedTemp )
 					{
 						location.m_triangulatedTemp = IECoreScene::MeshAlgo::triangulate( mesh.get() );
-					}
+					}*/
 
-					//size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
-					size_t numVertsExpanded = location.m_triangulatedTemp->variableSize( IECoreScene::PrimitiveVariable::Interpolation::FaceVarying );
+					//size_t numVertsExpanded = location.m_triangulatedTemp->variableSize( IECoreScene::PrimitiveVariable::Interpolation::FaceVarying );
 
 					if( toolMode == 1 )
 					{
@@ -871,21 +929,21 @@ class PaintTool::PaintGadget : public Gadget
 
 						const std::vector<Color3f> &strokeValue = location.m_composedValue->member<Color3fVectorData>( "value" )->readable();
 						//location.m_colorValue.resize( numVerts, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
-						location.m_colorValueExpanded.resize( numVertsExpanded, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
+						/*location.m_colorValueExpanded.resize( numVertsExpanded, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
 
 						const std::vector<int> &vertexIds = location.m_triangulatedTemp->vertexIds()->readable();
 						for( unsigned int i = 0; i < numVertsExpanded; i++ )
 						{
 							location.m_colorValueExpanded[i] = strokeValue[ vertexIds[i] ];
-						}
+						}*/
 
 						if( !location.m_valueBuffer )
 						{
-							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_colorValueExpanded[0], sizeof( float ) * 3 * numVertsExpanded );
+							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_colorValueExpanded[0], sizeof( float ) * 3 * numVerts );
 						}
 						glBindBuffer( GL_ARRAY_BUFFER, location.m_valueBuffer->buffer() );
 						//glBufferData( GL_ARRAY_BUFFER, location.m_valueBuffer->size(), &location.m_colorValueExpanded[0], GL_DYNAMIC_DRAW );
-						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &location.m_colorValueExpanded[0] );
+						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &strokeValue[0] );
 					}
 					else
 					{
@@ -893,21 +951,21 @@ class PaintTool::PaintGadget : public Gadget
 
 						const std::vector<float> &strokeValue = location.m_composedValue->member<FloatVectorData>( "value" )->readable();
 
-						location.m_floatValueExpanded.resize( numVertsExpanded, 0.0f );
+						/*location.m_floatValueExpanded.resize( numVertsExpanded, 0.0f );
 
 						const std::vector<int> &vertexIds = location.m_triangulatedTemp->vertexIds()->readable();
 						for( unsigned int i = 0; i < numVertsExpanded; i++ )
 						{
 							location.m_floatValueExpanded[i] = strokeValue[ vertexIds[i] ];
-						}
+						}*/
 
 						if( !location.m_valueBuffer )
 						{
-							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_floatValueExpanded[0], sizeof( float ) * numVertsExpanded );
+							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_floatValueExpanded[0], sizeof( float ) * numVerts );
 						}
 						glBindBuffer( GL_ARRAY_BUFFER, location.m_valueBuffer->buffer() );
 						//glBufferData( GL_ARRAY_BUFFER, location.m_valueBuffer->size(), &location.m_colorValueExpanded[0], GL_DYNAMIC_DRAW );
-						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &location.m_floatValueExpanded[0] );
+						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &strokeValue[0] );
 
 
 						/*if( !location.m_valueBuffer )
@@ -923,7 +981,8 @@ class PaintTool::PaintGadget : public Gadget
 				}
 				else
 				{
-					if( vData )
+					// TODO TODO TODO
+					/*if( vData )
 					{
 						vBuffer = meshGL->getVertexBuffer( name );
 						if( vBuffer )
@@ -950,7 +1009,7 @@ class PaintTool::PaintGadget : public Gadget
 									continue;
 							}
 						}
-					}
+					}*/
 				}
 
 
@@ -962,7 +1021,7 @@ class PaintTool::PaintGadget : public Gadget
 				glBufferData( GL_UNIFORM_BUFFER, sizeof( UniformBlockColorShader ), &uniforms, GL_DYNAMIC_DRAW );
 
 				// Draw primitive
-				glBindBuffer( GL_ARRAY_BUFFER, pBuffer->buffer() );
+				glBindBuffer( GL_ARRAY_BUFFER, location.m_meshPosGL->buffer() );
 				glVertexAttribPointer( ATTRIB_GLSL_LOCATION_PS, 3, GL_FLOAT, GL_FALSE, 0, nullptr );
 
 				if( activeVisualiseMode == 0 )
@@ -1024,7 +1083,9 @@ class PaintTool::PaintGadget : public Gadget
 					glVertexAttrib1f( ATTRIB_GLSL_LOCATION_VSZ, 0.f );
 				}
 
-				meshGL->renderInstances( 1 );
+				//meshGL->renderInstances( 1 );
+				IECoreGL::Buffer::ScopedBinding binding( *location.m_meshIndicesGL, GL_ELEMENT_ARRAY_BUFFER );
+				glDrawElements( GL_TRIANGLES, numVerts, GL_UNSIGNED_INT, 0 );
 			}
 
 			// Restore opengl state

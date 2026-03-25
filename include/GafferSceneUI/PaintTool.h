@@ -168,7 +168,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			//mutable std::vector<Imath::Color3f> m_colorValue;
 			mutable std::vector<Imath::Color3f> m_colorValueExpanded;
 			mutable IECoreGL::BufferPtr m_valueBuffer;
-			mutable IECoreScene::MeshPrimitivePtr m_triangulatedTemp;
+			//mutable IECoreScene::MeshPrimitivePtr m_triangulatedTemp;
 
 			mutable std::vector<Imath::V2f> m_kdTreePoints;
 			mutable IECore::V2fTree m_kdTree;
@@ -194,6 +194,9 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			Selection& operator=( const Selection & other );
 
 			const IECoreScene::MeshPrimitive* sourceMesh();
+
+			IECoreGL::ConstBufferPtr m_meshIndicesGL;
+			IECoreGL::ConstBufferPtr m_meshPosGL;
 
 			private :
 
@@ -230,7 +233,6 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				bool m_resultMeshDirty;
 				IECore::MurmurHash m_resultMeshHash;
 				IECoreScene::ConstMeshPrimitivePtr m_resultMesh;
-
 
 
 				static std::string displayName( const GraphComponent *component );
