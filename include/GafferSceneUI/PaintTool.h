@@ -193,6 +193,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 
 			Selection& operator=( const Selection & other );
 
+			const IECoreScene::MeshPrimitive* sourceMesh();
+
 			private :
 
 				void initFromHistory( const GafferScene::SceneAlgo::History *history );
@@ -221,12 +223,21 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				Gaffer::EditScopePtr m_editScope;
 				mutable std::string m_paintEditPath;
 
+				bool m_sourceMeshDirty;
+				IECore::MurmurHash m_sourceMeshHash;
+				IECoreScene::ConstMeshPrimitivePtr m_sourceMesh;
+
+				bool m_resultMeshDirty;
+				IECore::MurmurHash m_resultMeshHash;
+				IECoreScene::ConstMeshPrimitivePtr m_resultMesh;
+
+
 
 				static std::string displayName( const GraphComponent *component );
 		};
 
 		/// Returns the current selection.
-		const std::vector<Selection> &selection() const;
+		std::vector<Selection> &selection() const;
 		/// Returns true only if the selection is non-empty
 		/// and every item is editable.
 		bool selectionEditable() const;

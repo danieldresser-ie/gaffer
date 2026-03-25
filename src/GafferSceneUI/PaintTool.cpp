@@ -1328,7 +1328,7 @@ class PaintTool::BrushOutline : public GafferUI::Gadget
 /// that the message is out of date.
 
 PaintTool::Selection::Selection()
-	:	m_paintEdit( nullptr ), m_editable( false )
+	:	m_paintEdit( nullptr ), m_editable( false ), m_sourceMeshDirty( true )
 {
 }
 
@@ -1670,6 +1670,45 @@ PaintTool::Selection &PaintTool::Selection::operator=( const Selection & other )
 	throw IECore::Exception( "refused" );
 }
 
+const IECoreScene::MeshPrimitive* PaintTool::Selection::sourceMesh()
+{
+	// TODO - we should really be checking if the location exists before accessing it ...
+	// but does that mean we need to storing dirty flags and hashes for exists to avoid recomputing
+	// it too often?
+
+	if( !m_sourceMeshDirty )
+	{
+		return m_sourceMesh.get();
+	}
+
+	if( !m_paintEdit )
+	{
+		// TODO - we probably shouldn't be actually creating an edit yet if we're just visualizing
+		// the paint. Rather than determining the source mesh from the paintEdit, consider using
+		// the input of an editscope if found?
+		m_paintEdit = acquirePaintEdit( true );
+	}
+
+	//TODO - should the cache be inside the paint or something?
+	const PrimitiveVariablePaint *primVarPaint = IECore::runTimeCast<PrimitiveVariablePaint>( (*m_paintEdit->dataPlug()->outputs().begin())->node() );
+	if( !primVarPaint )
+	{
+		throw IECore::Exception( "TODO QQQQQQ" );
+	}
+
+	ScenePlug::PathScope pathScope( context(), &upstreamPath() );
+	IECore::MurmurHash newHash = primVarPaint->inPlug()->objectPlug()->hash();
+	if( newHash != m_sourceMeshHash )
+	{
+		m_sourceMesh = IECore::runTimeCast< const IECoreScene::MeshPrimitive>( primVarPaint->inPlug()->objectPlug()->getValue( &newHash ) );
+		m_sourceMeshHash = newHash;
+
+		// TODO - invalidate GL cache?
+	}
+	return m_sourceMesh.get();
+
+}
+
 void PaintTool::Selection::throwIfNotEditable() const
 {
 	if( !editable() )
@@ -1763,7 +1802,7 @@ PaintTool::~PaintTool()
     static_cast<PaintGadget *>( m_gadget.get() )->resetTool();
 }
 
-const std::vector<PaintTool::Selection> &PaintTool::selection() const
+std::vector<PaintTool::Selection> &PaintTool::selection() const
 {
 	updateSelection();
 	return m_selection;
@@ -2490,7 +2529,7 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 	M44f kdTreeProjection = view()->viewportGadget()->projectionMatrix();
 	int visualiseMode = visualiseModePlug()->getValue();
 
-	for( const auto &s : selection() )
+	for( auto &s : selection() )
 	{
 		if( !s.editable() )
 		{
@@ -2516,19 +2555,7 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			}
 			else
 			{
-				//TODO - should the cache be inside the paint or something?
-				const PrimitiveVariablePaint *primVarPaint = IECore::runTimeCast<PrimitiveVariablePaint>( (*s.m_paintEdit->dataPlug()->outputs().begin())->node() );
-				if( !primVarPaint )
-				{
-					throw IECore::Exception( "TODO QQQQQQ" );
-				}
-
-				// Check path exists
-				if( !primVarPaint->outPlug()->existsPlug()->getValue() )
-				{
-					continue;
-				}
-				mesh = IECore::runTimeCast< const IECoreScene::MeshPrimitive>( primVarPaint->outPlug()->object( s.upstreamPath() ) );
+				mesh = s.sourceMesh();
 			}
 		}
 
@@ -2784,7 +2811,7 @@ bool PaintTool::buttonPress( const GafferUI::ButtonEvent &event )
 	IECore::TypeId variableType = (IECore::TypeId)variableTypePlug()->getValue();
 	int mode = modePlug()->getValue();
 
-	for( const auto &s : selection() )
+	for( auto &s : selection() )
 	{
 		if( !s.m_paintEdit )
 		{
@@ -2800,13 +2827,8 @@ bool PaintTool::buttonPress( const GafferUI::ButtonEvent &event )
 			s.m_initialEditValue = paintEntry->member< const CompoundData >( variableName );
 		}
 
-		//TODO - should the cache be inside the paint or something?
-		const PrimitiveVariablePaint *primVarPaint = IECore::runTimeCast<PrimitiveVariablePaint>( (*s.m_paintEdit->dataPlug()->outputs().begin())->node() );
-		if( !primVarPaint )
-		{
-			throw IECore::Exception( "TODO QQQQQQ" );
-		}
-		IECoreScene::ConstMeshPrimitivePtr mesh = IECore::runTimeCast< const IECoreScene::MeshPrimitive>( primVarPaint->inPlug()->object( s.upstreamPath() ) );
+		const IECoreScene::MeshPrimitive *mesh = s.sourceMesh();
+
 		if( !mesh )
 		{
 			continue;
