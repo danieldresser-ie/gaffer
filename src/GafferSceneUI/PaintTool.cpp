@@ -1696,7 +1696,7 @@ const std::string &PaintTool::Selection::warning() const
 	return m_warning;
 }
 
-Gaffer::CachedDataNode* PaintTool::Selection::acquirePaintEdit( bool createIfNecessary ) const
+Gaffer::CachedDataNode* PaintTool::Selection::acquirePaintEdit( bool createIfNecessary )
 {
 	throwIfNotEditable();
 	if( !m_paintEdit && createIfNecessary )
@@ -3027,7 +3027,7 @@ void PaintTool::applyCurrentStroke()
 
 	UndoScope undoScope( view()->scriptNode(), UndoScope::Enabled, undoMergeGroup() );
 	// TODO share code
-	for( const auto &s : selection() )
+	for( auto &s : selection() )
 	{
 		if( !s.m_currentStroke )
 		{

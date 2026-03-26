@@ -154,7 +154,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			/// Returns the plugs to edit. Throws if `status() != Editable`.
 			/// > Caution : When using EditScopes, this may edit the graph
 			/// > to create the plug unless `createIfNecessary == false`.
-			Gaffer::CachedDataNode* acquirePaintEdit( bool createIfNecessary = true ) const;
+			Gaffer::CachedDataNode* acquirePaintEdit( bool createIfNecessary = true );
 			/// The EditScope passed to the constructor.
 			const Gaffer::EditScope *editScope() const;
 			/// Returns the GraphComponent that will be edited.
@@ -164,31 +164,23 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			/// Throws if `status() != Editable`.
 			Gaffer::GraphComponent *editTarget() const;
 
-			//mutable std::vector<float> m_floatValueExpanded;
-			//mutable std::vector<Imath::Color3f> m_colorValue;
-			//mutable std::vector<Imath::Color3f> m_colorValueExpanded;
-			//mutable IECoreScene::MeshPrimitivePtr m_triangulatedTemp;
+			std::vector<Imath::V2f> m_kdTreePoints;
+			IECore::V2fTree m_kdTree;
+			Imath::M44f m_kdTreeProjection;
 
-			mutable std::vector<Imath::V2f> m_kdTreePoints;
-			mutable IECore::V2fTree m_kdTree;
-			mutable Imath::M44f m_kdTreeProjection;
-
-			mutable IECore::CompoundDataPtr m_currentStroke;
-			mutable bool m_currentStrokeDirty;
+			IECore::CompoundDataPtr m_currentStroke;
+			bool m_currentStrokeDirty;
 
 			// TODO - not really a fan of having a lot of map lookups happening while processing these.
 			// Rather than using a CompoundData, maybe makes sense for PrimitiveVariableProcessor to
 			// declare a custom Data class with value, opacity and indices
 
-			mutable IECore::ConstCompoundDataPtr m_initialEditValue;
-			mutable IECore::ConstCompoundDataPtr m_initialMeshValue;
-			mutable IECore::CompoundDataPtr m_composedInputValue;
-			mutable IECore::CompoundDataPtr m_composedEditValue;
-			mutable IECore::CompoundDataPtr m_composedValue;
-			mutable Gaffer::CachedDataNode* m_paintEdit;
-			//mutable IECore::ConstColor3fVectorDataPtr m_baseInputValue;
-			//mutable std::vector<Imath::Color3f> m_composedInputValue;
-			//mutable std::vector<Imath::Color3f> m_composedValue;
+			IECore::ConstCompoundDataPtr m_initialEditValue;
+			IECore::ConstCompoundDataPtr m_initialMeshValue;
+			IECore::CompoundDataPtr m_composedInputValue;
+			IECore::CompoundDataPtr m_composedEditValue;
+			IECore::CompoundDataPtr m_composedValue;
+			Gaffer::CachedDataNode* m_paintEdit;
 
 			Selection& operator=( const Selection & other );
 
@@ -197,8 +189,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			size_t m_meshIndicesSize;
 			IECoreGL::ConstBufferPtr m_meshIndicesGL;
 			IECoreGL::ConstBufferPtr m_meshPosGL;
-			mutable IECoreGL::BufferPtr m_valueBuffer;
-			mutable IECoreGL::ConstBufferPtr m_existingValueBuffer;
+			IECoreGL::BufferPtr m_valueBuffer;
+			IECoreGL::ConstBufferPtr m_existingValueBuffer;
 			int m_existingValueComponents;
 
 			private :
@@ -227,7 +219,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				bool m_editable;
 				std::string m_warning;
 				Gaffer::EditScopePtr m_editScope;
-				mutable std::string m_paintEditPath;
+				std::string m_paintEditPath;
 
 				bool m_sourceMeshDirty;
 				IECore::MurmurHash m_sourceMeshHash;
