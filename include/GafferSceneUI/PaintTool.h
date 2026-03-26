@@ -164,10 +164,9 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			/// Throws if `status() != Editable`.
 			Gaffer::GraphComponent *editTarget() const;
 
-			mutable std::vector<float> m_floatValueExpanded;
+			//mutable std::vector<float> m_floatValueExpanded;
 			//mutable std::vector<Imath::Color3f> m_colorValue;
-			mutable std::vector<Imath::Color3f> m_colorValueExpanded;
-			mutable IECoreGL::BufferPtr m_valueBuffer;
+			//mutable std::vector<Imath::Color3f> m_colorValueExpanded;
 			//mutable IECoreScene::MeshPrimitivePtr m_triangulatedTemp;
 
 			mutable std::vector<Imath::V2f> m_kdTreePoints;
@@ -195,8 +194,12 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 
 			const IECoreScene::MeshPrimitive* sourceMesh();
 
+			size_t m_meshIndicesSize;
 			IECoreGL::ConstBufferPtr m_meshIndicesGL;
 			IECoreGL::ConstBufferPtr m_meshPosGL;
+			mutable IECoreGL::BufferPtr m_valueBuffer;
+			mutable IECoreGL::ConstBufferPtr m_existingValueBuffer;
+			int m_existingValueComponents;
 
 			private :
 
@@ -324,6 +327,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 		bool m_gadgetDirty;
 
 		mutable std::vector<Selection> m_selection;
+		mutable IECore::PathMatcher m_selectedPaths;
+		mutable const Gaffer::EditScope *m_defaultEditScope;
 		mutable bool m_selectionDirty;
 		bool m_priorityPathsDirty;
 		SelectionChangedSignal m_selectionChangedSignal;

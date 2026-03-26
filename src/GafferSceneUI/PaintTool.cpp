@@ -867,7 +867,7 @@ class PaintTool::PaintGadget : public Gadget
 					IntVectorDataPtr meshIndices = new IntVectorData();
 					triangulatedMeshIndices( mesh.get(), IECoreScene::PrimitiveVariable::Interpolation::Vertex, meshIndices->writable(), nullptr );
 
-					TODO store triangulated size
+					location.m_meshIndicesSize = meshIndices->readable().size();
 
 					location.m_meshIndicesGL = runTimeCast<const IECoreGL::Buffer>( converter->convert( meshIndices.get() ) );
 					ConstV3fVectorDataPtr pData = mesh->expandedVariableData<V3fVectorData>( g_pName, IECoreScene::PrimitiveVariable::Interpolation::Vertex, true );
@@ -939,11 +939,11 @@ class PaintTool::PaintGadget : public Gadget
 
 						if( !location.m_valueBuffer )
 						{
-							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_colorValueExpanded[0], sizeof( float ) * 3 * numVerts );
+							location.m_valueBuffer = new IECoreGL::Buffer( nullptr, strokeValue.size() * sizeof( float ) * 3 );
 						}
 						glBindBuffer( GL_ARRAY_BUFFER, location.m_valueBuffer->buffer() );
 						//glBufferData( GL_ARRAY_BUFFER, location.m_valueBuffer->size(), &location.m_colorValueExpanded[0], GL_DYNAMIC_DRAW );
-						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &strokeValue[0] );
+						glBufferSubData( GL_ARRAY_BUFFER, 0, strokeValue.size() * sizeof( float ) * 3, &strokeValue[0] );
 					}
 					else
 					{
@@ -961,11 +961,11 @@ class PaintTool::PaintGadget : public Gadget
 
 						if( !location.m_valueBuffer )
 						{
-							location.m_valueBuffer = new IECoreGL::Buffer( &location.m_floatValueExpanded[0], sizeof( float ) * numVerts );
+							location.m_valueBuffer = new IECoreGL::Buffer( nullptr, strokeValue.size() * sizeof( float ) );
 						}
 						glBindBuffer( GL_ARRAY_BUFFER, location.m_valueBuffer->buffer() );
 						//glBufferData( GL_ARRAY_BUFFER, location.m_valueBuffer->size(), &location.m_colorValueExpanded[0], GL_DYNAMIC_DRAW );
-						glBufferSubData( GL_ARRAY_BUFFER, 0, location.m_valueBuffer->size(), &strokeValue[0] );
+						glBufferSubData( GL_ARRAY_BUFFER, 0, strokeValue.size() * sizeof( float ), &strokeValue[0] );
 
 
 						/*if( !location.m_valueBuffer )
@@ -981,35 +981,37 @@ class PaintTool::PaintGadget : public Gadget
 				}
 				else
 				{
-					// TODO TODO TODO
-					/*if( vData )
+					if( !location.m_existingValueBuffer )
 					{
-						vBuffer = meshGL->getVertexBuffer( name );
-						if( vBuffer )
+						// TODO TODO TODO
+						ConstDataPtr vData = mesh->expandedVariableData<Data>( name, IECoreScene::PrimitiveVariable::Interpolation::Vertex, false );
+						if( vData )
 						{
+							location.m_existingValueBuffer = runTimeCast<const IECoreGL::Buffer>( converter->convert( vData.get() ) );
 							switch( vData->typeId() )
 							{
 								case IntVectorDataTypeId:
 									type = GL_INT;
-									components = 1;
+									location.m_existingValueComponents = 1;
 									break;
 								case FloatVectorDataTypeId:
-									components = 1;
+									location.m_existingValueComponents = 1;
 									break;
 								case V2fVectorDataTypeId:
-									components = 2;
+									location.m_existingValueComponents = 2;
 									break;
 								case Color3fVectorDataTypeId:
-									components = 3;
+									location.m_existingValueComponents = 3;
 									break;
 								case V3fVectorDataTypeId:
-									components = 3;
+									location.m_existingValueComponents = 3;
 									break;
 								default:
 									continue;
 							}
 						}
-					}*/
+					}
+					components = location.m_existingValueComponents;
 				}
 
 
@@ -1030,9 +1032,9 @@ class PaintTool::PaintGadget : public Gadget
 				}
 				else
 				{
-					if( vBuffer )
+					if( location.m_existingValueBuffer )
 					{
-						glBindBuffer( GL_ARRAY_BUFFER, vBuffer->buffer() );
+						glBindBuffer( GL_ARRAY_BUFFER, location.m_existingValueBuffer->buffer() );
 					}
 				}
 
@@ -1085,7 +1087,7 @@ class PaintTool::PaintGadget : public Gadget
 
 				//meshGL->renderInstances( 1 );
 				IECoreGL::Buffer::ScopedBinding binding( *location.m_meshIndicesGL, GL_ELEMENT_ARRAY_BUFFER );
-				glDrawElements( GL_TRIANGLES, numVerts, GL_UNSIGNED_INT, 0 );
+				glDrawElements( GL_TRIANGLES, location.m_meshIndicesSize, GL_UNSIGNED_INT, 0 );
 			}
 
 			// Restore opengl state
@@ -1399,7 +1401,7 @@ PaintTool::Selection::Selection(
 	const Gaffer::ConstContextPtr &context,
 	const Gaffer::EditScopePtr &editScope
 )
-	:	m_paintEdit( nullptr ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope )
+	:	 m_paintEdit( nullptr ), m_existingValueComponents( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope )
 {
 	Context::Scope scopedContext( context.get() );
 	if( path.empty() )
@@ -1797,6 +1799,7 @@ PaintTool::PaintTool( SceneView *view, const std::string &name )
 	:	SelectionTool( view, name ),
 		m_gadget( new PaintGadget( *this ) ),
 		//m_handlesDirty( true ),
+		m_defaultEditScope( nullptr ),
 		m_selectionDirty( true ),
 		m_priorityPathsDirty( true ),
 		m_dragging( false ),
@@ -2137,9 +2140,22 @@ void PaintTool::updateSelection() const
 		return;
 	}
 
+	m_selectionDirty = false;
+
+
+	const PathMatcher selectedPaths = ScriptNodeAlgo::getSelectedPaths( view()->scriptNode() );
+
+	// TODO - default is wrong name
+	const EditScope *defaultEditScope = view()->editScope();
+	if( selectedPaths == m_selectedPaths && defaultEditScope == m_defaultEditScope )
+	{
+		// TODO - this probably isn't the right mechanism for protecting our mesh caches - they
+		// should be held per-location even if some locations have changed.
+		return;
+	}
+
 	// Clear the selection.
 	m_selection.clear();
-	m_selectionDirty = false;
 
 	// If we're not active, then there's
 	// no need to do anything.
@@ -2161,7 +2177,8 @@ void PaintTool::updateSelection() const
 	// Otherwise we need to populate our selection from
 	// the scene selection.
 
-	const PathMatcher selectedPaths = ScriptNodeAlgo::getSelectedPaths( view()->scriptNode() );
+	m_selectedPaths = selectedPaths;
+	m_defaultEditScope = defaultEditScope;
 	if( selectedPaths.isEmpty() )
 	{
 		return;
@@ -2172,7 +2189,7 @@ void PaintTool::updateSelection() const
 
 	for( PathMatcher::Iterator it = selectedPaths.begin(), eIt = selectedPaths.end(); it != eIt; ++it )
 	{
-		Selection selection( scene, *it, view()->context(), const_cast<EditScope *>( view()->editScope() ) );
+		Selection selection( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
 		m_selection.push_back( selection );
 		/*if( *it == lastSelectedPath )
 		{
