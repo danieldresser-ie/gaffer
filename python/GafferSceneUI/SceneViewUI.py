@@ -1175,6 +1175,14 @@ class _GridPlugValueWidget( GafferUI.PlugValueWidget ) :
 			}
 		)
 
+		m.append(
+			"/Show Frame Time",
+			{
+				"checkBox" : self.getPlug().node()["frameTime"]["visible"].getValue(),
+				"command" : self.getPlug().node()["frameTime"]["visible"].setValue,
+			}
+		)
+
 		return m
 
 ##########################################################################
