@@ -164,6 +164,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			/// Throws if `status() != Editable`.
 			Gaffer::GraphComponent *editTarget() const;
 
+			void ensureState( const IECore::InternedString &variableName, IECore::TypeId variableType, int mode, bool write, bool gl );
+
 			std::vector<Imath::V2f> m_kdTreePoints;
 			IECore::V2fTree m_kdTree;
 			Imath::M44f m_kdTreeProjection;
@@ -191,7 +193,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			IECoreGL::ConstBufferPtr m_meshPosGL;
 			IECoreGL::BufferPtr m_valueBuffer;
 			IECoreGL::ConstBufferPtr m_existingValueBuffer;
-			int m_existingValueComponents;
+			int m_components;
 
 			private :
 

@@ -699,8 +699,8 @@ class PaintTool::PaintGadget : public Gadget
 		void renderColorVisualiser( const ViewportGadget *viewportGadget, Gadget::RenderReason reason ) const
 		{
 			// Get the name of the primitive variable to visualise
-			const std::string name = m_tool->variableNamePlug()->getValue();
-			if( name.empty() )
+			const std::string variableName = m_tool->variableNamePlug()->getValue();
+			if( variableName.empty() )
 			{
 				return;
 			}
@@ -808,6 +808,8 @@ class PaintTool::PaintGadget : public Gadget
 			{
 				ScenePlug::PathScope scope( location.context(), &location.path() );
 
+				location.ensureState( variableName, variableType, toolMode, false, true );
+
 				IECoreScene::ConstMeshPrimitivePtr mesh;
 				M44f o2w;
 				try
@@ -850,7 +852,7 @@ class PaintTool::PaintGadget : public Gadget
 				// NOTE : conversion to IECoreGL mesh may generate vertex attributes (eg. "N")
 				//        so check named primitive variable exists on IECore mesh primitive.
 
-				const auto vIt = mesh->variables.find( name );
+				const auto vIt = mesh->variables.find( variableName );
 				ConstDataPtr vData;
 				if( vIt != mesh->variables.end() )
 				{
@@ -888,7 +890,6 @@ class PaintTool::PaintGadget : public Gadget
 					continue;
 				}*/
 
-				GLsizei components = 0;
 				GLenum type = GL_FLOAT;
 
 
@@ -904,6 +905,7 @@ class PaintTool::PaintGadget : public Gadget
 				IECoreGL::ConstBufferPtr vBuffer;
 				if( activeVisualiseMode == 0 && location.m_currentStrokeDirty )
 				{
+					location.m_components = 0;
 					/*if( !location.m_triangulatedTemp )
 					{
 						location.m_triangulatedTemp = IECoreScene::MeshAlgo::triangulate( mesh.get() );
@@ -925,7 +927,7 @@ class PaintTool::PaintGadget : public Gadget
 
 					if( isColor )
 					{
-						components = 3;
+						location.m_components = 3;
 
 						const std::vector<Color3f> &strokeValue = location.m_composedValue->member<Color3fVectorData>( "value" )->readable();
 						//location.m_colorValue.resize( numVerts, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
@@ -947,7 +949,7 @@ class PaintTool::PaintGadget : public Gadget
 					}
 					else
 					{
-						components = 1;
+						location.m_components = 1;
 
 						const std::vector<float> &strokeValue = location.m_composedValue->member<FloatVectorData>( "value" )->readable();
 
@@ -979,12 +981,12 @@ class PaintTool::PaintGadget : public Gadget
 					}
 					location.m_currentStrokeDirty = false;
 				}
-				else
+				else if( activeVisualiseMode == 0 )
 				{
 					if( !location.m_existingValueBuffer )
 					{
 						// TODO TODO TODO
-						ConstDataPtr vData = mesh->expandedVariableData<Data>( name, IECoreScene::PrimitiveVariable::Interpolation::Vertex, false );
+						ConstDataPtr vData = mesh->expandedVariableData<Data>( variableName, IECoreScene::PrimitiveVariable::Interpolation::Vertex, false );
 						if( vData )
 						{
 							location.m_existingValueBuffer = runTimeCast<const IECoreGL::Buffer>( converter->convert( vData.get() ) );
@@ -992,27 +994,27 @@ class PaintTool::PaintGadget : public Gadget
 							{
 								case IntVectorDataTypeId:
 									type = GL_INT;
-									location.m_existingValueComponents = 1;
+									location.m_components = 1;
 									break;
 								case FloatVectorDataTypeId:
-									location.m_existingValueComponents = 1;
+									location.m_components = 1;
 									break;
 								case V2fVectorDataTypeId:
-									location.m_existingValueComponents = 2;
+									location.m_components = 2;
 									break;
 								case Color3fVectorDataTypeId:
-									location.m_existingValueComponents = 3;
+									location.m_components = 3;
 									break;
 								case V3fVectorDataTypeId:
-									location.m_existingValueComponents = 3;
+									location.m_components = 3;
 									break;
 								default:
 									continue;
 							}
 						}
 					}
-					components = location.m_existingValueComponents;
 				}
+				GLsizei components = location.m_components;
 
 
 				// Compute object to clip matrix
@@ -1401,7 +1403,7 @@ PaintTool::Selection::Selection(
 	const Gaffer::ConstContextPtr &context,
 	const Gaffer::EditScopePtr &editScope
 )
-	:	 m_paintEdit( nullptr ), m_existingValueComponents( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope )
+	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope )
 {
 	Context::Scope scopedContext( context.get() );
 	if( path.empty() )
@@ -1698,9 +1700,9 @@ const std::string &PaintTool::Selection::warning() const
 
 Gaffer::CachedDataNode* PaintTool::Selection::acquirePaintEdit( bool createIfNecessary )
 {
-	throwIfNotEditable();
 	if( !m_paintEdit && createIfNecessary )
 	{
+		throwIfNotEditable();
 		assert( m_editScope );
 
 		m_paintEdit = EditScopeAlgo::acquirePaintEdit( m_editScope.get() );
@@ -1727,6 +1729,99 @@ Gaffer::GraphComponent *PaintTool::Selection::editTarget() const
 		return m_paintEdit;
 	}
 }
+
+void PaintTool::Selection::ensureState( const IECore::InternedString &variableName, IECore::TypeId variableType, int mode, bool write, bool gl )
+{
+	if( m_composedValue )
+	{
+		// TODO TODO TODO - need invalidation to clear this
+		return;
+	}
+
+	if( !m_paintEdit )
+	{
+		m_paintEdit = acquirePaintEdit( write );
+	}
+
+	if( !m_paintEdit )
+	{
+		return;
+	}
+
+	IECore::ConstCompoundDataPtr paintEntry = IECore::runTimeCast<const CompoundData>(
+		m_paintEdit->getEntry( ScenePlug::pathToString( upstreamPath() ), false )
+	);
+	m_initialEditValue = nullptr;
+	if( paintEntry )
+	{
+		m_initialEditValue = paintEntry->member< const CompoundData >( variableName );
+	}
+
+	const IECoreScene::MeshPrimitive *mesh = sourceMesh();
+
+	if( !mesh )
+	{
+		return;
+	}
+
+	size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
+
+	m_currentStroke = newPrimVarComposite( variableType, numVerts );
+	m_currentStrokeDirty = true;
+
+	const Data *inputData = mesh->variableData<Data>( variableName );
+
+	CompoundDataPtr initialMeshValue = new CompoundData();
+	if( inputData )
+	{
+		// TODO expand
+		// const_cast is safe because m_initialMeshValue is const, we only need non-const versions
+		// to put the data inside the container.
+		initialMeshValue->writable()["value"] = const_cast<Data*>( mesh->variableData<Data>( variableName ) );
+	}
+	m_initialMeshValue = initialMeshValue;
+
+	if( mode == 1 )
+	{
+		m_composedInputValue = newPrimVarComposite( variableType, numVerts, false );
+
+		if( m_initialEditValue && m_composedInputValue )
+		{
+			applyPrimVarComposite( m_initialMeshValue.get(), m_initialEditValue.get(), 1, 1.0f, m_composedInputValue.get() );
+		}
+	}
+	else
+	{
+		m_composedEditValue = newPrimVarComposite( variableType, numVerts, true );
+	}
+
+	// TODO - writable shouldn't be needed
+	if( !m_composedValue || IECore::size( m_composedValue->writable()["value"].get() ) != numVerts ) // TODO type
+	{
+		m_composedValue = newPrimVarComposite( variableType, numVerts );
+	}
+
+
+	//std::cerr << "TEST SETUP : " << ScenePlug::pathToString( upstreamPath() ) << " : " << (size_t)&s << " : " << (size_t) m_currentStroke.get() << "\n";
+	/*m_currentStroke = new CompoundData();
+
+	FloatVectorDataPtr opacityData = new FloatVectorData();
+	opacityData->writable().resize( numVerts, 0.0f );
+	m_currentStroke->writable()["opacity"] = opacityData;
+	if( variableType == FloatVectorData::staticTypeId() )
+	{
+		FloatVectorDataPtr valueData = new FloatVectorData();
+		valueData->writable().resize( numVerts, 0.0f );
+		m_currentStroke->writable()["value"] = valueData;
+	}
+	else
+	{
+		Color3fVectorDataPtr valueData = new Color3fVectorData();
+		valueData->writable().resize( numVerts, 0.0f );
+		m_currentStroke->writable()["value"] = valueData;
+	}*/
+}
+
 
 PaintTool::Selection &PaintTool::Selection::operator=( const Selection & other )
 {
@@ -2891,83 +2986,7 @@ bool PaintTool::buttonPress( const GafferUI::ButtonEvent &event )
 
 	for( auto &s : selection() )
 	{
-		if( !s.m_paintEdit )
-		{
-			s.m_paintEdit = s.acquirePaintEdit( true );
-		}
-
-		IECore::ConstCompoundDataPtr paintEntry = IECore::runTimeCast<const CompoundData>(
-			s.m_paintEdit->getEntry( ScenePlug::pathToString( s.upstreamPath() ), false )
-		);
-		s.m_initialEditValue = nullptr;
-		if( paintEntry )
-		{
-			s.m_initialEditValue = paintEntry->member< const CompoundData >( variableName );
-		}
-
-		const IECoreScene::MeshPrimitive *mesh = s.sourceMesh();
-
-		if( !mesh )
-		{
-			continue;
-		}
-
-		size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
-
-		s.m_currentStroke = newPrimVarComposite( variableType, numVerts );
-		s.m_currentStrokeDirty = true;
-
-		const Data *inputData = mesh->variableData<Data>( variableName );
-
-		CompoundDataPtr initialMeshValue = new CompoundData();
-		if( inputData )
-		{
-			// TODO expand
-			// const_cast is safe because s.m_initialMeshValue is const, we only need non-const versions
-			// to put the data inside the container.
-			initialMeshValue->writable()["value"] = const_cast<Data*>( mesh->variableData<Data>( variableName ) );
-		}
-		s.m_initialMeshValue = initialMeshValue;
-
-		if( mode == 1 )
-		{
-			s.m_composedInputValue = newPrimVarComposite( variableType, numVerts, false );
-
-			if( s.m_initialEditValue && s.m_composedInputValue )
-			{
-				applyPrimVarComposite( s.m_initialMeshValue.get(), s.m_initialEditValue.get(), 1, 1.0f, s.m_composedInputValue.get() );
-			}
-		}
-		else
-		{
-			s.m_composedEditValue = newPrimVarComposite( variableType, numVerts, true );
-		}
-
-		// TODO - writable shouldn't be needed
-		if( !s.m_composedValue || IECore::size( s.m_composedValue->writable()["value"].get() ) != numVerts ) // TODO type
-		{
-			s.m_composedValue = newPrimVarComposite( variableType, numVerts );
-		}
-
-
-		//std::cerr << "TEST SETUP : " << ScenePlug::pathToString( s.upstreamPath() ) << " : " << (size_t)&s << " : " << (size_t) s.m_currentStroke.get() << "\n";
-		/*s.m_currentStroke = new CompoundData();
-
-		FloatVectorDataPtr opacityData = new FloatVectorData();
-		opacityData->writable().resize( numVerts, 0.0f );
-		s.m_currentStroke->writable()["opacity"] = opacityData;
-		if( variableType == FloatVectorData::staticTypeId() )
-		{
-			FloatVectorDataPtr valueData = new FloatVectorData();
-			valueData->writable().resize( numVerts, 0.0f );
-			s.m_currentStroke->writable()["value"] = valueData;
-		}
-		else
-		{
-			Color3fVectorDataPtr valueData = new Color3fVectorData();
-			valueData->writable().resize( numVerts, 0.0f );
-			s.m_currentStroke->writable()["value"] = valueData;
-		}*/
+		s.ensureState( variableName, variableType, mode, true, false );
 	}
 
 	//m_ourButtonPress = true;
