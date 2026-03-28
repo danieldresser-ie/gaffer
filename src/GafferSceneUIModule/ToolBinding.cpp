@@ -134,7 +134,7 @@ bool selectionEditable( const TransformTool &tool )
 	return tool.selectionEditable();
 }
 
-ScenePlugPtr paintScene( const PaintTool::Selection &s )
+/*ScenePlugPtr paintScene( const PaintTool::Selection &s )
 {
 	return const_cast<ScenePlug *>( s.scene() );
 }
@@ -160,7 +160,7 @@ boost::python::list paintSelection( const PaintTool &tool )
 		result.append( s );
 	}
 	return result;
-}
+}*/
 
 bool paintSelectionEditable( const PaintTool &tool )
 {
@@ -405,12 +405,12 @@ void GafferSceneUIModule::bindTools()
 		GafferBindings::NodeClass<PaintTool>( nullptr, no_init )
 			.def( init<SceneView *>() )
 			.def( "targetVariableTypes", &PaintTool::targetVariableTypes )
-			.def( "selection", &paintSelection )
+			//.def( "selection", &paintSelection )
 			.def( "selectionEditable", &paintSelectionEditable )
 			.def( "selectionChangedSignal", &PaintTool::selectionChangedSignal, return_internal_reference<1>() )
 		;
 
-		class_<PaintTool::Selection>( "Selection", no_init )
+		/*class_<PaintTool::Selection>( "Selection", no_init )
 
 			.def( init<const ConstScenePlugPtr &, const ScenePlug::ScenePath &, const ConstContextPtr &, const EditScopePtr &>() )
 
@@ -429,7 +429,7 @@ void GafferSceneUIModule::bindTools()
 			.def( "editTarget", &PaintTool::Selection::editTarget, return_value_policy<CastToIntrusivePtr>() )
 			//.def( "transformSpace", &TransformTool::Selection::transformSpace, return_value_policy<copy_const_reference>() )
 
-		;
+		;*/
 
 		GafferBindings::SignalClass<PaintTool::SelectionChangedSignal, GafferBindings::DefaultSignalCaller<PaintTool::SelectionChangedSignal>, SelectionChangedSlotCaller<PaintTool> >( "SelectionChangedSignal" );
 	}

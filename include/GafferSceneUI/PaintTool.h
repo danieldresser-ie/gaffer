@@ -111,6 +111,12 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				const Gaffer::EditScopePtr &editScope
 			);
 
+			// Force std::vector to use move constructor.
+			// TODO - not needed if I can make this copyable, which may be necessary
+			// for binding reasons?
+			Selection(const Selection&) = delete;
+			Selection(Selection&&) = default;
+
 			/// Viewed scene
 			/// ============
 			///
@@ -195,6 +201,11 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			IECoreGL::ConstBufferPtr m_existingValueBuffer;
 			int m_components;
 
+			Gaffer::Signals::ScopedConnection m_testSignalConnection;
+
+			void plugDirtied( const Gaffer::Plug *plug );
+
+
 			private :
 
 				void initFromHistory( const GafferScene::SceneAlgo::History *history );
@@ -208,7 +219,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				bool initRequirementsSatisfied( bool editScopeFound );
 
 				void throwIfNotEditable() const;
-				Imath::M44f transformToLocalSpace() const;
+				//Imath::M44f transformToLocalSpace() const;
 
 				GafferScene::ConstScenePlugPtr m_scene;
 				GafferScene::ScenePlug::ScenePath m_path;
@@ -323,6 +334,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 		mutable std::vector<Selection> m_selection;
 		mutable IECore::PathMatcher m_selectedPaths;
 		mutable const Gaffer::EditScope *m_defaultEditScope;
+		mutable int m_mode;
 		mutable bool m_selectionDirty;
 		bool m_priorityPathsDirty;
 		SelectionChangedSignal m_selectionChangedSignal;

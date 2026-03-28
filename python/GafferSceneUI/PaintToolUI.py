@@ -320,7 +320,7 @@ class _StatusWidget( GafferUI.Frame ) :
 
 	def getToolTip( self ) :
 
-		toolTip = GafferUI.Frame.getToolTip( self )
+		"""toolTip = GafferUI.Frame.getToolTip( self )
 		if toolTip :
 			return toolTip
 
@@ -335,7 +335,8 @@ class _StatusWidget( GafferUI.Frame ) :
 				result += "\n"
 			result += "- Painting {0} using {1}".format( s.path(), s.editTarget().relativeName( script ) )
 
-		return result
+		return result"""
+		return "Temporarily disabled tooltip"
 
 	@GafferUI.LazyMethod( deferUntilPlaybackStops = True )
 	def __update( self, *unused ) :
@@ -346,7 +347,7 @@ class _StatusWidget( GafferUI.Frame ) :
 			# redraw.
 			return
 
-		toolSelection = self.__tool.selection()
+		"""toolSelection = self.__tool.selection()
 
 		if len( toolSelection ) :
 
@@ -397,5 +398,6 @@ class _StatusWidget( GafferUI.Frame ) :
 			self.__warningRow.setVisible( False )
 			self.__infoLabel.setText( "Select something to paint" )
 			self.__nameLabel.setGraphComponent( None )
+		"""
 
 GafferUI.Pointer.registerPointer( "invisible", GafferUI.Pointer( "pointerInvisible.png", imath.V2i( 0, 0 ) ) )

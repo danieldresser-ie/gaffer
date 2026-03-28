@@ -824,6 +824,8 @@ class PaintTool::PaintGadget : public Gadget
 
 						// Extract mesh primitive
 						mesh = runTimeCast<const IECoreScene::MeshPrimitive>( location.scene()->objectPlug()->getValue() );
+						// TODO - this const_cast is probably illegal?
+						location.m_testSignalConnection = Signals::ScopedConnection( const_cast<Node*>( location.scene()->node() )->plugDirtiedSignal().connect( boost::bind( &Selection::plugDirtied, &location, ::_1 ) ) );
 					}
 					else
 					{
@@ -859,13 +861,12 @@ class PaintTool::PaintGadget : public Gadget
 					vData = vIt->second.data;
 				}
 
-				size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
+				//size_t numVerts = mesh->variableSize( IECoreScene::PrimitiveVariable::Interpolation::Vertex );
 
 				// Retrieve cached IECoreGL mesh primitive
 				if( !location.m_meshIndicesGL )
 				{
 
-					std::cerr << "PREP verts" << numVerts << "\n";
 					IntVectorDataPtr meshIndices = new IntVectorData();
 					triangulatedMeshIndices( mesh.get(), IECoreScene::PrimitiveVariable::Interpolation::Vertex, meshIndices->writable(), nullptr );
 
@@ -981,8 +982,9 @@ class PaintTool::PaintGadget : public Gadget
 					}
 					location.m_currentStrokeDirty = false;
 				}
-				else if( activeVisualiseMode == 0 )
+				else if( activeVisualiseMode == 1 )
 				{
+					//TODO - why was this TODO put here?
 					if( !location.m_existingValueBuffer )
 					{
 						// TODO TODO TODO
@@ -1393,7 +1395,7 @@ class PaintTool::BrushOutline : public GafferUI::Gadget
 /// that the message is out of date.
 
 PaintTool::Selection::Selection()
-	:	m_paintEdit( nullptr ), m_editable( false ), m_sourceMeshDirty( true )
+	:	m_paintEdit( nullptr ), m_components( 0 ), m_editable( false ), m_sourceMeshDirty( true )
 {
 }
 
@@ -1403,7 +1405,7 @@ PaintTool::Selection::Selection(
 	const Gaffer::ConstContextPtr &context,
 	const Gaffer::EditScopePtr &editScope
 )
-	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope )
+	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope ), m_sourceMeshDirty( true )
 {
 	Context::Scope scopedContext( context.get() );
 	if( path.empty() )
@@ -1420,6 +1422,8 @@ PaintTool::Selection::Selection(
 	bool editScopeFound = false;
 	while( m_path.size() )
 	{
+		// TODO - transformPlug is obviously wrong, but I guess currently, we're not really
+		// using this, since we only support EditScopes
 		SceneAlgo::History::Ptr history = SceneAlgo::history( scene->transformPlug(), m_path );
 		initWalk( history.get(), editScopeFound );
 		if( editable() )
@@ -1533,6 +1537,7 @@ void PaintTool::Selection::initFromEditScope( const GafferScene::SceneAlgo::Hist
 		return;
 	}
 
+	// TODO - need paintEditReadOnlyReason
 	if( const GraphComponent *readOnlyComponent = EditScopeAlgo::transformEditReadOnlyReason( m_editScope.get(), m_upstreamPath ) )
 	{
 		m_warning = "\"" + displayName( readOnlyComponent ) + "\" is locked";
@@ -1872,6 +1877,16 @@ void PaintTool::Selection::throwIfNotEditable() const
 	if( !editable() )
 	{
 		throw IECore::Exception( "Selection is not editable" );
+	}
+}
+
+void PaintTool::Selection::plugDirtied( const Gaffer::Plug *plug )
+{
+	const ScenePlug *sceneParent = plug->parent<ScenePlug>();
+	if( sceneParent && plug == sceneParent->objectPlug() )
+	{
+		m_composedValue.reset();
+		m_existingValueBuffer.reset();
 	}
 }
 
@@ -2239,10 +2254,11 @@ void PaintTool::updateSelection() const
 
 
 	const PathMatcher selectedPaths = ScriptNodeAlgo::getSelectedPaths( view()->scriptNode() );
+	int mode = modePlug()->getValue();
 
 	// TODO - default is wrong name
 	const EditScope *defaultEditScope = view()->editScope();
-	if( selectedPaths == m_selectedPaths && defaultEditScope == m_defaultEditScope )
+	if( selectedPaths == m_selectedPaths && defaultEditScope == m_defaultEditScope && mode == m_mode )
 	{
 		// TODO - this probably isn't the right mechanism for protecting our mesh caches - they
 		// should be held per-location even if some locations have changed.
@@ -2274,6 +2290,8 @@ void PaintTool::updateSelection() const
 
 	m_selectedPaths = selectedPaths;
 	m_defaultEditScope = defaultEditScope;
+	m_mode = mode;
+
 	if( selectedPaths.isEmpty() )
 	{
 		return;
@@ -2284,8 +2302,8 @@ void PaintTool::updateSelection() const
 
 	for( PathMatcher::Iterator it = selectedPaths.begin(), eIt = selectedPaths.end(); it != eIt; ++it )
 	{
-		Selection selection( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
-		m_selection.push_back( selection );
+		//Selection selection( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
+		m_selection.emplace_back( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
 		/*if( *it == lastSelectedPath )
 		{
 			lastSelectedPath = selection.path();
@@ -2709,6 +2727,9 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			continue;
 		}
 
+		// TODO - this fits badly. Move outside call to paint()?
+		s.ensureState( variableName, std::holds_alternative<float>( value ) ? FloatVectorDataTypeId : Color3fVectorDataTypeId, mode, true, false );
+
 		IECore::InternedString tempPath = ScenePlug::pathToString( s.upstreamPath() ); // TODO
 		/*IECoreScene::ConstMeshPrimitivePtr mesh = IECore::runTimeCast< const IECoreScene::MeshPrimitive>( s.scene()->object( s.path() ) );*/
 		IECoreScene::ConstMeshPrimitivePtr mesh;
@@ -2767,19 +2788,20 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			s.m_kdTreeProjection = kdTreeProjection;
 		}
 
-		M44f localPaintMatrix = s.scene()->fullTransform( s.path() ) * projectionMatrix;
 
-		M44f localPaintToKDTree = localPaintMatrix.inverse() * kdTreeProjection;
+		//M44f localPaintToKDTree = localPaintMatrix.inverse() * kdTreeProjection;
+		M44f paintToKDTree = projectionMatrix.inverse() * kdTreeProjection;
+		//M44f localPaintToKDTree = kdTreeProjection * localPaintMatrix.inverse();
 
 		Box2f kdTreeLookupBound;
 		V3f corner;
-		localPaintToKDTree.multVecMatrix( V3f( 1, 1, 1 ), corner );
+		paintToKDTree.multVecMatrix( V3f( 1, 1, 1 ), corner );
 		kdTreeLookupBound.extendBy( V2f( corner.x, corner.y ) );
-		localPaintToKDTree.multVecMatrix( V3f( -1, 1, 1 ), corner );
+		paintToKDTree.multVecMatrix( V3f( -1, 1, 1 ), corner );
 		kdTreeLookupBound.extendBy( V2f( corner.x, corner.y ) );
-		localPaintToKDTree.multVecMatrix( V3f( 1, -1, 1 ), corner );
+		paintToKDTree.multVecMatrix( V3f( 1, -1, 1 ), corner );
 		kdTreeLookupBound.extendBy( V2f( corner.x, corner.y ) );
-		localPaintToKDTree.multVecMatrix( V3f( -1, -1, 1 ), corner );
+		paintToKDTree.multVecMatrix( V3f( -1, -1, 1 ), corner );
 		kdTreeLookupBound.extendBy( V2f( corner.x, corner.y ) );
 
         UglyArray kdTreeIterators;
@@ -2808,6 +2830,8 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			opacityData = new FloatVectorData();
 			varPaintData->writable()["opacity"] = opacityData;
 		}*/
+
+		M44f localPaintMatrix = s.scene()->fullTransform( s.path() ) * projectionMatrix;
 
 		bool modified = false;
 		if( std::holds_alternative<float>( value ) )
