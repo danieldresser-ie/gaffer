@@ -103,146 +103,147 @@ namespace
 
 typedef std::vector<typename V2fTree::Iterator> UglyArray;
 
-CompoundDataPtr newPrimVarComposite( IECore::TypeId variableType, size_t numVerts, bool includeOpacity = true )
+PrimitiveVariablePaint::OperationDataPtr newPrimVarComposite( IECore::TypeId variableType, size_t numVerts, bool includeOpacity = true )
 {
-	CompoundDataPtr result = new CompoundData();
+	PrimitiveVariablePaint::OperationDataPtr result = new PrimitiveVariablePaint::OperationData();
 
 	if( includeOpacity )
 	{
-		FloatVectorDataPtr opacityData = new FloatVectorData();
-		opacityData->writable().resize( numVerts, 0.0f );
-		result->writable()["opacity"] = opacityData;
+		result->m_opacity.resize( numVerts, 0.0f );
 	}
 
 	if( variableType == FloatVectorData::staticTypeId() )
 	{
 		FloatVectorDataPtr valueData = new FloatVectorData();
 		valueData->writable().resize( numVerts, 0.0f );
-		result->writable()["value"] = valueData;
+		result->m_valueData = valueData;
 	}
 	else
 	{
 		Color3fVectorDataPtr valueData = new Color3fVectorData();
 		valueData->writable().resize( numVerts, Color3f( 0.0f ) );
-		result->writable()["value"] = valueData;
+		result->m_valueData = valueData;
 	}
 
 	return result;
 }
 
 // TODO - liking the idea of this taking care of allocating result? Needs flag for whether or not to build opacity
-void applyPrimVarComposite( const CompoundData *a, const CompoundData *b, int mode, float opacity, CompoundData *result )
+void applyPrimVarComposite( const PrimitiveVariablePaint::OperationData &a, const PrimitiveVariablePaint::OperationData &b, int mode, float opacity, PrimitiveVariablePaint::OperationData &result, bool outputOpacity )
 {
-	const FloatVectorData *bOpacityData = b->member< FloatVectorData >( "opacity" );
-	if( !bOpacityData )
+	if( !b.m_opacity.size() )
 	{
 		throw IECore::Exception( "Expected B to always have opacity" ); // TODO;
 	}
 
-	const vector<float> &bOpacity = bOpacityData->readable();
-	FloatVectorData *resultOpacityData = result->member< FloatVectorData >( "opacity" );
-
-	const Data *aValueUntypedData = a->member< Data >( "value" );
-	if( !aValueUntypedData )
+	if( !a.m_valueData )
 	{
 		// TODO erase mode
 		// TODO - does copyFrom preserve COW?
-		result->member< Data >( "value" )->Object::copyFrom( b->member<Data>( "value" ) );
+		result.m_valueData->Object::copyFrom( b.m_valueData.get() );
 	}
 	else
 	{
-		IECore::TypeId typeId = aValueUntypedData->typeId();
+		IECore::TypeId typeId = a.m_valueData->typeId();
 		// TODO - template, support more types
 		if( typeId == FloatVectorData::staticTypeId() )
 		{
-			const std::vector<float> &aValue = static_cast<const FloatVectorData*>( aValueUntypedData )->readable();
-			const FloatVectorData *bValueData = b->member< FloatVectorData >( "value" );
-			if( !bValueData )
+			const std::vector<float> &aValue = static_cast<const FloatVectorData*>( a.m_valueData.get() )->readable();
+			if( !b.m_valueData )
 			{
 				throw IECore::Exception( "TODO Q" );
 			}
-			const std::vector<float> &bValue = bValueData->readable();
+			const std::vector<float> &bValue = static_cast<const FloatVectorData*>( b.m_valueData.get() )->readable();
 
-			FloatVectorData *resultValueData = result->member< FloatVectorData >( "value" );
+
+			FloatVectorDataPtr resultValueData = new FloatVectorData;
 			std::vector<float> &resultValue = resultValueData->writable();
 
 			if( mode == 0 )
 			{
 				for( size_t i = 0; i < resultValue.size(); i++ )
 				{
-					resultValue[i] = ( 1.0f - bOpacity[i] * opacity ) * aValue[i];
+					resultValue[i] = ( 1.0f - b.m_opacity[i] * opacity ) * aValue[i];
 				}
 			}
 			else
 			{
 				for( size_t i = 0; i < resultValue.size(); i++ )
 				{
-					resultValue[i] = ( 1.0f - bOpacity[i] * opacity ) * aValue[i] + bValue[i] * opacity;
+					resultValue[i] = ( 1.0f - b.m_opacity[i] * opacity ) * aValue[i] + bValue[i] * opacity;
 				}
 			}
+
+			result.m_valueData = resultValueData;
 		}
 		else
 		{
-			const std::vector<Color3f> &aValue = static_cast<const Color3fVectorData*>( aValueUntypedData )->readable();
-			const Color3fVectorData *bValueData = b->member< Color3fVectorData >( "value" );
+			const std::vector<Color3f> &aValue = static_cast<const Color3fVectorData*>( a.m_valueData.get() )->readable();
+			const Color3fVectorData *bValueData = IECore::runTimeCast< Color3fVectorData >( b.m_valueData.get() );
 			if( !bValueData )
 			{
-				throw IECore::Exception( "TODO QQ" );
+				if( b.m_valueData )
+				{
+					throw IECore::Exception( std::string( "TODO QQ : " ) + b.m_valueData->typeName() );
+				}
+				else
+				{
+					throw IECore::Exception( "TODO QQ" );
+				}
 			}
 			const std::vector<Color3f> &bValue = bValueData->readable();
 
-			Color3fVectorData *resultValueData = result->member< Color3fVectorData >( "value" );
+			Color3fVectorDataPtr resultValueData = new Color3fVectorData;
 			std::vector<Color3f> &resultValue = resultValueData->writable();
 
 			if( mode == 0 )
 			{
 				for( size_t i = 0; i < resultValue.size(); i++ )
 				{
-					resultValue[i] = ( 1.0f - bOpacity[i] * opacity ) * aValue[i];
+					resultValue[i] = ( 1.0f - b.m_opacity[i] * opacity ) * aValue[i];
 				}
 			}
 			else
 			{
 				for( size_t i = 0; i < resultValue.size(); i++ )
 				{
-					resultValue[i] = ( 1.0f - bOpacity[i] * opacity ) * aValue[i] + bValue[i] * opacity;
+					resultValue[i] = ( 1.0f - b.m_opacity[i] * opacity ) * aValue[i] + bValue[i] * opacity;
 				}
 			}
+			result.m_valueData = resultValueData;
 		}
 	}
 
-	if( !resultOpacityData )
+	if( !outputOpacity )
 	{
 		return;
 	}
 
-	const FloatVectorData *aOpacityData = a->member< FloatVectorData >( "opacity" );
-	if( !aOpacityData )
+	if( !a.m_opacity.size() )
 	{
 		// TODO erase mode
-		result->member< Data >( "opacity" )->Object::copyFrom( bOpacityData );
+		result.m_opacity = b.m_opacity;
 	}
 	else
 	{
-		const std::vector<float> &aOpacity = aOpacityData->readable();
-		std::vector<float> &resultOpacity = resultOpacityData->writable();
+		result.m_opacity.resize( IECore::size( result.m_valueData.get() ) );
 
 		if( mode == 0 )
 		{
-			for( size_t i = 0; i < resultOpacity.size(); i++ )
+			for( size_t i = 0; i < result.m_opacity.size(); i++ )
 			{
 				// TODO - this would be simpler if we stored ( 1 - opacity ), but maybe that's a harder
 				// thing to name?
-				resultOpacity[i] = ( 1.0f - bOpacity[i] * opacity ) * aOpacity[i];
+				result.m_opacity[i] = ( 1.0f - b.m_opacity[i] * opacity ) * a.m_opacity[i];
 			}
 		}
 		else
 		{
-			for( size_t i = 0; i < resultOpacity.size(); i++ )
+			for( size_t i = 0; i < result.m_opacity.size(); i++ )
 			{
 				// TODO - this would be simpler if we stored ( 1 - opacity ), but maybe that's a harder
 				// thing to name?
-				resultOpacity[i] = 1.0f - ( 1.0f - bOpacity[i] * opacity ) * ( 1.0f - aOpacity[i] );
+				result.m_opacity[i] = 1.0f - ( 1.0f - b.m_opacity[i] * opacity ) * ( 1.0f - a.m_opacity[i] );
 			}
 		}
 	}
@@ -916,13 +917,13 @@ class PaintTool::PaintGadget : public Gadget
 
 					if( toolMode == 1 )
 					{
-						applyPrimVarComposite( location.m_composedInputValue.get(), location.m_currentStroke.get(), 1, toolOpacity, location.m_composedValue.get() );
+						applyPrimVarComposite( *location.m_composedInputValue, *location.m_currentStroke, 1, toolOpacity, *location.m_composedValue, false );
 					}
 					else
 					{
-						applyPrimVarComposite( location.m_initialEditValue.get(), location.m_currentStroke.get(), 0, toolOpacity, location.m_composedEditValue.get() );
+						applyPrimVarComposite( *location.m_initialEditValue, *location.m_currentStroke, 0, toolOpacity, *location.m_composedEditValue, true );
 
-						applyPrimVarComposite( location.m_initialMeshValue.get(), location.m_composedEditValue.get(), 1, toolOpacity, location.m_composedValue.get() );
+						applyPrimVarComposite( *location.m_initialMeshValue, *location.m_composedEditValue, 1, toolOpacity, *location.m_composedValue, false );
 
 					}
 
@@ -930,7 +931,7 @@ class PaintTool::PaintGadget : public Gadget
 					{
 						location.m_components = 3;
 
-						const std::vector<Color3f> &strokeValue = location.m_composedValue->member<Color3fVectorData>( "value" )->readable();
+						const std::vector<Color3f> &strokeValue = IECore::runTimeCast< Color3fVectorData >( location.m_composedValue->m_valueData.get() )->readable();
 						//location.m_colorValue.resize( numVerts, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
 						/*location.m_colorValueExpanded.resize( numVertsExpanded, Imath::Color3f( 0.0f, 0.0f, 0.0f ) );
 
@@ -952,7 +953,7 @@ class PaintTool::PaintGadget : public Gadget
 					{
 						location.m_components = 1;
 
-						const std::vector<float> &strokeValue = location.m_composedValue->member<FloatVectorData>( "value" )->readable();
+						const std::vector<float> &strokeValue = IECore::runTimeCast< FloatVectorData >( location.m_composedValue->m_valueData )->readable();
 
 						/*location.m_floatValueExpanded.resize( numVertsExpanded, 0.0f );
 
@@ -1759,7 +1760,7 @@ void PaintTool::Selection::ensureState( const IECore::InternedString &variableNa
 	m_initialEditValue = nullptr;
 	if( paintEntry )
 	{
-		m_initialEditValue = paintEntry->member< const CompoundData >( variableName );
+		m_initialEditValue = paintEntry->member< const PrimitiveVariablePaint::OperationData >( variableName );
 	}
 
 	const IECoreScene::MeshPrimitive *mesh = sourceMesh();
@@ -1776,13 +1777,13 @@ void PaintTool::Selection::ensureState( const IECore::InternedString &variableNa
 
 	const Data *inputData = mesh->variableData<Data>( variableName );
 
-	CompoundDataPtr initialMeshValue = new CompoundData();
+	PrimitiveVariablePaint::OperationDataPtr initialMeshValue = new PrimitiveVariablePaint::OperationData();
 	if( inputData )
 	{
 		// TODO expand
 		// const_cast is safe because m_initialMeshValue is const, we only need non-const versions
 		// to put the data inside the container.
-		initialMeshValue->writable()["value"] = const_cast<Data*>( mesh->variableData<Data>( variableName ) );
+		initialMeshValue->m_valueData = const_cast<Data*>( mesh->variableData<Data>( variableName ) );
 	}
 	m_initialMeshValue = initialMeshValue;
 
@@ -1792,7 +1793,7 @@ void PaintTool::Selection::ensureState( const IECore::InternedString &variableNa
 
 		if( m_initialEditValue && m_composedInputValue )
 		{
-			applyPrimVarComposite( m_initialMeshValue.get(), m_initialEditValue.get(), 1, 1.0f, m_composedInputValue.get() );
+			applyPrimVarComposite( *m_initialMeshValue, *m_initialEditValue, 1, 1.0f, *m_composedInputValue, true );
 		}
 	}
 	else
@@ -1801,7 +1802,7 @@ void PaintTool::Selection::ensureState( const IECore::InternedString &variableNa
 	}
 
 	// TODO - writable shouldn't be needed
-	if( !m_composedValue || IECore::size( m_composedValue->writable()["value"].get() ) != numVerts ) // TODO type
+	if( !m_composedValue || IECore::size( m_composedValue->m_valueData.get() ) != numVerts ) // TODO type
 	{
 		m_composedValue = newPrimVarComposite( variableType, numVerts );
 	}
@@ -2824,7 +2825,6 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			throw IECore::Exception( fmt::format( "FOO FOO FOO : {} : {} : {}", ScenePlug::pathToString( s.upstreamPath() ), (size_t)&s, (size_t) s.m_currentStroke.get() ) );
 		}
 
-		FloatVectorData* opacityData = s.m_currentStroke->member< FloatVectorData >( "opacity" );
 		/*if( !opacityData )
 		{
 			opacityData = new FloatVectorData();
@@ -2836,18 +2836,18 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 		bool modified = false;
 		if( std::holds_alternative<float>( value ) )
 		{
-			FloatVectorData* valueData = s.m_currentStroke->member< FloatVectorData >( "value" );
+			FloatVectorData* valueData = IECore::runTimeCast<FloatVectorData>( s.m_currentStroke->m_valueData.get() );
 			/*if( !valueData )
 			{
 				valueData = new FloatVectorData();
 				varPaintData->writable()["value"] = valueData;
 			}*/
 
-			modified = applyPaint<float>( valueData->writable(), opacityData->writable(), std::get<float>( value ), opacity, mode, hardness, *pVar, localPaintMatrix, resolution, depthMap, kdTreeIterators, &s.m_kdTreePoints[0] );
+			modified = applyPaint<float>( valueData->writable(), s.m_currentStroke->m_opacity, std::get<float>( value ), opacity, mode, hardness, *pVar, localPaintMatrix, resolution, depthMap, kdTreeIterators, &s.m_kdTreePoints[0] );
 		}
 		else
 		{
-			Color3fVectorData* valueData = s.m_currentStroke->member< Color3fVectorData >( "value" );
+			Color3fVectorData* valueData = IECore::runTimeCast<Color3fVectorData>( s.m_currentStroke->m_valueData.get() );
 			/*if( !valueData )
 			{
 				valueData = new Color3fVectorData();
@@ -2855,7 +2855,7 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 			}*/
 
 			//applyPaint<Color3f>( s.m_colorValue, opacityData->writable(), std::get<Color3f>( value ), opacity, mode, hardness, *pVar, localPaintMatrix, resolution, depthMap );
-			modified = applyPaint<Color3f>( valueData->writable(), opacityData->writable(), std::get<Color3f>( value ), opacity, mode, hardness, *pVar, localPaintMatrix, resolution, depthMap, kdTreeIterators, &s.m_kdTreePoints[0] );
+			modified = applyPaint<Color3f>( valueData->writable(), s.m_currentStroke->m_opacity, std::get<Color3f>( value ), opacity, mode, hardness, *pVar, localPaintMatrix, resolution, depthMap, kdTreeIterators, &s.m_kdTreePoints[0] );
 		}
 		if( modified )
 		{
@@ -3082,15 +3082,15 @@ void PaintTool::applyCurrentStroke()
 			s.m_initialEditValue = new IECore::CompoundData();
 		}*/
 
-		CompoundDataPtr newVal;
+		PrimitiveVariablePaint::OperationDataPtr newVal;
 		if( s.m_initialEditValue )
 		{
-			newVal = newPrimVarComposite( variableType, IECore::size( s.m_currentStroke->writable()["opacity"].get() ), true );
-			applyPrimVarComposite( s.m_initialEditValue.get(), s.m_currentStroke.get(), mode, opacity, newVal.get() );
+			newVal = newPrimVarComposite( variableType, s.m_currentStroke->m_opacity.size(), true );
+			applyPrimVarComposite( *s.m_initialEditValue, *s.m_currentStroke, mode, opacity, *newVal, true );
 		}
 		else
 		{
-			newVal = s.m_currentStroke->copy();
+			newVal = IECore::runTimeCast< PrimitiveVariablePaint::OperationData >( s.m_currentStroke->copy() );
 			s.m_initialEditValue = newVal;
 		}
 

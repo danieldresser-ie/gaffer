@@ -48,6 +48,25 @@ class GAFFERSCENE_API PrimitiveVariablePaint : public Deformer
 
 	public :
 
+		//IE_CORE_FORWARDDECLARE( OperationData );
+
+		class GAFFERSCENE_API OperationData : public IECore::Data
+        {
+
+            public :
+
+				IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferScene::PrimitiveVariablePaint::OperationData, PrimitiveVariablePaintOperationDataTypeId, IECore::Data );
+
+				IECore::DataPtr m_valueData;
+				std::vector<float> m_opacity;
+				std::vector<unsigned int> m_indices;
+
+            private :
+
+        };
+
+		IE_CORE_DECLAREPTR( OperationData );
+
 		explicit PrimitiveVariablePaint( const std::string &name=defaultName<PrimitiveVariablePaint>() );
 		~PrimitiveVariablePaint() override;
 

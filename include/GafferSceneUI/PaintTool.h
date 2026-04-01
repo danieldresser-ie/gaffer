@@ -40,6 +40,7 @@
 #include "GafferSceneUI/TypeIds.h"
 
 #include "GafferScene/EditScopeAlgo.h"
+#include "GafferScene/PrimitiveVariablePaint.h"
 #include "GafferScene/SceneAlgo.h"
 #include "GafferScene/ScenePlug.h"
 
@@ -176,18 +177,18 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			IECore::V2fTree m_kdTree;
 			Imath::M44f m_kdTreeProjection;
 
-			IECore::CompoundDataPtr m_currentStroke;
+			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_currentStroke;
 			bool m_currentStrokeDirty;
 
 			// TODO - not really a fan of having a lot of map lookups happening while processing these.
 			// Rather than using a CompoundData, maybe makes sense for PrimitiveVariableProcessor to
 			// declare a custom Data class with value, opacity and indices
 
-			IECore::ConstCompoundDataPtr m_initialEditValue;
-			IECore::ConstCompoundDataPtr m_initialMeshValue;
-			IECore::CompoundDataPtr m_composedInputValue;
-			IECore::CompoundDataPtr m_composedEditValue;
-			IECore::CompoundDataPtr m_composedValue;
+			GafferScene::PrimitiveVariablePaint::ConstOperationDataPtr m_initialEditValue;
+			GafferScene::PrimitiveVariablePaint::ConstOperationDataPtr m_initialMeshValue;
+			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedInputValue;
+			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedEditValue;
+			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedValue;
 			Gaffer::CachedDataNode* m_paintEdit;
 
 			Selection& operator=( const Selection & other );

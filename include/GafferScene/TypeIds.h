@@ -198,6 +198,7 @@ enum TypeId
 	ReflectionConstraintTypeId = 120153,
 	CurvesInterpolationTypeId = 120154,
 	PrimitiveVariablePaintTypeId = 120155,
+	PrimitiveVariablePaintOperationDataTypeId = 120156,
 
 	LastTypeId = 120999
 };

@@ -50,6 +50,13 @@ using namespace GafferScene;
 
 GAFFER_NODE_DEFINE_TYPE( PrimitiveVariablePaint );
 
+//IE_CORE_DEFINERUNTIMETYPED( PrimitiveVariablePaint::OperationData );
+
+namespace PrimitiveVariablePaint
+{
+IE_CORE_DEFINERUNTIMETYPED( OperationData );
+}
+
 size_t PrimitiveVariablePaint::g_firstPlugIndex = 0;
 
 PrimitiveVariablePaint::PrimitiveVariablePaint( const std::string &name )
@@ -128,66 +135,64 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 
 	PrimitivePtr result = inputPrimitive->copy();
 
-	static const InternedString valueString( "value" );
-	static const InternedString opacityString( "opacity" );
-	static const InternedString interpolationString( "interpolation" );
+	//static const InternedString interpolationString( "interpolation" );
 	for( auto &var : locPaint->readable() )
 	{
-		const CompoundData *varCompound = IECore::runTimeCast<CompoundData>( var.second.get() );
+		const OperationData *varCompound = IECore::runTimeCast<OperationData>( var.second.get() );
 
 		if( !varCompound )
 		{
-			throw IECore::Exception( fmt::format( "Invalid paint for variable {} with no compound at location {}", var.first.string(), pathString ) );
+			throw IECore::Exception( fmt::format( "Invalid paint for variable {} with no OperationData for key {}", var.first.string(), pathString ) );
 		}
 
-		const Data *value = varCompound->member<Data>( valueString );
-		if( !value )
+		if( !varCompound->m_valueData )
 		{
 			throw IECore::Exception( fmt::format( "Invalid paint for variable {} with no value at location {}", var.first.string(), pathString ) );
 		}
 
 
-		const IntData *interpolationData = varCompound->member<IntData>( interpolationString );
+		// TODO - restore support for interpolation
+		/*const IntData *interpolationData = varCompound->member<IntData>( interpolationString );
 
 		PrimitiveVariable::Interpolation interp =
 			interpolationData ?
 			(PrimitiveVariable::Interpolation) interpolationData->readable() :
 			PrimitiveVariable::Vertex;
+		*/
+		PrimitiveVariable::Interpolation interp = PrimitiveVariable::Vertex;
 
-		if( IECore::size( value ) != result->variableSize( interp ) )
+		std::cerr << "TEST TYPE " << varCompound->m_valueData->typeName() << "\n";
+		if( IECore::size( varCompound->m_valueData.get() ) != result->variableSize( interp ) )
 		{
 			// TODO - should we support some sort of reprojection for loading out of date paint? This
 			// would require storing a reference P in the paint file
-			throw IECore::Exception( fmt::format( "Invalid paint for variable {} at location {} size {} does not match {}", var.first.string(), pathString, IECore::size( value ), result->variableSize( interp ) ) );
+			throw IECore::Exception( fmt::format( "Invalid paint for variable {} at location {} size {} does not match {}", var.first.string(), pathString, IECore::size( varCompound->m_valueData.get() ), result->variableSize( interp ) ) );
 
 		}
 
-		const FloatVectorData *opacityData = varCompound->member<FloatVectorData>( opacityString );
-
 		auto existingVar = result->variables.find( var.first );
-		if( existingVar != result->variables.end() && existingVar->second.interpolation != interp && opacityData )
+		if( existingVar != result->variables.end() && existingVar->second.interpolation != interp && varCompound->m_opacity.size() )
 		{
 			IECore::msg( IECore::Msg::Warning, "PrimitiveVariablePaint", fmt::format( "Interpolation mismatch for variable {} at location {}, overwriting instead of compositing.", var.first.string(), pathString ) );
 			existingVar = result->variables.end();
 
 		}
 
-		if( existingVar == result->variables.end() || !opacityData )
+		if( existingVar == result->variables.end() || varCompound->m_opacity.size() == 0 )
 		{
 			// TODO - I think this const_cast is safe because the result is treated as const
-			result->variables[var.first] = PrimitiveVariable( interp, const_cast<Data*>( value ) );
+			result->variables[var.first] = PrimitiveVariable( interp, const_cast<Data*>( varCompound->m_valueData.get() ) );
 			continue;
 		}
 
 
-		const std::vector<float> &opacity = opacityData->readable();
-		if( opacity.size() != IECore::size( value ) )
+		if( varCompound->m_opacity.size() != IECore::size( varCompound->m_valueData.get() ) )
 		{
 			throw IECore::Exception( "Corrupt paint : Opacity size different from value size." );
 		}
 
-		IECore::dispatch( value,
-			[&var, &existingVar, &opacity, &result]( auto *typedValueData )
+		IECore::dispatch( varCompound->m_valueData.get(),
+			[&var, &existingVar, &varCompound, &result]( auto *typedValueData )
 			{
 				using SourceType = typename std::remove_const_t< std::remove_pointer_t<decltype( typedValueData )> >;
 
@@ -215,7 +220,7 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 
 							for( size_t i = 0; i < resultVec.size(); i++ )
 							{
-								resultVec[i] = ( 1 - opacity[i] ) * resultVec[i] + typedValue[i];
+								resultVec[i] = ( 1 - varCompound->m_opacity[i] ) * resultVec[i] + typedValue[i];
 							}
 
 							result->variables[var.first] = PrimitiveVariable( existingVar->second.interpolation, resultData );
