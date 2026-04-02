@@ -48,6 +48,14 @@ using namespace IECoreScene;
 using namespace Gaffer;
 using namespace GafferScene;
 
+namespace {
+
+IndexedIO::EntryID g_valueDataName( "valueData" );
+IndexedIO::EntryID g_opacityDataName( "opacityData" );
+IndexedIO::EntryID g_indicesDataName( "indicesData" );
+
+} // namespace
+
 GAFFER_NODE_DEFINE_TYPE( PrimitiveVariablePaint );
 
 PaintOperation::PaintOperation()
@@ -127,13 +135,37 @@ void PaintOperation::save( IECore::Object::SaveContext *context ) const
     Object::save( context );
     /// \todo Can we implement saving by serialising the
     /// Gaffer script into the IndexedIO file?
-    msg( Msg::Warning, "PaintOperation::save", "Not implemented" );
+
+	IndexedIOPtr container = context->container( staticTypeName(), 1 );
+	context->save( m_valueData.get(), container.get(), g_valueDataName );
+	if( m_opacityData )
+	{
+		context->save( m_opacityData.get(), container.get(), g_opacityDataName );
+	}
+	if( m_indicesData )
+	{
+		context->save( m_indicesData.get(), container.get(), g_indicesDataName );
+	}
 }
 
 void PaintOperation::load( IECore::Object::LoadContextPtr context )
 {
     Object::load( context );
-    msg( Msg::Warning, "PaintOperation::load", "Not implemented" );
+
+	unsigned int version = 1;
+    ConstIndexedIOPtr container = context->container( staticTypeName(), version );
+
+	m_valueData = context->load<Data>( container.get(), g_valueDataName );
+
+	if( container->hasEntry( g_opacityDataName ) )
+	{
+		m_opacityData = context->load<FloatVectorData>( container.get(), g_opacityDataName );
+	}
+
+	if( container->hasEntry( g_indicesDataName ) )
+	{
+		m_indicesData = context->load<IntVectorData>( container.get(), g_indicesDataName );
+	}
 }
 
 void PaintOperation::memoryUsage( IECore::Object::MemoryAccumulator &accumulator ) const
