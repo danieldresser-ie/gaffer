@@ -43,37 +43,39 @@
 namespace GafferScene
 {
 
+class GAFFERSCENE_API PaintOperation : public IECore::Object
+{
+
+	public :
+
+		PaintOperation();
+		~PaintOperation() override;
+
+		IE_CORE_DECLAREEXTENSIONOBJECT( GafferScene::PaintOperation, PaintOperationTypeId, IECore::Object );
+
+		IECore::DataPtr m_valueData;
+		IECore::FloatVectorDataPtr m_opacityData;
+		IECore::IntVectorDataPtr m_indicesData;
+
+	private :
+
+};
+
+IE_CORE_DECLAREPTR( PaintOperation );
+
 class GAFFERSCENE_API PrimitiveVariablePaint : public Deformer
 {
 
 	public :
 
-		//IE_CORE_FORWARDDECLARE( OperationData );
-
-		class GAFFERSCENE_API OperationData : public IECore::Data
-        {
-
-            public :
-
-				IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferScene::PrimitiveVariablePaint::OperationData, PrimitiveVariablePaintOperationDataTypeId, IECore::Data );
-
-				IECore::DataPtr m_valueData;
-				std::vector<float> m_opacity;
-				std::vector<unsigned int> m_indices;
-
-            private :
-
-        };
-
-		IE_CORE_DECLAREPTR( OperationData );
 
 		explicit PrimitiveVariablePaint( const std::string &name=defaultName<PrimitiveVariablePaint>() );
 		~PrimitiveVariablePaint() override;
 
 		GAFFER_NODE_DECLARE_TYPE( GafferScene::PrimitiveVariablePaint, PrimitiveVariablePaintTypeId, Deformer );
 
-		Gaffer::AtomicCompoundDataPlug *paintPlug();
-		const Gaffer::AtomicCompoundDataPlug *paintPlug() const;
+		Gaffer::CompoundObjectPlug *paintPlug();
+		const Gaffer::CompoundObjectPlug *paintPlug() const;
 
 	protected :
 

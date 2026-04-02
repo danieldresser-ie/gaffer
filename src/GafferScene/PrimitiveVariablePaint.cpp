@@ -50,12 +50,114 @@ using namespace GafferScene;
 
 GAFFER_NODE_DEFINE_TYPE( PrimitiveVariablePaint );
 
+PaintOperation::PaintOperation()
+{
+}
+
+PaintOperation::~PaintOperation()
+{
+}
+
+bool PaintOperation::isEqualTo( const IECore::Object *other ) const
+{
+    if( !Object::isEqualTo( other ) )
+    {
+        return false;
+    }
+
+    const PaintOperation *operation = static_cast<const PaintOperation *>( other );
+	if( m_valueData || operation->m_valueData )
+	{
+		if( !( m_valueData && operation->m_valueData && m_valueData->isEqualTo( operation->m_valueData.get() ) ) )
+		{
+			return false;
+		}
+	}
+
+	if( m_opacityData || operation->m_opacityData )
+	{
+		if( !( m_opacityData && operation->m_opacityData && m_opacityData->isEqualTo( operation->m_opacityData.get() ) ) )
+		{
+			return false;
+		}
+	}
+
+	if( m_indicesData || operation->m_indicesData )
+	{
+		if( !( m_indicesData && operation->m_indicesData && m_indicesData->isEqualTo( operation->m_indicesData.get() ) ) )
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void PaintOperation::hash( IECore::MurmurHash &h ) const
+{
+    Object::hash( h );
+	if( m_valueData )
+	{
+		m_valueData->hash( h );
+	}
+
+	if( m_opacityData )
+	{
+		m_opacityData->hash( h );
+	}
+
+	if( m_indicesData )
+	{
+		m_indicesData->hash( h );
+	}
+}
+
+void PaintOperation::copyFrom( const IECore::Object *other, IECore::Object::CopyContext *context )
+{
+    Object::copyFrom( other, context );
+
+    const PaintOperation *operation = static_cast<const PaintOperation *>( other );
+    m_valueData = operation->m_valueData;
+    m_opacityData = operation->m_opacityData;
+    m_indicesData = operation->m_indicesData;
+}
+
+void PaintOperation::save( IECore::Object::SaveContext *context ) const
+{
+    Object::save( context );
+    /// \todo Can we implement saving by serialising the
+    /// Gaffer script into the IndexedIO file?
+    msg( Msg::Warning, "PaintOperation::save", "Not implemented" );
+}
+
+void PaintOperation::load( IECore::Object::LoadContextPtr context )
+{
+    Object::load( context );
+    msg( Msg::Warning, "PaintOperation::load", "Not implemented" );
+}
+
+void PaintOperation::memoryUsage( IECore::Object::MemoryAccumulator &accumulator ) const
+{
+    Object::memoryUsage( accumulator );
+	if( m_valueData )
+	{
+		accumulator.accumulate( m_valueData.get() );
+	}
+	if( m_opacityData )
+	{
+		accumulator.accumulate( m_opacityData.get() );
+	}
+	if( m_indicesData )
+	{
+		accumulator.accumulate( m_indicesData.get() );
+	}
+}
+
 //IE_CORE_DEFINERUNTIMETYPED( PrimitiveVariablePaint::OperationData );
 
-namespace PrimitiveVariablePaint
-{
-IE_CORE_DEFINERUNTIMETYPED( OperationData );
-}
+//IE_CORE_DEFINERUNTIMETYPED( PaintOperation );
+//GAFFER_NODE_DEFINE_TYPE( PaintOperation );
+IE_CORE_DEFINEOBJECTTYPEDESCRIPTION( PaintOperation );
 
 size_t PrimitiveVariablePaint::g_firstPlugIndex = 0;
 
@@ -64,21 +166,21 @@ PrimitiveVariablePaint::PrimitiveVariablePaint( const std::string &name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 
-	addChild( new AtomicCompoundDataPlug( "paint", Plug::In ) );
+	addChild( new CompoundObjectPlug( "paint", Plug::In ) );
 }
 
 PrimitiveVariablePaint::~PrimitiveVariablePaint()
 {
 }
 
-Gaffer::AtomicCompoundDataPlug *PrimitiveVariablePaint::paintPlug()
+Gaffer::CompoundObjectPlug *PrimitiveVariablePaint::paintPlug()
 {
-	return getChild<Gaffer::AtomicCompoundDataPlug>( g_firstPlugIndex + 0 );
+	return getChild<Gaffer::CompoundObjectPlug>( g_firstPlugIndex + 0 );
 }
 
-const Gaffer::AtomicCompoundDataPlug *PrimitiveVariablePaint::paintPlug() const
+const Gaffer::CompoundObjectPlug *PrimitiveVariablePaint::paintPlug() const
 {
-	return getChild<Gaffer::AtomicCompoundDataPlug>( g_firstPlugIndex + 0 );
+	return getChild<Gaffer::CompoundObjectPlug>( g_firstPlugIndex + 0 );
 }
 
 bool PrimitiveVariablePaint::affectsProcessedObject( const Gaffer::Plug *input ) const
@@ -128,7 +230,7 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 		throw IECore::Exception( "Cannot paint primitive with invalid primitive variables" );
 	}
 
-	ConstCompoundDataPtr locPaint = paintPlug()->getValue();
+	ConstCompoundObjectPtr locPaint = paintPlug()->getValue();
 
 	// TODO - now only needed for errors
 	std::string pathString = ScenePlug::pathToString( path );
@@ -136,13 +238,13 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 	PrimitivePtr result = inputPrimitive->copy();
 
 	//static const InternedString interpolationString( "interpolation" );
-	for( auto &var : locPaint->readable() )
+	for( auto &var : locPaint->members() )
 	{
-		const OperationData *varCompound = IECore::runTimeCast<OperationData>( var.second.get() );
+		const PaintOperation *varCompound = IECore::runTimeCast<PaintOperation>( var.second.get() );
 
 		if( !varCompound )
 		{
-			throw IECore::Exception( fmt::format( "Invalid paint for variable {} with no OperationData for key {}", var.first.string(), pathString ) );
+			throw IECore::Exception( fmt::format( "Invalid paint for variable {} with no PaintOperation for key {}", var.first.string(), pathString ) );
 		}
 
 		if( !varCompound->m_valueData )
@@ -171,28 +273,29 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 		}
 
 		auto existingVar = result->variables.find( var.first );
-		if( existingVar != result->variables.end() && existingVar->second.interpolation != interp && varCompound->m_opacity.size() )
+		if( existingVar != result->variables.end() && existingVar->second.interpolation != interp && varCompound->m_opacityData )
 		{
 			IECore::msg( IECore::Msg::Warning, "PrimitiveVariablePaint", fmt::format( "Interpolation mismatch for variable {} at location {}, overwriting instead of compositing.", var.first.string(), pathString ) );
 			existingVar = result->variables.end();
 
 		}
 
-		if( existingVar == result->variables.end() || varCompound->m_opacity.size() == 0 )
+		// TODO operation
+		if( existingVar == result->variables.end() || !varCompound->m_opacityData )
 		{
 			// TODO - I think this const_cast is safe because the result is treated as const
 			result->variables[var.first] = PrimitiveVariable( interp, const_cast<Data*>( varCompound->m_valueData.get() ) );
 			continue;
 		}
 
-
-		if( varCompound->m_opacity.size() != IECore::size( varCompound->m_valueData.get() ) )
+		const std::vector<float> &paintOpacity = varCompound->m_opacityData->readable();
+		if( paintOpacity.size() != IECore::size( varCompound->m_valueData.get() ) )
 		{
 			throw IECore::Exception( "Corrupt paint : Opacity size different from value size." );
 		}
 
 		IECore::dispatch( varCompound->m_valueData.get(),
-			[&var, &existingVar, &varCompound, &result]( auto *typedValueData )
+			[&var, &existingVar, &paintOpacity, &result]( auto *typedValueData )
 			{
 				using SourceType = typename std::remove_const_t< std::remove_pointer_t<decltype( typedValueData )> >;
 
@@ -220,7 +323,7 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 
 							for( size_t i = 0; i < resultVec.size(); i++ )
 							{
-								resultVec[i] = ( 1 - varCompound->m_opacity[i] ) * resultVec[i] + typedValue[i];
+								resultVec[i] = ( 1 - paintOpacity[i] ) * resultVec[i] + typedValue[i];
 							}
 
 							result->variables[var.first] = PrimitiveVariable( existingVar->second.interpolation, resultData );
