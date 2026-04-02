@@ -177,18 +177,18 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 			IECore::V2fTree m_kdTree;
 			Imath::M44f m_kdTreeProjection;
 
-			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_currentStroke;
+			GafferScene::PaintOperationPtr m_currentStroke;
 			bool m_currentStrokeDirty;
 
 			// TODO - not really a fan of having a lot of map lookups happening while processing these.
 			// Rather than using a CompoundData, maybe makes sense for PrimitiveVariableProcessor to
 			// declare a custom Data class with value, opacity and indices
 
-			GafferScene::PrimitiveVariablePaint::ConstOperationDataPtr m_initialEditValue;
-			GafferScene::PrimitiveVariablePaint::ConstOperationDataPtr m_initialMeshValue;
-			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedInputValue;
-			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedEditValue;
-			GafferScene::PrimitiveVariablePaint::OperationDataPtr m_composedValue;
+			GafferScene::ConstPaintOperationPtr m_initialEditValue;
+			GafferScene::ConstPaintOperationPtr m_initialMeshValue;
+			GafferScene::PaintOperationPtr m_composedInputValue;
+			GafferScene::PaintOperationPtr m_composedEditValue;
+			GafferScene::PaintOperationPtr m_composedValue;
 			Gaffer::CachedDataNode* m_paintEdit;
 
 			Selection& operator=( const Selection & other );
