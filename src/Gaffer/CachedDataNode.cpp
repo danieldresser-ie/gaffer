@@ -123,7 +123,7 @@ CachedDataNode::CachedDataNode( const std::string &name, IECore::CompoundDataPtr
 
     addChild( new StringPlug( "selector", Plug::In ) );
     addChild( new StringPlug( "targetDirectory", Plug::In, "TODO${fileName}" ) );
-    addChild( new AtomicCompoundDataPlug( "data", Plug::Out ) );
+    addChild( new CompoundObjectPlug( "data", Plug::Out ) );
     addChild( new StringVectorDataPlug( "keys", Plug::Out ) );
     addChild( new IntPlug( "refreshCount", Plug::In ) );
     addChild( new ObjectPlug( "evaluate", Plug::Out, new IECore::NullObject() ) );
@@ -170,14 +170,14 @@ const StringPlug *CachedDataNode::targetDirectoryPlug() const
     return getChild<StringPlug>( g_firstPlugIndex + 1 );
 }
 
-AtomicCompoundDataPlug *CachedDataNode::dataPlug()
+CompoundObjectPlug *CachedDataNode::dataPlug()
 {
-    return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 2 );
+    return getChild<CompoundObjectPlug>( g_firstPlugIndex + 2 );
 }
 
-const AtomicCompoundDataPlug *CachedDataNode::dataPlug() const
+const CompoundObjectPlug *CachedDataNode::dataPlug() const
 {
-    return getChild<AtomicCompoundDataPlug>( g_firstPlugIndex + 2 );
+    return getChild<CompoundObjectPlug>( g_firstPlugIndex + 2 );
 }
 
 StringVectorDataPlug *CachedDataNode::keysPlug()
@@ -519,7 +519,7 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 				const auto &hashVec = hashData->readable();
 				IECore::MurmurHash h( hashVec[0], hashVec[1] );
 				std::cerr << "HASH " << h << "\n";*/
-				/*static_cast<AtomicCompoundDataPlug *>( output )->setValue(
+				/*static_cast<CompoundObjectPlug *>( output )->setValue(
 					IECore::runTimeCast<const IECore::CompoundData>( reader.read() )
 				);*/
 			}
@@ -539,10 +539,10 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 		Context::EditableScope s( context );
 		IECore::InternedString select = selectorPlug()->getValue();
 		s.set( g_cacheEvaluationKeyName, &select );
-		static_cast<AtomicCompoundDataPlug *>( output )->setValue(
-			IECore::runTimeCast<const IECore::CompoundData>( evaluatePlug()->getValue() )
+		static_cast<CompoundObjectPlug *>( output )->setValue(
+			IECore::runTimeCast<const IECore::CompoundObject>( evaluatePlug()->getValue() )
 		);
-		/*static_cast<AtomicCompoundDataPlug *>( output )->setValue(
+		/*static_cast<CompoundObjectPlug *>( output )->setValue(
 			IECore::runTimeCast<const IECore::CompoundData>( getEntry( select ) )
 		);*/
 		return;

@@ -67,8 +67,8 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		StringPlug *targetDirectoryPlug();
 		const StringPlug *targetDirectoryPlug() const;
 
-		AtomicCompoundDataPlug *dataPlug();
-		const AtomicCompoundDataPlug *dataPlug() const;
+		CompoundObjectPlug *dataPlug();
+		const CompoundObjectPlug *dataPlug() const;
 
 		StringVectorDataPlug *keysPlug();
 		const StringVectorDataPlug *keysPlug() const;
@@ -78,8 +78,8 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		//const StringPlug *currentFilePathPlug() const;
 
 		// TODO - should this be private? Currently the serialiser childNeedsSerialisation needs to see it
-		/*AtomicCompoundDataPlug *fileDataPlug();
-		const AtomicCompoundDataPlug *fileDataPlug() const;*/
+		/*CompoundObjectPlug *fileDataPlug();
+		const CompoundObjectPlug *fileDataPlug() const;*/
 
 		//void load( const std::string &filePath );
 		IECore::ConstCompoundDataPtr save() const;
@@ -98,14 +98,14 @@ class GAFFER_API CachedDataNode : public ComputeNode
 
 			GAFFER_NODE_DECLARE_TYPE( Gaffer::CachedDataNode::SingleCacheNode, SingleCacheNodeTypeId, ComputeNode );
 
-			AtomicCompoundDataPlug *liveDataPlug();
-			const AtomicCompoundDataPlug *liveDataPlug() const;
+			CompoundObjectPlug *liveDataPlug();
+			const CompoundObjectPlug *liveDataPlug() const;
 
 			StringPlug *filePathPlug();
 			const StringPlug *filePathPlug() const;
 
-			AtomicCompoundDataPlug *dataPlug();
-			const AtomicCompoundDataPlug *dataPlug() const;
+			CompoundObjectPlug *dataPlug();
+			const CompoundObjectPlug *dataPlug() const;
 
 			void affects( const Plug *input, AffectedPlugsContainer &outputs ) const override;
 
