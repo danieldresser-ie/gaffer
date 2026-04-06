@@ -62,6 +62,7 @@
 #include "IECoreScene/Camera.h"
 #include "IECoreScene/ClippingPlane.h"
 #include "IECoreScene/CoordinateSystem.h"
+#include "IECoreScene/Primitive.h"
 #include "IECoreScene/VisibleRenderable.h"
 
 #include "IECore/MessageHandler.h"
@@ -818,6 +819,17 @@ void addMergeScenesPredecessors( const MergeScenes *mergeScenes, const SceneAlgo
 	destination->predecessors.push_back( predecessor );
 }
 
+void addGenericPrimitiveVariablePredecessors( const SceneAlgo::History::Predecessors &source, SceneAlgo::PrimitiveVariableHistory *destination )
+{
+	for( auto &h : source )
+	{
+		if( auto ah = SceneAlgo::primitiveVariableHistory( h.get(), destination->primitiveVariableName ) )
+		{
+			destination->predecessors.push_back( ah );
+		}
+	}
+}
+
 SceneProcessor *objectTweaksWalk( const SceneAlgo::History *h )
 {
 	if( auto tweaks = h->scene->parent<CameraTweaks>() )
@@ -1024,6 +1036,75 @@ SceneAlgo::OptionHistory::Ptr SceneAlgo::optionHistory( const SceneAlgo::History
 	else
 	{
 		addGenericOptionPredecessors( globalsHistory->predecessors, result.get() );
+	}
+
+	return result;
+}
+
+SceneAlgo::PrimitiveVariableHistory::Ptr SceneAlgo::primitiveVariableHistory( const SceneAlgo::History *primitiveVariablesHistory, const IECore::InternedString &primitiveVariable )
+{
+	Context::Scope scopedContext( primitiveVariablesHistory->context.get() );
+	IECoreScene::ConstPrimitivePtr primitive = IECore::runTimeCast<const Primitive>( primitiveVariablesHistory->scene->objectPlug()->getValue() );
+
+	if( !primitive )
+	{
+		return nullptr;
+	}
+
+	const Data *primitiveVariableValue = primitive->variableData<Data>( primitiveVariable );
+
+	if( !primitiveVariableValue )
+	{
+		return nullptr;
+	}
+
+	SceneAlgo::PrimitiveVariableHistory::Ptr result = new PrimitiveVariableHistory(
+		primitiveVariablesHistory->scene, primitiveVariablesHistory->context,
+		primitiveVariable, primitiveVariableValue
+	);
+
+	// Filter the _primitiveVariables_ history to include only predecessors which
+	// contribute specifically to our single _primitive variable. In the absence of
+	// a SceneNode-level API for querying primitive variable sources, we resort to
+	// special case code for backtracking through certain node types.
+	/// \todo Consider an official API that allows the nodes themselves to
+	/// take responsibility for this backtracking.
+
+	auto node = runTimeCast<const SceneNode>( primitiveVariablesHistory->scene->node() );
+	if( node && node->enabledPlug()->getValue() && primitiveVariablesHistory->scene == node->outPlug() )
+	{
+		/*if( auto copyAttributes = runTimeCast<const CopyAttributes>( node ) )
+		{
+			addCopyAttributesPredecessors( copyAttributes, primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else if( auto shuffleAttributes = runTimeCast<const ShuffleAttributes>( node ) )
+		{
+			addShuffleAttributesPredecessors( shuffleAttributes, primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else if( runTimeCast<const LocaliseAttributes>( node ) )
+		{
+			addLocaliseAttributesPredecessors( primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else if( auto mergeScenes = runTimeCast<const MergeScenes>( node ) )
+		{
+			addMergeScenesPredecessors( mergeScenes, primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else if( runTimeCast<const AttributeTweaks>( node ) )
+		{
+			addLocaliseAttributesPredecessors( primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else if( runTimeCast<const ShaderTweaks>( node ) )
+		{
+			addLocaliseAttributesPredecessors( primitiveVariablesHistory->predecessors, result.get() );
+		}
+		else*/
+		{
+			addGenericPrimitiveVariablePredecessors( primitiveVariablesHistory->predecessors, result.get() );
+		}
+	}
+	else
+	{
+		addGenericPrimitiveVariablePredecessors( primitiveVariablesHistory->predecessors, result.get() );
 	}
 
 	return result;

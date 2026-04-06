@@ -41,6 +41,7 @@
 #include "GafferScene/Prune.h"
 #include "GafferScene/PathFilter.h"
 #include "GafferScene/PrimitiveVariablePaint.h"
+#include "GafferScene/PrimitiveVariableTweaks.h"
 #include "GafferScene/SceneAlgo.h"
 #include "GafferScene/SceneProcessor.h"
 #include "GafferScene/Set.h"
@@ -59,6 +60,7 @@
 #include "IECore/AngleConversion.h"
 #include "IECore/CamelCase.h"
 
+#include "IECoreScene/Primitive.h"
 #include "IECoreScene/PrimitiveVariable.h"
 
 #include "Imath/ImathMatrixAlgo.h"
@@ -494,6 +496,31 @@ ConstObjectPtr attributeValue( const ScenePlug *scene, const ScenePlug::ScenePat
 	return result;
 }
 
+const IECoreScene::PrimitiveVariable &primitiveVariableValue( const ScenePlug *scene, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	if( !scene->exists( path ) )
+	{
+		string pathString; ScenePlug::pathToString( path, pathString );
+		throw IECore::Exception( fmt::format( "Location \"{}\" does not exist", pathString ) );
+	}
+
+	IECoreScene::ConstPrimitivePtr primitive = IECore::runTimeCast< const IECoreScene::Primitive >( scene->object( path ) );
+	//auto attributes = scene->fullAttributes( path );
+	if( !primitive )
+	{
+		string pathString; ScenePlug::pathToString( path, pathString );
+		throw IECore::Exception( fmt::format( "No object at location \"{}\"", pathString ) );
+	}
+
+	auto it = primitive->variables.find( primitiveVariable );
+	if( it == primitive->variables.end() )
+	{
+		throw IECore::Exception( fmt::format( "Primitive variable \"{}\" does not exist", primitiveVariable ) );
+	}
+
+	return it->second;
+}
+
 ConstDataPtr parameterValue( const ScenePlug *scene, const ScenePlug::ScenePath &path, const std::string &attribute, const IECoreScene::ShaderNetwork::Parameter &parameter )
 {
 	auto attributeShader = attributeValue( scene, path, attribute );
@@ -874,6 +901,206 @@ const Gaffer::GraphComponent *GafferScene::EditScopeAlgo::attributeEditReadOnlyR
 
 	std::string columnName;
 	boost::replace_copy_if( attribute, std::back_inserter( columnName ), boost::is_any_of( ".:" ), '_' );
+	if( auto *cell = row->cellsPlug()->getChild<Spreadsheet::CellPlug>( columnName ) )
+	{
+		if( MetadataAlgo::getReadOnly( cell ) )
+		{
+			return cell;
+		}
+
+		for( const auto &plug : Plug::RecursiveRange( *cell ) )
+		{
+			if( MetadataAlgo::getReadOnly( plug.get() ) )
+			{
+				return plug.get();
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+// Primitive Variables
+// ===================
+
+namespace
+{
+
+const std::string g_primitiveVariableProcessorName = "PrimitiveVariableEdits";
+
+SceneProcessorPtr primitiveVariableProcessor( const std::string &name )
+{
+	SceneProcessorPtr result = new SceneProcessor( name );
+
+	SpreadsheetPtr spreadsheet = new Spreadsheet;
+	result->addChild( spreadsheet );
+	spreadsheet->selectorPlug()->setValue( "${scene:path}" );
+
+	PathFilterPtr pathFilter = new PathFilter;
+	result->addChild( pathFilter );
+	pathFilter->pathsPlug()->setInput( spreadsheet->enabledRowNamesPlug() );
+
+	PrimitiveVariableTweaksPtr primitiveVariableTweaks = new PrimitiveVariableTweaks;
+	result->addChild( primitiveVariableTweaks );
+	primitiveVariableTweaks->inPlug()->setInput( result->inPlug() );
+	primitiveVariableTweaks->filterPlug()->setInput( pathFilter->outPlug() );
+	primitiveVariableTweaks->enabledPlug()->setInput( result->enabledPlug() );
+	primitiveVariableTweaks->ignoreMissingPlug()->setValue( true );
+
+	auto rowsPlug = static_cast<Spreadsheet::RowsPlug *>(
+		PlugAlgo::promoteWithName( spreadsheet->rowsPlug(), "edits" )
+	);
+	Metadata::registerValue( rowsPlug, "spreadsheet:defaultRowVisible", new BoolData( false ) );
+	Metadata::registerValue( rowsPlug->defaultRow(), "spreadsheet:rowNameWidth", new IntData( 300 ) );
+
+	result->outPlug()->setInput( primitiveVariableTweaks->outPlug() );
+
+	return result;
+}
+
+SceneProcessor *acquirePrimitiveVariableProcessor( EditScope *editScope, bool createIfNecessary )
+{
+	static bool isRegistered = false;
+	if( !isRegistered )
+	{
+		EditScope::registerProcessor(
+			g_primitiveVariableProcessorName,
+			[]() {
+				return primitiveVariableProcessor( g_primitiveVariableProcessorName );
+			}
+		);
+
+		isRegistered = true;
+	}
+
+	return editScope->acquireProcessor<SceneProcessor>( g_primitiveVariableProcessorName, createIfNecessary );
+}
+
+}  // namespace
+
+bool GafferScene::EditScopeAlgo::hasPrimitiveVariableEdit( const Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	return acquirePrimitiveVariableEdit( const_cast<EditScope *>( scope ), path, primitiveVariable, /* createIfNecessary = */ false );
+}
+
+TweakPlug *GafferScene::EditScopeAlgo::acquirePrimitiveVariableEdit( Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable, bool createIfNecessary )
+{
+	const std::string pathString = ScenePlug::pathToString( path );
+
+	// If we need to create an edit, we'll need to do a compute to figure our the primitiveVariable
+	// type and value. But we don't want to do that if we already have an edit. And since the
+	// compute could error, we need to get the primitiveVariable value before making _any_ changes, so we
+	// don't leave things in a partial state. We use `ensurePrimitiveVariableValue()` to get the value
+	// lazily at the first point we know it will be needed.
+	IECoreScene::PrimitiveVariable primitiveVariableValue;
+	auto ensurePrimitiveVariableValue = [&] {
+		if( !primitiveVariableValue.data )
+		{
+			primitiveVariableValue = ::primitiveVariableValue( scope->outPlug<ScenePlug>(), path, primitiveVariable );
+			if( !primitiveVariableValue.data )
+			{
+				throw IECore::Exception( fmt::format( "PrimitiveVariable \"{}\" cannot be tweaked", primitiveVariable ) );
+			}
+		}
+	};
+
+	// Find processor, and row for `path`.
+
+	auto *processor = acquirePrimitiveVariableProcessor( scope, /* createIfNecessary */ false );
+	if( !processor )
+	{
+		if( !createIfNecessary )
+		{
+			return nullptr;
+		}
+		else
+		{
+			ensurePrimitiveVariableValue();
+			processor = acquirePrimitiveVariableProcessor( scope, /* createIfNecessary */ true );
+		}
+	}
+
+	auto *rows = processor->getChild<Spreadsheet::RowsPlug>( "edits" );
+	Spreadsheet::RowPlug *row = rows->row( pathString );
+	if( !row )
+	{
+		if( !createIfNecessary )
+		{
+			return nullptr;
+		}
+		ensurePrimitiveVariableValue();
+		row = rows->addRow();
+		row->namePlug()->setValue( pathString );
+	}
+
+	// Find cell for primitiveVariable
+
+	std::string columnName;
+	boost::replace_copy_if( primitiveVariable, std::back_inserter( columnName ), boost::is_any_of( ".:" ), '_' );
+	if( auto *cell = row->cellsPlug()->getChild<Spreadsheet::CellPlug>( columnName ) )
+	{
+		return cell->valuePlug<TweakPlug>();
+	}
+
+	if( !createIfNecessary )
+	{
+		return nullptr;
+	}
+
+	// No tweak for the primitiveVariable yet. Create it.
+
+	ensurePrimitiveVariableValue();
+
+	ValuePlugPtr valuePlug = PlugAlgo::createPlugFromData( "value", Plug::In, Plug::Default, primitiveVariableValue.data.get() );
+
+	TweakPlugPtr tweakPlug = new TweakPlug( primitiveVariable, valuePlug, TweakPlug::Create, false );
+
+	auto *primitiveVariableTweaks = processor->getChild<PrimitiveVariableTweaks>( "PrimitiveVariableTweaks" );
+	primitiveVariableTweaks->tweaksPlug()->addChild( tweakPlug );
+
+	size_t columnIndex = rows->addColumn( tweakPlug.get(), columnName, /* adoptEnabledPlug */ true );
+	tweakPlug->setInput( processor->getChild<Spreadsheet>( "Spreadsheet" )->outPlug()->getChild<Plug>( columnIndex ) );
+
+	return row->cellsPlug()->getChild<Spreadsheet::CellPlug>( columnIndex )->valuePlug<TweakPlug>();
+}
+
+void GafferScene::EditScopeAlgo::removePrimitiveVariableEdit( Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	TweakPlug *edit = acquirePrimitiveVariableEdit( scope, path, primitiveVariable, /* createIfNecessary */ false );
+	if( !edit )
+	{
+		return;
+	}
+	// We're unlikely to be able to delete the row or column,
+	// because that would affect other edits, so we simply disable
+	// the edit instead.
+	edit->enabledPlug()->setValue( false );
+}
+
+const Gaffer::GraphComponent *GafferScene::EditScopeAlgo::primitiveVariableEditReadOnlyReason( const Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	auto *processor = acquirePrimitiveVariableProcessor( const_cast<EditScope *>( scope ), /*createIfNecessary */ false );
+	if( !processor )
+	{
+		return MetadataAlgo::readOnlyReason( scope );
+	}
+
+	const std::string pathString = ScenePlug::pathToString( path );
+
+	auto *rows = processor->getChild<Spreadsheet::RowsPlug>( "edits" );
+	Spreadsheet::RowPlug *row = rows->row( pathString );
+	if( !row )
+	{
+		return MetadataAlgo::readOnlyReason( rows );
+	}
+
+	if( const auto reason = MetadataAlgo::readOnlyReason( row->cellsPlug() ) )
+	{
+		return reason;
+	}
+
+	std::string columnName;
+	boost::replace_copy_if( primitiveVariable, std::back_inserter( columnName ), boost::is_any_of( ".:" ), '_' );
 	if( auto *cell = row->cellsPlug()->getChild<Spreadsheet::CellPlug>( columnName ) )
 	{
 		if( MetadataAlgo::getReadOnly( cell ) )

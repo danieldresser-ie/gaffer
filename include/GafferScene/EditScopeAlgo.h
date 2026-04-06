@@ -130,6 +130,16 @@ GAFFERSCENE_API Gaffer::TweakPlug *acquireAttributeEdit( Gaffer::EditScope *scop
 GAFFERSCENE_API void removeAttributeEdit( Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &attribute );
 GAFFERSCENE_API const Gaffer::GraphComponent *attributeEditReadOnlyReason( const Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &attribute );
 
+// Primitive Variables
+// ==========
+//
+// These methods edit primitive variables for a particular location.
+
+GAFFERSCENE_API bool hasPrimitiveVariableEdit( const Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable );
+GAFFERSCENE_API Gaffer::TweakPlug *acquirePrimitiveVariableEdit( Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable, bool createIfNecessary = true );
+GAFFERSCENE_API void removePrimitiveVariableEdit( Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable );
+GAFFERSCENE_API const Gaffer::GraphComponent *primitiveVariableEditReadOnlyReason( const Gaffer::EditScope *scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable );
+
 // Sets
 // ==========
 //
