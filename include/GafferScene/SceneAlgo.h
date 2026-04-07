@@ -44,6 +44,7 @@
 #include "Gaffer/NumericPlug.h"
 
 #include "IECoreScene/Camera.h"
+#include "IECoreScene/PrimitiveVariable.h"
 
 #include "IECore/Export.h"
 
@@ -275,10 +276,10 @@ struct PrimitiveVariableHistory : public History
 	IE_CORE_DECLAREMEMBERPTR( PrimitiveVariableHistory )
 	PrimitiveVariableHistory(
 		const ScenePlugPtr &scene, const Gaffer::ContextPtr &context,
-		const IECore::InternedString &primitiveVariableName, const IECore::ConstObjectPtr &primitiveVariableValue
+		const IECore::InternedString &primitiveVariableName, const IECoreScene::PrimitiveVariable &primitiveVariableValue
 	) :	History( scene, context ), primitiveVariableName( primitiveVariableName ), primitiveVariableValue( primitiveVariableValue ) {}
 	IECore::InternedString primitiveVariableName;
-	IECore::ConstObjectPtr primitiveVariableValue;
+	IECoreScene::PrimitiveVariable primitiveVariableValue;
 };
 
 /// Filters `primitiveVariablesHistory` and returns a history for the specific `primitiveVariable`.

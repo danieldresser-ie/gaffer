@@ -53,6 +53,8 @@
 #include "Gaffer/ParallelAlgo.h"
 #include "Gaffer/ValuePlug.h"
 
+#include "IECore/DataAlgo.h"
+
 #include "fmt/format.h"
 
 using namespace boost::placeholders;
@@ -200,6 +202,26 @@ PrimitiveVariableHistoryCache g_primitiveVariableHistoryCache(
 	return nullptr;
 }*/
 
+// TODO : Duplicated from src/GafferSceneUIModule/SceneInspectorBinding.cpp
+const boost::container::flat_map<IECoreScene::PrimitiveVariable::Interpolation, IECore::ConstStringDataPtr> g_primitiveVariableInterpolations = {
+    { PrimitiveVariable::Invalid, new IECore::StringData( "Invalid" ) },
+    { PrimitiveVariable::Constant, new IECore::StringData( "Constant" ) },
+    { PrimitiveVariable::Uniform, new IECore::StringData( "Uniform" ) },
+    { PrimitiveVariable::Vertex, new IECore::StringData( "Vertex" ) },
+    { PrimitiveVariable::Varying, new IECore::StringData( "Varying" ) },
+    { PrimitiveVariable::FaceVarying, new IECore::StringData( "FaceVarying" ) }
+};
+
+const boost::container::flat_map<IECore::GeometricData::Interpretation, IECore::ConstStringDataPtr> g_geometricInterpretations = {
+    { GeometricData::None, new IECore::StringData( "None" ) },
+    { GeometricData::Point, new IECore::StringData( "Point" ) },
+    { GeometricData::Normal, new IECore::StringData( "Normal" ) },
+    { GeometricData::Vector, new IECore::StringData( "Vector" ) },
+    { GeometricData::Color, new IECore::StringData( "Color" ) },
+    { GeometricData::UV, new IECore::StringData( "UV" ) },
+    { GeometricData::Rational, new IECore::StringData( "Rational" ) }
+};
+
 } // namespace
 
 //////////////////////////////////////////////////////////////////////////
@@ -234,12 +256,37 @@ GafferScene::SceneAlgo::History::ConstPtr PrimitiveVariableInspector::history() 
 
 IECore::ConstObjectPtr PrimitiveVariableInspector::value( const GafferScene::SceneAlgo::History *history ) const
 {
-	if( auto primitiveVariableHistory = dynamic_cast<const SceneAlgo::PrimitiveVariableHistory *>( history ) )
+	auto primitiveVariableHistory = dynamic_cast<const SceneAlgo::PrimitiveVariableHistory *>( history );
+	if( !primitiveVariableHistory )
 	{
-		return primitiveVariableHistory->primitiveVariableValue;
+		// Primitive variable doesn't exist.
+		return nullptr;
 	}
-	// PrimitiveVariable doesn't exist.
-	return nullptr;
+
+	if( m_property == Property::Interpolation )
+	{
+		auto it = g_primitiveVariableInterpolations.find( primitiveVariableHistory->primitiveVariableValue.interpolation );
+		return it != g_primitiveVariableInterpolations.end() ? it->second : nullptr;
+	}
+	else if( m_property == Property::Type )
+    {
+        return new StringData( primitiveVariableHistory->primitiveVariableValue.data->typeName() );
+    }
+	else if( m_property == Property::Interpretation )
+	{
+		auto it = g_geometricInterpretations.find( IECore::getGeometricInterpretation( primitiveVariableHistory->primitiveVariableValue.data.get() ) );
+		return it != g_geometricInterpretations.end() ? it->second : nullptr;
+	}
+	else if( m_property == Property::Data )
+	{
+		return primitiveVariableHistory->primitiveVariableValue.data;
+	}
+	else if( m_property == Property::Indices )
+	{
+		return primitiveVariableHistory->primitiveVariableValue.indices;
+	}
+
+	throw IECore::Exception( fmt::format( "Unsupported primitive variable Property {}.", (int)m_property ) );
 }
 
 IECore::ConstObjectPtr PrimitiveVariableInspector::fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const

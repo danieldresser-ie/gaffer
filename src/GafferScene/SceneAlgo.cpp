@@ -1083,16 +1083,15 @@ SceneAlgo::PrimitiveVariableHistory::Ptr SceneAlgo::primitiveVariableHistory( co
 		return nullptr;
 	}
 
-	const Data *primitiveVariableValue = primitive->variableData<Data>( primitiveVariable );
-
-	if( !primitiveVariableValue )
+	auto varIt = primitive->variables.find( primitiveVariable );
+	if( varIt == primitive->variables.end() )
 	{
 		return nullptr;
 	}
 
 	SceneAlgo::PrimitiveVariableHistory::Ptr result = new PrimitiveVariableHistory(
 		primitiveVariablesHistory->scene, primitiveVariablesHistory->context,
-		primitiveVariable, primitiveVariableValue
+		primitiveVariable, varIt->second
 	);
 
 	// Filter the _primitiveVariables_ history to include only predecessors which
