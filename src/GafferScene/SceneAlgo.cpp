@@ -49,6 +49,7 @@
 #include "GafferScene/SetAlgo.h"
 #include "GafferScene/ShaderTweaks.h"
 #include "GafferScene/ShuffleAttributes.h"
+#include "GafferScene/ShufflePrimitiveVariables.h"
 
 #include "Gaffer/ArrayPlug.h"
 #include "Gaffer/Context.h"
@@ -830,6 +831,37 @@ void addGenericPrimitiveVariablePredecessors( const SceneAlgo::History::Predeces
 	}
 }
 
+void addShufflePrimitiveVariablesPredecessors( const ShufflePrimitiveVariables *shufflePrimitiveVariables, const SceneAlgo::History::Predecessors &source, SceneAlgo::PrimitiveVariableHistory *destination )
+{
+	// We have no way of introspecting the operation of a ShufflePlug, so we resort
+	// to shuffling	`name = name, value = name` pairs to figure out where the primitive
+	// variable has come from.
+
+	std::cerr << "HELLO\n";
+
+	InternedString sourcePrimitiveVariableName = destination->primitiveVariableName;
+	if( shufflePrimitiveVariables->filterPlug()->match( shufflePrimitiveVariables->inPlug() ) & PathMatcher::ExactMatch )
+	{
+		ConstPrimitivePtr primitive = IECore::runTimeCast<const Primitive>( shufflePrimitiveVariables->inPlug()->objectPlug()->getValue() );
+		if( primitive )
+		{
+			map<InternedString, InternedString> shuffledNames;
+			for( auto &v : primitive->variables )
+			{
+				std::cerr << "v: " << v.first << "\n";
+				shuffledNames.insert( { v.first, v.first } );
+			}
+			shuffledNames = shufflePrimitiveVariables->shufflesPlug()->shuffle( shuffledNames );
+			sourcePrimitiveVariableName = shuffledNames[destination->primitiveVariableName];
+
+			std::cerr << "DEST : " << destination->primitiveVariableName << ", SOURCE : " << sourcePrimitiveVariableName << "\n";
+		}
+	}
+
+	assert( source.size() == 1 );
+	destination->predecessors.push_back( SceneAlgo::primitiveVariableHistory( source[0].get(), sourcePrimitiveVariableName ) );
+}
+
 SceneProcessor *objectTweaksWalk( const SceneAlgo::History *h )
 {
 	if( auto tweaks = h->scene->parent<CameraTweaks>() )
@@ -1077,11 +1109,12 @@ SceneAlgo::PrimitiveVariableHistory::Ptr SceneAlgo::primitiveVariableHistory( co
 		{
 			addCopyAttributesPredecessors( copyAttributes, primitiveVariablesHistory->predecessors, result.get() );
 		}
-		else if( auto shuffleAttributes = runTimeCast<const ShuffleAttributes>( node ) )
+		else*/
+		if( auto shufflePrimitiveVariables = runTimeCast<const ShufflePrimitiveVariables>( node ) )
 		{
-			addShuffleAttributesPredecessors( shuffleAttributes, primitiveVariablesHistory->predecessors, result.get() );
+			addShufflePrimitiveVariablesPredecessors( shufflePrimitiveVariables, primitiveVariablesHistory->predecessors, result.get() );
 		}
-		else if( runTimeCast<const LocaliseAttributes>( node ) )
+		/*else if( runTimeCast<const LocaliseAttributes>( node ) )
 		{
 			addLocaliseAttributesPredecessors( primitiveVariablesHistory->predecessors, result.get() );
 		}
@@ -1096,8 +1129,8 @@ SceneAlgo::PrimitiveVariableHistory::Ptr SceneAlgo::primitiveVariableHistory( co
 		else if( runTimeCast<const ShaderTweaks>( node ) )
 		{
 			addLocaliseAttributesPredecessors( primitiveVariablesHistory->predecessors, result.get() );
-		}
-		else*/
+		}*/
+		else
 		{
 			addGenericPrimitiveVariablePredecessors( primitiveVariablesHistory->predecessors, result.get() );
 		}

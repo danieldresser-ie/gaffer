@@ -51,12 +51,22 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 
 	public :
 
+		enum class Property
+		{
+			Interpolation,
+			Type,
+			Interpretation,
+			Data,
+			Indices,
+		};
+
 		PrimitiveVariableInspector(
 			const GafferScene::ScenePlugPtr &scene,
 			const Gaffer::PlugPtr &editScope,
 			IECore::InternedString primitiveVariable,
 			const std::string &name = "",
-			const std::string &type = "primitiveVariable"
+			const std::string &type = "primitiveVariable",
+			Property property = Property::Data
 		);
 
 		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferSceneUI::Private::PrimitiveVariableInspector, PrimitiveVariableInspectorTypeId, Inspector );
@@ -75,6 +85,7 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 
 		const GafferScene::ScenePlugPtr m_scene;
 		const IECore::InternedString m_primitiveVariable;
+		const Property m_property;
 
 };
 

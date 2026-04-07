@@ -43,6 +43,7 @@
 #include "GafferSceneUI/Private/InspectorColumn.h"
 #include "GafferSceneUI/Private/OptionInspector.h"
 #include "GafferSceneUI/Private/ParameterInspector.h"
+#include "GafferSceneUI/Private/PrimitiveVariableInspector.h"
 #include "GafferSceneUI/Private/TransformInspector.h"
 #include "GafferSceneUI/TypeIds.h"
 
@@ -1201,6 +1202,7 @@ InspectorTree::Inspections objectParametersInspectionProvider( ScenePlug *scene,
 
 const InspectorTree::Registration g_objectParametersInspectionRegistration( { "Location", "Object", "Parameters" }, objectParametersInspectionProvider );
 
+/*
 const PrimitiveVariable *primitiveVariable( const Object *object, const std::string &name )
 {
 	auto primitive = runTimeCast<const Primitive>( object );
@@ -1282,7 +1284,7 @@ ConstDataPtr primitiveVariableIndices( const std::string &name, const ObjectPlug
 	}
 
 	return variable->indices;
-}
+}*/
 
 InspectorTree::Inspections primitiveVariablesInspectionProvider( ScenePlug *scene, const Gaffer::PlugPtr &editScope )
 {
@@ -1299,53 +1301,39 @@ InspectorTree::Inspections primitiveVariablesInspectionProvider( ScenePlug *scen
 	{
 		result.push_back( {
 			{ name, "Interpolation" },
-			new GafferSceneUI::Private::BasicInspector(
-				scene->objectPlug(), editScope,
-				[ name = name ] ( const ObjectPlug *objectPlug ) {
-					return primitiveVariableInterpolation( name, objectPlug );
-				}
+			new GafferSceneUI::Private::PrimitiveVariableInspector(
+				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Interpolation
 			)
 		} );
 		result.push_back( {
 			{ name, "Type" },
-			new GafferSceneUI::Private::BasicInspector(
-				scene->objectPlug(), editScope,
-				[ name = name ] ( const ObjectPlug *objectPlug ) {
-					return primitiveVariableType( name, objectPlug );
-				}
+			new GafferSceneUI::Private::PrimitiveVariableInspector(
+				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Type
 			)
 		} );
 
+		// TODO - contemplate what triggers refreshing this
 		const Data *data = primitive->variables.find( name )->second.data.get();
 		if( data && IECore::trait<IECore::TypeTraits::IsGeometricTypedData>( data ) )
 		{
 			result.push_back( {
 				{ name, "Interpretation" },
-				new GafferSceneUI::Private::BasicInspector(
-					scene->objectPlug(), editScope,
-					[ name = name ] ( const ObjectPlug *objectPlug ) {
-						return primitiveVariableInterpretation( name, objectPlug );
-					}
+				new GafferSceneUI::Private::PrimitiveVariableInspector(
+					scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Interpretation
 				)
 			} );
 		}
 
 		result.push_back( {
 			{ name, "Data" },
-			new GafferSceneUI::Private::BasicInspector(
-				scene->objectPlug(), editScope,
-				[ name = name ] ( const ObjectPlug *objectPlug ) {
-					return primitiveVariableData( name, objectPlug );
-				}
+			new GafferSceneUI::Private::PrimitiveVariableInspector(
+				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Data
 			)
 		} );
 		result.push_back( {
 			{ name, "Indices" },
-			new GafferSceneUI::Private::BasicInspector(
-				scene->objectPlug(), editScope,
-				[ name = name ] ( const ObjectPlug *objectPlug ) {
-					return primitiveVariableIndices( name, objectPlug );
-				}
+			new GafferSceneUI::Private::PrimitiveVariableInspector(
+				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Indices
 			)
 		} );
 	}

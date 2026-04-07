@@ -213,11 +213,12 @@ PrimitiveVariableInspector::PrimitiveVariableInspector(
 	const Gaffer::PlugPtr &editScope,
 	IECore::InternedString primitiveVariable,
 	const std::string &name,
-	const std::string &type
+	const std::string &type,
+	Property property
 )
 	// TODO - do we need globals?
 	:	Inspector( { scene->objectPlug(), scene->globalsPlug() }, type, name == "" ? primitiveVariable.string() : name, editScope ),
-		m_scene( scene ), m_primitiveVariable( primitiveVariable )
+		m_scene( scene ), m_primitiveVariable( primitiveVariable ), m_property( property )
 {
 }
 
