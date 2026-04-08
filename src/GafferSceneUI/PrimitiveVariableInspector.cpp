@@ -54,6 +54,7 @@
 #include "Gaffer/ValuePlug.h"
 
 #include "IECore/DataAlgo.h"
+#include "IECore/NullObject.h"
 
 #include "fmt/format.h"
 
@@ -283,7 +284,18 @@ IECore::ConstObjectPtr PrimitiveVariableInspector::value( const GafferScene::Sce
 	}
 	else if( m_property == Property::Indices )
 	{
-		return primitiveVariableHistory->primitiveVariableValue.indices;
+		if( primitiveVariableHistory->primitiveVariableValue.indices )
+		{
+			return primitiveVariableHistory->primitiveVariableValue.indices;
+		}
+		else
+		{
+			// Returning a null pointer is used to indicate an undefined value that should trigger
+			// a fallback. This isn't the case here: we know that this primitive variable specifically
+			// has no indices. It seems reasonable to tag this with a NullObject so we won't trigger a
+			// fallback.
+			return IECore::NullObject::defaultNullObject();
+		}
 	}
 
 	throw IECore::Exception( fmt::format( "Unsupported primitive variable Property {}.", (int)m_property ) );
@@ -291,32 +303,7 @@ IECore::ConstObjectPtr PrimitiveVariableInspector::value( const GafferScene::Sce
 
 IECore::ConstObjectPtr PrimitiveVariableInspector::fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const
 {
-	/*ScenePlug::PathScope pathScope( Context::current() );
-	ScenePlug::ScenePath currentPath( history->context->get<ScenePlug::ScenePath>( ScenePlug::scenePathContextName ) );
-
-	// No need to check inheritance for immediate children of `/` as we
-	// don't allow attributes to be created at the root of the scene.
-	if( currentPath.size() > 1 )
-	{
-		// We start the inheritance search from the parent in order to return the value that
-		// would be inherited if the inspected attribute did not exist at the original location.
-		currentPath.pop_back();
-
-		while( !currentPath.empty() )
-		{
-			pathScope.setPath( &currentPath );
-			auto a = history->scene->objectPlug()->getValue();
-			if( const auto primitiveVariable = a->member( m_primitiveVariable ) )
-			{
-				description = "Inherited from " + ScenePlug::pathToString( currentPath );
-				return primitiveVariable;
-			}
-			currentPath.pop_back();
-		}
-	}*/
-	throw IECore::Exception( "Fallback called" );
-
-	return nullptr;
+	throw IECore::Exception( "PrimitiveVariableInspector fallbackValue should never be called, because value() always returns definite values" );
 }
 
 Gaffer::ValuePlugPtr PrimitiveVariableInspector::source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const
