@@ -1302,13 +1302,13 @@ InspectorTree::Inspections primitiveVariablesInspectionProvider( ScenePlug *scen
 		result.push_back( {
 			{ name, "Interpolation" },
 			new GafferSceneUI::Private::PrimitiveVariableInspector(
-				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Interpolation
+				scene, editScope, name, PrimitiveVariableInspector::Property::Interpolation
 			)
 		} );
 		result.push_back( {
 			{ name, "Type" },
 			new GafferSceneUI::Private::PrimitiveVariableInspector(
-				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Type
+				scene, editScope, name, PrimitiveVariableInspector::Property::Type
 			)
 		} );
 
@@ -1319,7 +1319,7 @@ InspectorTree::Inspections primitiveVariablesInspectionProvider( ScenePlug *scen
 			result.push_back( {
 				{ name, "Interpretation" },
 				new GafferSceneUI::Private::PrimitiveVariableInspector(
-					scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Interpretation
+					scene, editScope, name, PrimitiveVariableInspector::Property::Interpretation
 				)
 			} );
 		}
@@ -1327,13 +1327,13 @@ InspectorTree::Inspections primitiveVariablesInspectionProvider( ScenePlug *scen
 		result.push_back( {
 			{ name, "Data" },
 			new GafferSceneUI::Private::PrimitiveVariableInspector(
-				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Data
+				scene, editScope, name, PrimitiveVariableInspector::Property::Data
 			)
 		} );
 		result.push_back( {
 			{ name, "Indices" },
 			new GafferSceneUI::Private::PrimitiveVariableInspector(
-				scene, editScope, name, name, "primitiveVariable", PrimitiveVariableInspector::Property::Indices
+				scene, editScope, name, PrimitiveVariableInspector::Property::Indices
 			)
 		} );
 	}

@@ -1056,6 +1056,7 @@ TweakPlug *GafferScene::EditScopeAlgo::acquirePrimitiveVariableEdit( Gaffer::Edi
 	TweakPlugPtr tweakPlug = new TweakPlug( primitiveVariable, valuePlug, TweakPlug::Create, false );
 
 	auto *primitiveVariableTweaks = processor->getChild<PrimitiveVariableTweaks>( "PrimitiveVariableTweaks" );
+	primitiveVariableTweaks->interpolationPlug()->setValue( IECoreScene::PrimitiveVariable::Constant );
 	primitiveVariableTweaks->tweaksPlug()->addChild( tweakPlug );
 
 	size_t columnIndex = rows->addColumn( tweakPlug.get(), columnName, /* adoptEnabledPlug */ true );
