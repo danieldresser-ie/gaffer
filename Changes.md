@@ -24,6 +24,7 @@ Improvements
 - CurvesPrimitive : Added `Pinned` wrap mode in addition to the existing `Periodic` and `NonPeriodic` modes. This conveniently interpolates CatmullRom
 and BSpline curves to their endpoints automatically, without manual management of duplicate endpoints or "phantom vertices".
 - SceneReader, SceneWriter : Added support for pinned UsdGeomBasisCurves.
+- OSLCode : The OSL shader is now compiled on demand, rather than every time the node is edited. This avoids many redundant attempts at recompilation when loading nodes with many parameters.
 
 Fixes
 -----
@@ -80,6 +81,7 @@ Breaking Changes
 - GLWidget : Removed built-in support for hosting in Maya and Houdini. Implement host integration via `GLWidget._registerQGLWidgetCreator()` instead.
 - StandardLightVisualiser : Made `surfaceTexture()` private. The new `registerSurfaceTexture()` method can be used to register a method to return surface texture data.
 - ExtensionAlgo : Changed base class for extension nodes from SubGraph to DependencyNode.
+- OSLCode : Removed `shaderCompiledSignal()`.
 
 Build
 -----
