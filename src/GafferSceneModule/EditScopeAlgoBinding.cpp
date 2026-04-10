@@ -190,6 +190,31 @@ GraphComponentPtr attributeEditReadOnlyReasonWrapper( Gaffer::EditScope &scope, 
 	return const_cast<GraphComponent *>( EditScopeAlgo::attributeEditReadOnlyReason( &scope, path, attribute ) );
 }
 
+// Primitive Variables
+// ===================
+
+bool hasPrimitiveVariableEditWrapper( const Gaffer::EditScope &scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	return EditScopeAlgo::hasPrimitiveVariableEdit( &scope, path, primitiveVariable );
+}
+
+TweakPlugPtr acquirePrimitiveVariableEditWrapper( Gaffer::EditScope &scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable, bool createIfNecessary )
+{
+	IECorePython::ScopedGILRelease gilRelease;
+	return EditScopeAlgo::acquirePrimitiveVariableEdit( &scope, path, primitiveVariable, createIfNecessary );
+}
+
+void removePrimitiveVariableEditWrapper( Gaffer::EditScope &scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	IECorePython::ScopedGILRelease gilRelease;
+	return EditScopeAlgo::removePrimitiveVariableEdit( &scope, path, primitiveVariable );
+}
+
+GraphComponentPtr primitiveVariableEditReadOnlyReasonWrapper( Gaffer::EditScope &scope, const ScenePlug::ScenePath &path, const std::string &primitiveVariable )
+{
+	return const_cast<GraphComponent *>( EditScopeAlgo::primitiveVariableEditReadOnlyReason( &scope, path, primitiveVariable ) );
+}
+
 // Set Membership
 // ==============
 
@@ -331,6 +356,11 @@ void bindEditScopeAlgo()
 	def( "hasAttributeEdit", &hasAttributeEditWrapper, ( arg( "scope" ), arg( "path" ), arg( "attribute" ) ) );
 	def( "removeAttributeEdit", &removeAttributeEditWrapper, ( arg( "scope" ), arg( "path" ), arg( "attribute" ) ) );
 	def( "attributeEditReadOnlyReason", &attributeEditReadOnlyReasonWrapper, ( arg( "scope" ), arg( "path" ), arg( "attribute" ) ) );
+
+	def( "acquirePrimitiveVariableEdit", &acquirePrimitiveVariableEditWrapper, ( arg( "scope" ), arg( "path" ), arg( "primitiveVariable" ), arg( "createIfNecessary" ) = true ) );
+	def( "hasPrimitiveVariableEdit", &hasPrimitiveVariableEditWrapper, ( arg( "scope" ), arg( "path" ), arg( "primitiveVariable" ) ) );
+	def( "removePrimitiveVariableEdit", &removePrimitiveVariableEditWrapper, ( arg( "scope" ), arg( "path" ), arg( "primitiveVariable" ) ) );
+	def( "primitiveVariableEditReadOnlyReason", &primitiveVariableEditReadOnlyReasonWrapper, ( arg( "scope" ), arg( "path" ), arg( "primitiveVariable" ) ) );
 
 	def( "acquireSetEdits", &acquireSetEditsWrapper, ( arg( "scope" ), arg( "set" ), arg( "createIfNecessary" ) = true ) );
 	def( "setSetMembership", &setSetMembershipWrapper );

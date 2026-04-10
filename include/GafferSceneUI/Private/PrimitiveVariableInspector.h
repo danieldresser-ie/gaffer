@@ -64,9 +64,9 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 			const GafferScene::ScenePlugPtr &scene,
 			const Gaffer::PlugPtr &editScope,
 			IECore::InternedString primitiveVariable,
+			Property property,
 			const std::string &name = "",
-			const std::string &type = "primitiveVariable",
-			Property property = Property::Data
+			const std::string &type = "primitiveVariable"
 		);
 
 		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferSceneUI::Private::PrimitiveVariableInspector, PrimitiveVariableInspectorTypeId, Inspector );
@@ -75,7 +75,6 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 
 		GafferScene::SceneAlgo::History::ConstPtr history() const override;
 		IECore::ConstObjectPtr value( const GafferScene::SceneAlgo::History *history) const override;
-		IECore::ConstObjectPtr fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const override;
 		Gaffer::ValuePlugPtr source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const override;
 		AcquireEditFunctionOrFailure acquireEditFunction( Gaffer::EditScope *scope, const GafferScene::SceneAlgo::History *history ) const override;
 

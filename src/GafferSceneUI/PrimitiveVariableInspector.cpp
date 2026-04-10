@@ -235,9 +235,9 @@ PrimitiveVariableInspector::PrimitiveVariableInspector(
 	const GafferScene::ScenePlugPtr &scene,
 	const Gaffer::PlugPtr &editScope,
 	IECore::InternedString primitiveVariable,
+	Property property,
 	const std::string &name,
-	const std::string &type,
-	Property property
+	const std::string &type
 )
 	// TODO - do we need globals?
 	:	Inspector( { scene->objectPlug(), scene->globalsPlug() }, type, name == "" ? primitiveVariable.string() : name, editScope ),
@@ -284,26 +284,10 @@ IECore::ConstObjectPtr PrimitiveVariableInspector::value( const GafferScene::Sce
 	}
 	else if( m_property == Property::Indices )
 	{
-		if( primitiveVariableHistory->primitiveVariableValue.indices )
-		{
-			return primitiveVariableHistory->primitiveVariableValue.indices;
-		}
-		else
-		{
-			// Returning a null pointer is used to indicate an undefined value that should trigger
-			// a fallback. This isn't the case here: we know that this primitive variable specifically
-			// has no indices. It seems reasonable to tag this with a NullObject so we won't trigger a
-			// fallback.
-			return IECore::NullObject::defaultNullObject();
-		}
+		return primitiveVariableHistory->primitiveVariableValue.indices;
 	}
 
 	throw IECore::Exception( fmt::format( "Unsupported primitive variable Property {}.", (int)m_property ) );
-}
-
-IECore::ConstObjectPtr PrimitiveVariableInspector::fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const
-{
-	throw IECore::Exception( "PrimitiveVariableInspector fallbackValue should never be called, because value() always returns definite values" );
 }
 
 Gaffer::ValuePlugPtr PrimitiveVariableInspector::source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const
