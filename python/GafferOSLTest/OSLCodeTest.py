@@ -363,7 +363,9 @@ class OSLCodeTest( GafferOSLTest.OSLTestCase ) :
 		subprocess.check_call(
 			[
 				str( Gaffer.executablePath() ), "env", "python", "-c",
-				f"import GafferOSLTest; GafferOSLTest.OSLCodeTest()._assertMovedCodeDirectoryOK( '{scriptFileName}' )"
+				"import GafferOSLTest; GafferOSLTest.OSLCodeTest()._assertMovedCodeDirectoryOK( '{scriptFileName}' )".format(
+					scriptFileName = scriptFileName.as_posix()
+				)
 			],
 			env = env
 		)
