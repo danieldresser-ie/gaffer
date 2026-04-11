@@ -38,6 +38,7 @@ Fixes
 - Cycles :
   - Reduced memory usage when rendering a single segment of deformation blur on CPU devices.
   - Fixed PointsPrimitive motion blur when rendering with even numbers of segments.
+- StandardNodeGadget : Fixed crash caused by the node emitting `errorSignal()` while the gadget is undergoing construction.
 
 API
 ---
