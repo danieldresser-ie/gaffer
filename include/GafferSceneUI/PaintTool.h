@@ -39,6 +39,8 @@
 #include "GafferSceneUI/SelectionTool.h"
 #include "GafferSceneUI/TypeIds.h"
 
+#include "GafferSceneUI/Private/PrimitiveVariableInspector.h"
+
 #include "GafferScene/EditScopeAlgo.h"
 #include "GafferScene/PrimitiveVariablePaint.h"
 #include "GafferScene/SceneAlgo.h"
@@ -109,7 +111,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				const GafferScene::ConstScenePlugPtr scene,
 				const GafferScene::ScenePlug::ScenePath &path,
 				const Gaffer::ConstContextPtr &context,
-				const Gaffer::EditScopePtr &editScope
+				const Gaffer::EditScopePtr &editScope,
+				const GafferSceneUI::Private::PrimitiveVariableInspectorPtr &inspector
 			);
 
 			// Force std::vector to use move constructor.
@@ -243,6 +246,8 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				IECore::MurmurHash m_resultMeshHash;
 				IECoreScene::ConstMeshPrimitivePtr m_resultMesh;
 
+				GafferSceneUI::Private::PrimitiveVariableInspectorPtr m_inspector;
+				void inspectorDirtied(); // GafferSceneUI::Private::Inspector *inspector );
 
 				static std::string displayName( const GraphComponent *component );
 		};

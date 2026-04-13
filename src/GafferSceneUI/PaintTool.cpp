@@ -1432,9 +1432,10 @@ PaintTool::Selection::Selection(
 	const GafferScene::ConstScenePlugPtr scene,
 	const GafferScene::ScenePlug::ScenePath &path,
 	const Gaffer::ConstContextPtr &context,
-	const Gaffer::EditScopePtr &editScope
+	const Gaffer::EditScopePtr &editScope,
+	const GafferSceneUI::Private::PrimitiveVariableInspectorPtr &inspector
 )
-	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope ), m_sourceMeshDirty( true )
+	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope ), m_sourceMeshDirty( true ), m_inspector( inspector )
 {
 	Context::Scope scopedContext( context.get() );
 	if( path.empty() )
@@ -1482,6 +1483,8 @@ PaintTool::Selection::Selection(
 		GafferScene::ScenePlug::pathToString( m_path, pathString );
 		m_warning = "Editing parent location \"" + pathString + "\"";
 	}
+
+	m_inspector->dirtiedSignal().connect( boost::bind( &PaintTool::Selection::inspectorDirtied, this ) );
 }
 
 void PaintTool::Selection::initFromHistory( const GafferScene::SceneAlgo::History *history )
@@ -1924,6 +1927,11 @@ std::string PaintTool::Selection::displayName( const GraphComponent *component )
 	return component->relativeName( component->ancestor<ScriptNode>() );
 }
 
+void PaintTool::Selection::inspectorDirtied() // Private::Inspector *inspector )
+{
+	std::cerr << "INSPECTOR DIRTIED\n";
+}
+
 //////////////////////////////////////////////////////////////////////////
 // PaintTool
 //////////////////////////////////////////////////////////////////////////
@@ -2326,13 +2334,21 @@ void PaintTool::updateSelection() const
 		return;
 	}
 
+	IECore::InternedString variableName = variableNamePlug()->getValue();
+
 	ScenePlug::ScenePath lastSelectedPath = ScriptNodeAlgo::getLastSelectedPath( view()->scriptNode() );
 	assert( selectedPaths.match( lastSelectedPath ) & IECore::PathMatcher::ExactMatch );
 
 	for( PathMatcher::Iterator it = selectedPaths.begin(), eIt = selectedPaths.end(); it != eIt; ++it )
 	{
 		//Selection selection( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
-		m_selection.emplace_back( scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ) );
+
+		ScenePlugPtr sceneTODO = const_cast< ScenePlug* >( scene );
+		PlugPtr editPlugTODO = const_cast< Plug* >( view()->editScopePlug() );
+		m_selection.emplace_back(
+			scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ),
+			new Private::PrimitiveVariableInspector( sceneTODO, editPlugTODO, variableName, Private::PrimitiveVariableInspector::Property::Data )
+		);
 		/*if( *it == lastSelectedPath )
 		{
 			lastSelectedPath = selection.path();
