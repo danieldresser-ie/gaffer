@@ -721,12 +721,6 @@ void OSLImage::updateChannels()
 	// when we are undone.
 	UndoScope undoDisabler( scriptNode(), UndoScope::Disabled );
 
-	// Currently the OSLCode node will recompile every time an input is added.
-	// We're hoping in the future to avoid doing this until the network is actually needed,
-	// but in the meantime, we can save some time by emptying the code first, so that at least
-	// all the redundant recompiles are of shorter code.
-	oslCode()->codePlug()->setValue( "" );
-
 	oslCode()->parametersPlug()->clearChildren();
 
 	std::string code = "Ci = 0;\n";
