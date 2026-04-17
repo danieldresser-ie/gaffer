@@ -58,6 +58,7 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 			Interpretation,
 			Data,
 			Indices,
+			DataViaPaint
 		};
 
 		PrimitiveVariableInspector(

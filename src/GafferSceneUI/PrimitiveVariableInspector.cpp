@@ -37,6 +37,7 @@
 #include "GafferSceneUI/Private/PrimitiveVariableInspector.h"
 
 #include "GafferScene/PrimitiveVariables.h"
+#include "GafferScene/PrimitiveVariablePaint.h"
 #include "GafferScene/PrimitiveVariableTweaks.h"
 #include "GafferScene/Camera.h"
 #include "GafferScene/EditScopeAlgo.h"
@@ -282,6 +283,10 @@ IECore::ConstObjectPtr PrimitiveVariableInspector::value( const GafferScene::Sce
 	{
 		return primitiveVariableHistory->primitiveVariableValue.data;
 	}
+	else if( m_property == Property::DataViaPaint )
+	{
+		return primitiveVariableHistory->primitiveVariableValue.data;
+	}
 	else if( m_property == Property::Indices )
 	{
 		return primitiveVariableHistory->primitiveVariableValue.indices;
@@ -298,53 +303,68 @@ Gaffer::ValuePlugPtr PrimitiveVariableInspector::source( const GafferScene::Scen
 		return nullptr;
 	}
 
+	if( m_property == Property::Data )
+	{
 	/*else if( auto camera = runTimeCast<GafferScene::Camera>( sceneNode ) )
 	{
 		return TODOprimVarPlug( camera->visualiserAttributesPlug(), m_attribute );
 	}*/
 
-	else if( auto primitiveVariablesNode = runTimeCast<GafferScene::PrimitiveVariables>( sceneNode ) )
-	{
-		if( !(primitiveVariablesNode->filterPlug()->match( primitiveVariablesNode->inPlug() ) & PathMatcher::ExactMatch ) )
+		if( auto primitiveVariablesNode = runTimeCast<GafferScene::PrimitiveVariables>( sceneNode ) )
 		{
-			return nullptr;
+			if( !(primitiveVariablesNode->filterPlug()->match( primitiveVariablesNode->inPlug() ) & PathMatcher::ExactMatch ) )
+			{
+				return nullptr;
+			}
+
+			for( const auto &plug : NameValuePlug::Range( *primitiveVariablesNode->primitiveVariablesPlug() ) )
+			{
+				if(
+					plug->namePlug()->getValue() == m_primitiveVariable.string() &&
+					( !plug->enabledPlug() || plug->enabledPlug()->getValue() )
+				)
+				{
+					/// \todo This is overly conservative. We should test to see if there is more than
+					/// one filter match (but make sure to early-out once two are found, rather than test
+					/// the rest of the scene).
+					editWarning = fmt::format(
+						"Edits to \"{}\" may affect other locations in the scene.",
+						m_primitiveVariable.string()
+					);
+					return plug;
+				}
+			}
 		}
 
-		for( const auto &plug : NameValuePlug::Range( *primitiveVariablesNode->primitiveVariablesPlug() ) )
+		else if( auto primitiveVariableTweaks = runTimeCast<PrimitiveVariableTweaks>( sceneNode ) )
 		{
-			if(
-				plug->namePlug()->getValue() == m_primitiveVariable.string() &&
-				( !plug->enabledPlug() || plug->enabledPlug()->getValue() )
-			)
+			if( !( primitiveVariableTweaks->filterPlug()->match( primitiveVariableTweaks->inPlug() ) & PathMatcher::ExactMatch ) )
 			{
-				/// \todo This is overly conservative. We should test to see if there is more than
-				/// one filter match (but make sure to early-out once two are found, rather than test
-				/// the rest of the scene).
-				editWarning = fmt::format(
-					"Edits to \"{}\" may affect other locations in the scene.",
-					m_primitiveVariable.string()
-				);
-				return plug;
+				return nullptr;
+			}
+
+			for( const auto &tweak : TweakPlug::Range( *primitiveVariableTweaks->tweaksPlug() ) )
+			{
+				if(
+					tweak->namePlug()->getValue() == m_primitiveVariable.string() &&
+					tweak->enabledPlug()->getValue()
+				)
+				{
+					return tweak;
+				}
 			}
 		}
 	}
-
-	else if( auto primitiveVariableTweaks = runTimeCast<PrimitiveVariableTweaks>( sceneNode ) )
+	else if( m_property == Property::Data )
 	{
-		if( !( primitiveVariableTweaks->filterPlug()->match( primitiveVariableTweaks->inPlug() ) & PathMatcher::ExactMatch ) )
+		if( auto primitiveVariablePaint = runTimeCast<PrimitiveVariablePaint>( sceneNode ) )
 		{
-			return nullptr;
-		}
-
-		for( const auto &tweak : TweakPlug::Range( *primitiveVariableTweaks->tweaksPlug() ) )
-		{
-			if(
-				tweak->namePlug()->getValue() == m_primitiveVariable.string() &&
-				tweak->enabledPlug()->getValue()
-			)
+			if( !( primitiveVariablePaint->filterPlug()->match( primitiveVariablePaint->inPlug() ) & PathMatcher::ExactMatch ) )
 			{
-				return tweak;
+				return nullptr;
 			}
+
+			return primitiveVariablePaint->paintPlug();
 		}
 	}
 
