@@ -99,7 +99,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 		Gaffer::IntPlug *visualiseModePlug();
 		const Gaffer::IntPlug *visualiseModePlug() const;
 
-		struct GAFFERSCENEUI_API Selection
+		struct GAFFERSCENEUI_API Selection : public Gaffer::Signals::Trackable
 		{
 
 			// Constructs an empty selection.
@@ -111,7 +111,6 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				const GafferScene::ConstScenePlugPtr scene,
 				const GafferScene::ScenePlug::ScenePath &path,
 				const Gaffer::ConstContextPtr &context,
-				const Gaffer::EditScopePtr &editScope,
 				const GafferSceneUI::Private::PrimitiveVariableInspectorPtr &inspector
 			);
 
@@ -209,6 +208,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 
 			void plugDirtied( const Gaffer::Plug *plug );
 
+			void inspectorDirtied();
 
 			private :
 
@@ -247,13 +247,12 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 				IECoreScene::ConstMeshPrimitivePtr m_resultMesh;
 
 				GafferSceneUI::Private::PrimitiveVariableInspectorPtr m_inspector;
-				void inspectorDirtied(); // GafferSceneUI::Private::Inspector *inspector );
 
 				static std::string displayName( const GraphComponent *component );
 		};
 
 		/// Returns the current selection.
-		std::vector<Selection> &selection() const;
+		std::vector<std::unique_ptr<Selection> > &selection() const;
 		/// Returns true only if the selection is non-empty
 		/// and every item is editable.
 		bool selectionEditable() const;
@@ -337,7 +336,7 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 		PaintGadgetPtr m_gadget;
 		bool m_gadgetDirty;
 
-		mutable std::vector<Selection> m_selection;
+		mutable std::vector<std::unique_ptr<Selection> > m_selection;
 		mutable IECore::PathMatcher m_selectedPaths;
 		mutable const Gaffer::EditScope *m_defaultEditScope;
 		mutable int m_mode;

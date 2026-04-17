@@ -833,8 +833,9 @@ class PaintTool::PaintGadget : public Gadget
 			// Loop through current selection
 
 			// TODO const?
-			for( auto &location : m_tool->selection() )
+			for( auto &locationPtr : m_tool->selection() )
 			{
+				auto &location = *locationPtr;
 				ScenePlug::PathScope scope( location.context(), &location.path() );
 
 				location.ensureState( variableName, variableType, toolMode, false, true );
@@ -1426,17 +1427,19 @@ class PaintTool::BrushOutline : public GafferUI::Gadget
 PaintTool::Selection::Selection()
 	:	m_paintEdit( nullptr ), m_components( 0 ), m_editable( false ), m_sourceMeshDirty( true )
 {
+	std::cerr << "EMPTY CONSTRUCT " << m_context << "\n";
 }
 
 PaintTool::Selection::Selection(
 	const GafferScene::ConstScenePlugPtr scene,
 	const GafferScene::ScenePlug::ScenePath &path,
 	const Gaffer::ConstContextPtr &context,
-	const Gaffer::EditScopePtr &editScope,
 	const GafferSceneUI::Private::PrimitiveVariableInspectorPtr &inspector
 )
-	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_editScope( editScope ), m_sourceMeshDirty( true ), m_inspector( inspector )
+	:	 m_paintEdit( nullptr ), m_components( 0 ), m_scene( scene ), m_path( path ), m_context( context ), m_editable( false ), m_sourceMeshDirty( true ), m_inspector( inspector )
 {
+	std::cerr << "VALID CONSTRUCT " << m_context << "\n";
+
 	Context::Scope scopedContext( context.get() );
 	if( path.empty() )
 	{
@@ -1449,42 +1452,8 @@ PaintTool::Selection::Selection(
 		return;
 	}
 
-	bool editScopeFound = false;
-	while( m_path.size() )
-	{
-		// TODO - transformPlug is obviously wrong, but I guess currently, we're not really
-		// using this, since we only support EditScopes
-		SceneAlgo::History::Ptr history = SceneAlgo::history( scene->transformPlug(), m_path );
-		initWalk( history.get(), editScopeFound );
-		if( editable() )
-		{
-			break;
-		}
-		m_path.pop_back();
-	}
-
-	if( !editable() && m_path.size() != path.size() )
-	{
-		// Attempts to edit a parent path failed. Reset to
-		// the original path so we don't confuse client code.
-		m_path = path;
-	}
-
-	if( editScope && !editScopeFound )
-	{
-		m_warning = "The target EditScope \"" + displayName( editScope.get() ) + "\" is not in the scene history";
-		m_editable = false;
-		return;
-	}
-
-	if( m_path.size() != path.size() )
-	{
-		std::string pathString;
-		GafferScene::ScenePlug::pathToString( m_path, pathString );
-		m_warning = "Editing parent location \"" + pathString + "\"";
-	}
-
 	m_inspector->dirtiedSignal().connect( boost::bind( &PaintTool::Selection::inspectorDirtied, this ) );
+	inspectorDirtied();
 }
 
 void PaintTool::Selection::initFromHistory( const GafferScene::SceneAlgo::History *history )
@@ -1929,6 +1898,39 @@ std::string PaintTool::Selection::displayName( const GraphComponent *component )
 
 void PaintTool::Selection::inspectorDirtied() // Private::Inspector *inspector )
 {
+	std::cerr << "CONTEXT : " << m_context << "\n";
+	if( !m_context )
+	{
+		// TODO
+		return;
+	}
+
+	ScenePlug::PathScope scope( m_context.get(), &m_path );
+	auto result = m_inspector->inspect();
+	/*if( result.editScopeInHistory() )
+	{
+	}*/
+
+	m_editScope = result->editScope();
+	m_editable = (bool)m_editScope;
+	if( m_editScope )
+	{
+		std::cerr << "FOUND EDITSCOPE : " << m_editScope->fullName() << "\n";
+	}
+
+	// TODO - transformPlug is obviously wrong, but I guess currently, we're not really
+	// using this, since we only support EditScopes
+	/*SceneAlgo::History::Ptr history = SceneAlgo::history( m_scene->transformPlug(), m_path );
+	bool editScopeFound = false;
+	initWalk( history.get(), editScopeFound );
+
+	if( editScope && !editScopeFound )
+	{
+		m_warning = "The target EditScope \"" + displayName( editScope.get() ) + "\" is not in the scene history";
+		m_editable = false;
+		return;
+	}*/
+
 	std::cerr << "INSPECTOR DIRTIED\n";
 }
 
@@ -2013,7 +2015,7 @@ PaintTool::~PaintTool()
     static_cast<PaintGadget *>( m_gadget.get() )->resetTool();
 }
 
-std::vector<PaintTool::Selection> &PaintTool::selection() const
+std::vector<std::unique_ptr<PaintTool::Selection>> &PaintTool::selection() const
 {
 	updateSelection();
 	return m_selection;
@@ -2028,7 +2030,7 @@ bool PaintTool::selectionEditable() const
 	}
 	for( const auto &e : s )
 	{
-		if( !e.editable() )
+		if( !e->editable() )
 		{
 			return false;
 		}
@@ -2192,6 +2194,7 @@ void PaintTool::plugDirtied( const Gaffer::Plug *plug )
 		( plug->ancestor<View>() && plug == view()->editScopePlug() )
 	)
 	{
+		std::cerr << "PLUG DIRTIED\n";
 		m_selectionDirty = true;
 		if( !m_dragging )
 		{
@@ -2199,6 +2202,13 @@ void PaintTool::plugDirtied( const Gaffer::Plug *plug )
 			// `dragEnd()` where we emit to complete the
 			// deferral started here.
 			selectionChangedSignal()( *this );
+
+			updateSelection();
+			/*// TODO - centralize this
+			for( const auto &e : m_selection )
+			{
+				e->inspectorDirtied();
+			}*/
 		}
 		m_gadgetDirty = true;
 		m_priorityPathsDirty = true;
@@ -2294,13 +2304,14 @@ void PaintTool::updateSelection() const
 	int mode = modePlug()->getValue();
 
 	// TODO - default is wrong name
+	// TODO TODO TODO - now completely wrong, since m_defaultEditScope isn't used
 	const EditScope *defaultEditScope = view()->editScope();
-	if( selectedPaths == m_selectedPaths && defaultEditScope == m_defaultEditScope && mode == m_mode )
+	/*if( selectedPaths == m_selectedPaths && defaultEditScope == m_defaultEditScope && mode == m_mode )
 	{
 		// TODO - this probably isn't the right mechanism for protecting our mesh caches - they
 		// should be held per-location even if some locations have changed.
 		return;
-	}
+	}*/
 
 	// Clear the selection.
 	m_selection.clear();
@@ -2321,6 +2332,8 @@ void PaintTool::updateSelection() const
 	{
 		return;
 	}
+
+	std::cerr << "FOUND SCENE " << scene->fullName() << "\n";
 
 	// Otherwise we need to populate our selection from
 	// the scene selection.
@@ -2345,10 +2358,11 @@ void PaintTool::updateSelection() const
 
 		ScenePlugPtr sceneTODO = const_cast< ScenePlug* >( scene );
 		PlugPtr editPlugTODO = const_cast< Plug* >( view()->editScopePlug() );
-		m_selection.emplace_back(
-			scene, *it, view()->context(), const_cast<EditScope *>( defaultEditScope ),
+		std::cerr << "VIEW CONTEXT " << view()->context() << "\n";
+		m_selection.push_back( std::make_unique<Selection>(
+			scene, *it, view()->context(),
 			new Private::PrimitiveVariableInspector( sceneTODO, editPlugTODO, variableName, Private::PrimitiveVariableInspector::Property::Data )
-		);
+		) );
 		/*if( *it == lastSelectedPath )
 		{
 			lastSelectedPath = selection.path();
@@ -2765,8 +2779,9 @@ void PaintTool::paint( const IECore::InternedString &variableName, const M44f &p
 	M44f kdTreeProjection = view()->viewportGadget()->projectionMatrix();
 	int visualiseMode = visualiseModePlug()->getValue();
 
-	for( auto &s : selection() )
+	for( auto &sPtr : selection() )
 	{
+		auto &s = *sPtr;
 		if( !s.editable() )
 		{
 			continue;
@@ -2962,8 +2977,9 @@ CompoundDataPtr PaintTool::targetVariableTypes()
 	auto &result = resultData->writable();
 
 	result["Cs"] = new IntData( Color3fVectorData::staticTypeId() );
-	for( const auto &s : selection() )
+	for( const auto &sPtr : selection() )
 	{
+		auto &s = *sPtr;
 		IECoreScene::ConstPrimitivePtr prim = IECore::runTimeCast< const IECoreScene::Primitive>( s.scene()->object( s.path() ) );
 		if( !prim )
 		{
@@ -3052,8 +3068,9 @@ bool PaintTool::buttonPress( const GafferUI::ButtonEvent &event )
 	IECore::TypeId variableType = (IECore::TypeId)variableTypePlug()->getValue();
 	int mode = modePlug()->getValue();
 
-	for( auto &s : selection() )
+	for( auto &sPtr : selection() )
 	{
+		auto &s = *sPtr;
 		s.ensureState( variableName, variableType, mode, true, false );
 	}
 
@@ -3114,8 +3131,9 @@ void PaintTool::applyCurrentStroke()
 
 	UndoScope undoScope( view()->scriptNode(), UndoScope::Enabled, undoMergeGroup() );
 	// TODO share code
-	for( auto &s : selection() )
+	for( auto &sPtr : selection() )
 	{
+		auto &s = *sPtr;
 		if( !s.m_currentStroke )
 		{
 			continue;
