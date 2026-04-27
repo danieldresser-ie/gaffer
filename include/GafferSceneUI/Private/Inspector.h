@@ -204,7 +204,7 @@ class GAFFERSCENEUI_API Inspector : public IECore::RunTimeTyped, public Gaffer::
 		/// `failureReason` should provide the reason why.
 		virtual CanEditFunction canEditFunction( const GafferScene::SceneAlgo::History *history ) const;
 
-		using EditFunction = std::function<void ( Gaffer::ValuePlug *plug, const IECore::Object *value )>;
+		using EditFunction = std::function<void ( const Inspector::Result* inspectResult, const IECore::Object *value )>;
 		/// Can be implemented to return a function that will directly
 		/// edit `plug` to set `value`. Called with `history->context` as the
 		/// current context.
@@ -375,7 +375,7 @@ class GAFFERSCENEUI_API Inspector::Result : public IECore::RefCounted
 		/// specified value.
 		bool canEdit( const IECore::Object *value, std::string &failureReason ) const;
 		/// Applies a direct edit with the specified value.
-		/// Calls `acquireEdit()` to ensure a plug exists to
+		/// Usually implemented using `acquireEdit()` to ensure a plug exists to
 		/// receive the value.
 		void edit( const IECore::Object *value ) const;
 

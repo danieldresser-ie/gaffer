@@ -377,10 +377,10 @@ Inspector::EditFunction SetMembershipInspector::editFunction( const GafferScene:
 	return [
 		setName = m_setName,
 		path
-	] ( Gaffer::Plug *plug, const IECore::Object *value ) {
+	] ( const Inspector::Result* inspectResult, const IECore::Object *value ) {
 		if( const auto boolValue = runTimeCast<const IECore::BoolData>( value ) )
 		{
-			return ::editSetMembership( plug, setName.string(), path, boolValue->readable() ? EditScopeAlgo::SetMembership::Added : EditScopeAlgo::SetMembership::Removed );
+			return ::editSetMembership( inspectResult->acquireEdit( true ).get(), setName.string(), path, boolValue->readable() ? EditScopeAlgo::SetMembership::Added : EditScopeAlgo::SetMembership::Removed );
 		}
 		else
 		{

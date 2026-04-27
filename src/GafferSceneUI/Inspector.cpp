@@ -560,7 +560,9 @@ Inspector::CanEditFunction Inspector::canEditFunction( const GafferScene::SceneA
 
 Inspector::EditFunction Inspector::editFunction( const GafferScene::SceneAlgo::History *history ) const
 {
-	return [] ( Gaffer::ValuePlug *plug, const IECore::Object *value ) { ::edit( plug, value ); };
+	return [] ( const Inspector::Result *inspectResult, const IECore::Object *value ) {
+		::edit( inspectResult->acquireEdit( /* createIfNecessary = */ true ).get(), value );
+	};
 }
 
 Inspector::DisableEditFunctionOrFailure Inspector::disableEditFunction( Gaffer::ValuePlug *plug, const GafferScene::SceneAlgo::History *history ) const
@@ -1210,5 +1212,5 @@ void Inspector::Result::edit( const IECore::Object *value ) const
 		throw IECore::Exception( "Not editable : " + reason );
 	}
 
-	m_editors->editFunction( acquireEdit( /* createIfNecessary = */ true ).get(), value );
+	m_editors->editFunction( this, value );
 }
