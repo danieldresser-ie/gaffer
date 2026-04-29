@@ -1222,3 +1222,8 @@ void Inspector::Result::edit( const IECore::Object *value ) const
 
 	m_editors->editFunction( acquireEdit( /* createIfNecessary = */ true ).get(), value );
 }
+
+bool Inspector::Result::editScopeInHistory() const
+{
+	return m_editScopeInHistory;
+}
