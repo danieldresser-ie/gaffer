@@ -41,6 +41,7 @@ import IECore
 import Gaffer
 import GafferTest
 import os
+import random
 import shutil
 
 class CachedDataNodeTest( GafferTest.TestCase ) :
@@ -92,23 +93,13 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 			cacheFiles = set( os.listdir( cacheDir ) )
 
 		expectedCacheFiles = set( [ "%s.io" % h.toString() for h in hashes ] )
-		if expectRecycleBin:
-			expectedCacheFiles.add( ".recycleBin" )
+		#if expectRecycleBin:
+		#	expectedCacheFiles.add( ".recycleBin" )
+		#TODO - whether or not a recycle bin is expected is about to get more complex
+		if ".recycleBin" in cacheFiles:
+			cacheFiles.remove( ".recycleBin" )
 
 		self.assertEqual( cacheFiles, expectedCacheFiles )
-		"""os.pathsep.join( s["fileName"], "
-
-
-		keys = set( s["cachedDataNode"]["keys"].getValue() )
-
-		compoundData = IECore.CompoundData()
-		s["compareBox"]["compound"].fillCompoundData( compoundData )
-
-		self.assertEqual( keys, set( compoundData.keys() ) )
-
-		for k in keys:
-			self.assertEqual( s["cachedDataNode"].getEntry( k ), compoundData[ k ] )
-		"""
 
 	def testBasic( self ):
 
@@ -212,6 +203,59 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		self.assertComparisonValid( s )
 		self.assertSaved( s )
 
+	def testComparisonFuzz( self ):
+
+		# At any given time, there are 5 main actions that can be taken that affect CachedDataNodes in
+		# the current script:
+		# A) setting a new entry
+		# B) changing an existing entry
+		# C) undoing
+		# D) redoing
+		# E) changing the filename
+		# We can achieve a good mix of A and B just by choosing randomly from a small pool of possible options,
+		# and alternate between the other options by picking randomly.
+		# This allows us to generate a sequence of actions that should theoretically exercise all possibilities,
+		# which we can compare against an implementation that just saves values in the script.
+
+		s = Gaffer.ScriptNode()
+		self.setupComparison( s )
+
+		random.seed( 42 )
+
+		fileNameCount = 0
+		fileName = self.temporaryDirectory() / ( "test%i.gfr" % fileNameCount )
+		s["fileName"].setValue( fileName )
+
+		for i in range( 100 ):
+			# TODO - remove prints
+			#print( i )
+			if random.random() < 0.05:
+				fileNameCount += 1
+				fileName = self.temporaryDirectory() / ( "test%i.gfr" % fileNameCount )
+				s["fileName"].setValue( fileName )
+			elif s.redoAvailable() and random.random() < 0.7:
+				#print( "REDO" )
+				s.redo()
+			elif s.undoAvailable() and random.random() < 0.3:
+				#print( "UNDO" )
+				s.undo()
+			else:
+				with Gaffer.UndoScope( s ) :
+					self.comparisonSetEntry( s, "a%i" % random.randint( 0, 6 ), IECore.IntData( random.randint( 0, 10000 ) ) )
+
+			#print( { k : s["cachedDataNode"].getEntry( k ) for k in s["cachedDataNode"]["keys"].getValue() } )
+
+			self.assertComparisonValid( s )
+			s.save()
+			self.assertComparisonValid( s )
+			self.assertSaved( s )
+
+			loadS = Gaffer.ScriptNode()
+			loadS["fileName"].setValue( fileName )
+			loadS.load()
+			self.assertComparisonValid( loadS )
+			del loadS
+
 	def testMovingManyEntriesToRecycleBin( self ):
 		# Just wanted to double check that iterating the cache directory is working properly, by
 		# moving a whole bunch of files at once to the recycle bin
@@ -278,7 +322,6 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		del s
 
 	def testUndo( self ):
-		# Test by comparing against values stored explicitly in the Gaffer script
 		s = Gaffer.ScriptNode()
 		s["cachedDataNode"] = Gaffer.CachedDataNode()
 		s["cachedDataNode"].setEntry( "a", IECore.IntData( 7 ) )
@@ -318,6 +361,69 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 
 		self.assertEqual( os.stat( self.temporaryDirectory() / "source.gfr.cachedData" / "22b41848d90e4f05d50ab80c68957527.io" ).st_nlink, 2 )
 		self.assertEqual( os.stat( self.temporaryDirectory() / "test.gfr.cachedData" / "22b41848d90e4f05d50ab80c68957527.io" ).st_nlink, 2 )
+
+	def testManyRecycleBins( self ):
+
+		s = Gaffer.ScriptNode()
+		s["counter"] = Gaffer.IntPlug()
+		s["cachedDataNode"] = Gaffer.CachedDataNode()
+
+		for i in range( 10 ):
+			# Create a cached entry unique to each script we save as
+			s["cachedDataNode"].setEntry( "a%i"%i, IECore.IntData( 1000 + i ) )
+
+			with Gaffer.UndoScope( s ) :
+				s["fileName"].setValue( self.temporaryDirectory() / ( "file%i.gfr" % i ) )
+			s.save()
+
+			# Change the entry so we move the previous value to the recycle bin
+			with Gaffer.UndoScope( s ) :
+				s["cachedDataNode"].setEntry( "a%i"%i, IECore.IntData( 2000 + i ) )
+			s.save()
+
+		for i in range( 10 ):
+			# Each cache dir should contain the entries so far, plus a recycle bin
+			self.assertEqual( len( os.listdir( self.temporaryDirectory() / ( "file%i.gfr.cachedData" % i ) ) ), 2 + i )
+			# Each recycle bin should contain one file
+			self.assertEqual( len( os.listdir( self.temporaryDirectory() / ( "file%i.gfr.cachedData" % i ) / ".recycleBin" ) ), 1 )
+
+		# Ensure that we're using the values from disk
+		Gaffer.ValuePlug.clearCache()
+
+		# Check the final values
+		for i in range( 10 ) :
+			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 2000 + i ) )
+
+		# Run back through the undo stack getting all the values from the recycle bins
+		s.undo()
+		for i in reversed( range( 1, 10 ) ):
+			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 1000 + i ) )
+
+			s.undo()
+			s.undo()
+		self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%0 ), IECore.IntData( 1000 ) )
+
+		# Redo everything
+		for i in range( 19 ):
+			s.redo()
+
+		for i in range( 10 ) :
+			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 2000 + i ) )
+
+		# Run back through the undo stack getting all the values from the recycle bins, but this
+		# time we'll put new actions on the undo stack, forcing clearing of the undo stack
+
+		s.undo()
+		for i in reversed( range( 1, 10 ) ):
+			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 1000 + i ) )
+			s.undo()
+			s.undo()
+
+			# Make a new edit, then immediately undo it, just to force the undo stack to be cleared
+			with Gaffer.UndoScope( s ) :
+				s["counter"].setValue( 10 + i )
+			s.undo()
+		self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%0 ), IECore.IntData( 1000 ) )
 
 	def testRenameA( self ):
 		s = Gaffer.ScriptNode()
@@ -360,6 +466,7 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 	# TODO : test save as
 	# TODO : Test pasting into new script
 	# TODO : Implement/Test takeOwnership for dealing with Reference
+	# TODO : Switch to using cob files
 
 if __name__ == "__main__":
 	unittest.main()
