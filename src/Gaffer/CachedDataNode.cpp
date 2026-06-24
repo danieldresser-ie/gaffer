@@ -72,6 +72,10 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 			}
 		}
 
+		~SetEntryAction()
+		{
+		}
+
 	protected :
 
 		GraphComponent *subject() const override
@@ -230,6 +234,7 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::
 		}
 
 		std::string fileName = cacheFileNameFromHash( cache.second.m_hash );
+
 		std::filesystem::path destPath = directory / fileName;
 		if( std::filesystem::exists( destPath ) )
 		{
@@ -695,7 +700,17 @@ void CacheDirectoryManager::finishSerialisation( const boost::unordered_set<IECo
 					// directory iterator, but the docs say about changing directory contents: "it is unspecified
 					// whether the change would be observed through the iterator." Since they don't say
 					// anything about the iterator becoming invalid, I guess this is fine.
-					std::filesystem::rename( directoryEntry.path(), recycleBin / directoryEntry.path().filename() );
+					const std::filesystem::path recycledPath( recycleBin / directoryEntry.path().filename() );
+
+					if( std::filesystem::exists( recycledPath ) )
+					{
+						// We've already stored this in the recycle bin, so it's safe to just delete it
+						std::filesystem::remove( directoryEntry.path() );
+					}
+					else
+					{
+						std::filesystem::rename( directoryEntry.path(), recycledPath );
+					}
 				}
 			}
 			else
