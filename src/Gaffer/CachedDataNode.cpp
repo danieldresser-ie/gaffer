@@ -65,6 +65,12 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 		SetEntryAction( CachedDataNodePtr node, const IECore::InternedString &key, IECore::ConstObjectPtr value )
 			: m_node( node ), m_key( key ), m_doValue( value ? std::make_optional<CacheEntry>( {value->hash(), value} ) : std::nullopt )
 		{
+			// The source directory isn't changed by a SetEntry - it's changed by serialisation, which
+			// happens in between SetEntry's. But undo'ing or redo'ing a SetEntry is what could trigger
+			// needing to use a previous or future sourceDirectory, and we can support that by recording
+			// this directory which is valid before or after this operation.
+			m_sourceDirectory = node->sourceDirectory();
+
 			auto it = node->m_caches.find( key );
 			if( it != node->m_caches.end() )
 			{
@@ -87,12 +93,14 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 		{
 			Action::doAction();
 			m_node->setEntryInternal( m_key, m_doValue );
+			m_node->setSourceDirectory( m_sourceDirectory );
 		}
 
 		void undoAction() override
 		{
 			Action::undoAction();
 			m_node->setEntryInternal( m_key, m_undoValue );
+			m_node->setSourceDirectory( m_sourceDirectory );
 		}
 
 		bool canMerge( const Action *other ) const override
@@ -115,6 +123,8 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 
 		CachedDataNodePtr m_node;
 		IECore::InternedString m_key;
+
+		std::filesystem::path m_sourceDirectory;
 
 		// \todo In a long paint session on heavy geo, it's very plausible that a large amount of memory
 		// could be consumed by holding live values in the undo queue. In theory, you could probably
@@ -290,6 +300,7 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::
 		cache.second.m_liveValue.reset();
 	}
 
+	m_sourceDirectory = directory;
 }
 
 std::string CachedDataNode::cacheFileNameFromHash( const IECore::MurmurHash &h )
@@ -374,6 +385,11 @@ void CachedDataNode::removeEntry( const IECore::InternedString &key )
 	Action::enact( new SetEntryAction( this, key, nullptr ) );
 }
 
+std::filesystem::path CachedDataNode::recycleBinDirectory( const std::filesystem::path &cacheDirectory )
+{
+	return cacheDirectory / ".recycleBin";
+}
+
 void CachedDataNode::setEntryInternal( const IECore::InternedString &key, const std::optional<CacheEntry> &value )
 {
 	if( value )
@@ -386,6 +402,11 @@ void CachedDataNode::setEntryInternal( const IECore::InternedString &key, const 
 	}
 
 	refreshCountPlug()->setValue( refreshCountPlug()->getValue() + 1 );
+}
+
+void CachedDataNode::setSourceDirectory( std::filesystem::path &sourceDirectory )
+{
+	m_sourceDirectory = sourceDirectory;
 }
 
 IECore::ConstObjectPtr CachedDataNode::getEntry( const IECore::InternedString &key, bool throwExceptions ) const
@@ -502,13 +523,21 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 				std::string cacheFileName = cacheFileNameFromHash( cacheIt->second.m_hash );
 
 				std::optional<std::filesystem::path> sourcePath;
-				if( !m_sourceDirectory.empty() && IECore::FileIndexedIO::canRead( ( m_sourceDirectory / cacheFileName ).generic_string() ) )
+				if( !m_sourceDirectory.empty() )
 				{
-					sourcePath = m_sourceDirectory / cacheFileName;
-				}
-				else if( const ScriptNode *scriptNode = this->ancestor<const ScriptNode>() )
-				{
-					sourcePath = scriptNode->cacheDirectoryManager().findCache( cacheFileName );
+					if( IECore::FileIndexedIO::canRead( ( m_sourceDirectory / cacheFileName ).generic_string() ) )
+					{
+						sourcePath = m_sourceDirectory / cacheFileName;
+					}
+					else
+					{
+						std::filesystem::path recycleBinPath = recycleBinDirectory( m_sourceDirectory ) / cacheFileName;
+
+						if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
+						{
+							sourcePath = recycleBinPath;
+						}
+					}
 				}
 
 				if( !sourcePath )

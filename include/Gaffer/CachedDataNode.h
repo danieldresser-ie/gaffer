@@ -144,8 +144,12 @@ class GAFFER_API CachedDataNode : public ComputeNode
 			mutable IECore::ConstObjectPtr m_liveValue;
 		};
 
+		static std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory );
+
 		void setEntryInternal( const IECore::InternedString &key, const std::optional<CacheEntry> &value );
 		IECore::ConstObjectPtr getEntryIfLive( const IECore::InternedString &key ) const;
+
+		void setSourceDirectory( std::filesystem::path &sourceDirectory );
 
 		IntPlug *refreshCountPlug();
 		const IntPlug *refreshCountPlug() const;
@@ -154,7 +158,7 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		ObjectPlug *evaluatePlug();
 		const ObjectPlug *evaluatePlug() const;
 
-		const std::filesystem::path m_sourceDirectory;
+		mutable std::filesystem::path m_sourceDirectory;
 		std::map<IECore::InternedString, CacheEntry> m_caches;
 
 		static size_t g_firstPlugIndex;
