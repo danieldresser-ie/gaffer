@@ -58,37 +58,35 @@ namespace Gaffer
 class GAFFER_API CacheDirectoryManager
 {
 public:
-	CacheDirectoryManager();
+	CacheDirectoryManager( const Gaffer::ScriptNode *scriptNode, const std::filesystem::path *scriptPath );
 	~CacheDirectoryManager();
-
-	void startSerialisation( const std::filesystem::path &currentScriptPath, bool takeOwnership );
-	void finishSerialisation( const boost::unordered_set<IECore::MurmurHash> &usedCaches );
 
 	std::filesystem::path getCacheDirectory();
 
-	std::optional<std::filesystem::path> findCache( const std::string &fileName ) const;
 
-	// Special case function to handle files that have been moved together with their caches.
-	// Usually, we only check directories that are stored as the source on the CachedDataNode,
-	// or have been written during the current session. But if a file is moved together with
-	// its caches, then the cache directory path has never actually been written, but we still
-	// want to treat it as a possible source for finding caches - we do this by storing the
-	// cache directory corresponding to the initial script path.
-	// TODO - possible simplification by instead having a function similar to this called
-	// whenever the ScriptNode::fileNamePlug() gets a plug set, instead of tracking cache
-	// directories we've written to?
-	void registerInitialDefaultCacheDirectory( const std::filesystem::path &scriptPath );
+
+	//std::optional<std::filesystem::path> findCache( const std::string &fileName ) const;
+
+	boost::unordered_set< IECore::MurmurHash > m_usedCaches;
+	std::string m_warning;
 
 private:
 
 	std::filesystem::path acquireRecycleBin();
 
-	std::filesystem::path m_currentScriptPath;
+	const Gaffer::ScriptNode *m_scriptNode;
+	const std::filesystem::path *m_scriptPath;
 	bool m_takeOwnership;
-	bool m_currentCacheDirWritten;
+	//bool m_currentCacheDirWritten;
+	std::filesystem::path m_cacheDirectory;
 
-	std::set<std::filesystem::path> m_cacheDirectories;
-	std::set<std::filesystem::path> m_ownedRecycleBins;
+	//std::set<std::filesystem::path> m_cacheDirectories;
+
+	// A set of caches, identified by their hashes, that have been saved during this serialisation
+	// TODO - there's a bit of a naming issue here with storing caches just as their hash, and
+	// calling them "caches" ... maybe this isn't clear enough? But I worry about calling them
+	// "cache hashes", because there are already so many other caches and hashes in Gaffer.
+
 };
 
 
@@ -114,7 +112,7 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		StringVectorDataPlug *keysPlug();
 		const StringVectorDataPlug *keysPlug() const;
 
-		void save( CacheDirectoryManager &cacheDirectoryManager, boost::unordered_set<IECore::MurmurHash> &usedHashes, std::string &warning ) const;
+		void save( CacheDirectoryManager &cacheDirectoryManager ) const;
 
 		virtual void affects( const Plug *input, AffectedPlugsContainer &outputs ) const override;
 
@@ -144,12 +142,9 @@ class GAFFER_API CachedDataNode : public ComputeNode
 			mutable IECore::ConstObjectPtr m_liveValue;
 		};
 
-		static std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory );
-
 		void setEntryInternal( const IECore::InternedString &key, const std::optional<CacheEntry> &value );
-		IECore::ConstObjectPtr getEntryIfLive( const IECore::InternedString &key ) const;
 
-		void setSourceDirectory( std::filesystem::path &sourceDirectory );
+		void setSourceDirectory( const std::filesystem::path &sourceDirectory );
 
 		IntPlug *refreshCountPlug();
 		const IntPlug *refreshCountPlug() const;

@@ -48,10 +48,101 @@
 #include <regex>
 
 using namespace Gaffer;
+using namespace boost::placeholders;
 
 namespace {
 
 static const IECore::InternedString g_cacheEvaluationKeyName( "__cacheEvaluationKey" );
+
+std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory )
+{
+	return cacheDirectory / ".recycleBin";
+}
+
+
+class RecycleBinManager
+{
+public:
+	RecycleBinManager( const ScriptNode *scriptNode )
+	{
+		// TODO - is this an illegal const cast? Is it safe to connect to parentChangedSignal during serialisation?
+		m_scriptParentChangedConnection = const_cast<ScriptNode*>( scriptNode )->parentChangedSignal().connect( boost::bind( &RecycleBinManager::scriptParentChanged, this, ::_1, ::_2 ) );
+	}
+
+	~RecycleBinManager()
+	{
+		releaseRecycleBins();
+	}
+
+	std::filesystem::path acquireRecycleBin( const std::filesystem::path &cacheDirectory )
+	{
+		std::filesystem::path result = recycleBinDirectory( cacheDirectory );
+
+		if( m_ownedRecycleBins.count( result ) )
+		{
+			// We already own this recycle bin
+			return result;
+		}
+
+		if( std::filesystem::exists( result ) )
+		{
+			// TODO - need a way to repair this
+			// TODO - put a tag file in the dir so we can identify owning process / handle differently if process still open?
+			// TODO - figure out why this is getting is triggered by backups
+			throw IECore::Exception( fmt::format( "Cannot acquire recycle bin - something else owns a recycle bin at {}", result ) );
+		}
+
+		std::filesystem::create_directories( result );
+
+		m_ownedRecycleBins.insert( result );
+
+		return result;
+	}
+
+	void scriptParentChanged( GraphComponent *scriptNode, GraphComponent *oldParent )
+	{
+		if( !scriptNode->parent() )
+		{
+			releaseRecycleBins();
+		}
+	}
+
+	void releaseRecycleBins()
+	{
+		for( const auto &i : m_ownedRecycleBins )
+		{
+			// This is a fairly scary looking system call, so this is probably a good place to write
+			// down some justification why this seems like it should be safe:
+			// In order to be added to m_ownedRecycleBins, a path must be added through acquireRecycleBin,
+			// which creates the path, and ensures that:
+			// * it ends in ".recycleBin"
+			// * it didn't previously exist
+			// That should ensure that we're not deleting directories we don't own.
+			// In order to be placed in a recycle bin, a file must be found in a "_cacheDir" directory
+			// corresponding to a script file that is currently being overwritten, and must look like
+			// a Gaffer cache ( ie. matches the regex "[0-9a-f]{32}.io", enforced by
+			// CachedDataNode::cacheFileNameToHash ).
+
+			std::cerr << "DELETING BIN " << i.string() << "\n";
+			std::filesystem::remove_all( i );
+		}
+
+		m_ownedRecycleBins.clear();
+
+	}
+
+private:
+
+	Signals::ScopedConnection m_scriptParentChangedConnection;
+	std::set<std::filesystem::path> m_ownedRecycleBins;
+};
+
+std::map< const ScriptNode *, RecycleBinManager > g_recycleBinManagers;
+
+RecycleBinManager &acquireRecycleBinManager( const ScriptNode *node )
+{
+	return g_recycleBinManagers.try_emplace( node, node ).first->second;
+}
 
 } // namespace
 
@@ -229,7 +320,7 @@ const ObjectPlug *CachedDataNode::evaluatePlug() const
 	return getChild<ObjectPlug>( g_firstPlugIndex + 4 );
 }
 
-void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::unordered_set<IECore::MurmurHash> &usedHashes, std::string &warning ) const
+void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 {
 	// TODO - weird things happen if exceptions occur during serialization
 
@@ -237,7 +328,7 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::
 
 	for( auto &cache : m_caches )
 	{
-		if( !usedHashes.insert( cache.second.m_hash ).second )
+		if( !cacheDirectoryManager.m_usedCaches.insert( cache.second.m_hash ).second )
 		{
 			// This value was already saved during this serialization
 			continue;
@@ -259,7 +350,11 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::
 		}
 		else
 		{
-			sourcePath = cacheDirectoryManager.findCache( fileName );
+			std::filesystem::path recycleBinPath = recycleBinDirectory( m_sourceDirectory ) / fileName;
+			if( std::filesystem::exists( recycleBinPath ) )
+			{
+				sourcePath = recycleBinPath;
+			}
 		}
 
 		if( sourcePath )
@@ -270,9 +365,9 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager, boost::
 			std::filesystem::create_hard_link( *sourcePath, destPath, ec );
 			if( ec )
 			{
-				if( !warning.size() )
+				if( !cacheDirectoryManager.m_warning.size() )
 				{
-					warning = fmt::format( "While saving \"{}\", could not create hardlink at \"{}\" pointing to \"{}\", falling back to copying file.", fullName(), destPath, *sourcePath );
+					cacheDirectoryManager.m_warning = fmt::format( "While saving \"{}\", could not create hardlink at \"{}\" pointing to \"{}\", falling back to copying file.", fullName(), destPath, *sourcePath );
 				}
 				// If that failed, just copy.
 				std::filesystem::copy_file( *sourcePath, destPath );
@@ -385,11 +480,6 @@ void CachedDataNode::removeEntry( const IECore::InternedString &key )
 	Action::enact( new SetEntryAction( this, key, nullptr ) );
 }
 
-std::filesystem::path CachedDataNode::recycleBinDirectory( const std::filesystem::path &cacheDirectory )
-{
-	return cacheDirectory / ".recycleBin";
-}
-
 void CachedDataNode::setEntryInternal( const IECore::InternedString &key, const std::optional<CacheEntry> &value )
 {
 	if( value )
@@ -404,7 +494,7 @@ void CachedDataNode::setEntryInternal( const IECore::InternedString &key, const 
 	refreshCountPlug()->setValue( refreshCountPlug()->getValue() + 1 );
 }
 
-void CachedDataNode::setSourceDirectory( std::filesystem::path &sourceDirectory )
+void CachedDataNode::setSourceDirectory( const std::filesystem::path &sourceDirectory )
 {
 	m_sourceDirectory = sourceDirectory;
 }
@@ -603,106 +693,16 @@ std::filesystem::path cacheDirFromScriptPath( const std::filesystem::path &scrip
 
 }
 
-CacheDirectoryManager::CacheDirectoryManager()
+CacheDirectoryManager::CacheDirectoryManager( const ScriptNode *scriptNode, const std::filesystem::path *scriptPath )
+	: m_scriptNode( scriptNode ), m_scriptPath( scriptPath )
 {
+	m_takeOwnership = false; // TODO
 }
 
 CacheDirectoryManager::~CacheDirectoryManager()
 {
-	for( const auto &i : m_ownedRecycleBins )
-	{
-		// This is a fairly scary looking system call, so this is probably a good place to write
-		// down some justification why this seems like it should be safe:
-		// In order to be added to m_ownedRecycleBins, a path must be added through acquireRecycleBin,
-		// which creates the path, and ensures that:
-		// * it ends in ".recycleBin"
-		// * it didn't previously exist
-		// That should ensure that we're not deleting directories we don't own.
-		// In order to be placed in a recycle bin, a file must be found in a "_cacheDir" directory
-		// corresponding to a script file that is currently being overwritten, and must look like
-		// a Gaffer cache ( ie. matches the regex "[0-9a-f]{32}.io", enforced by
-		// CachedDataNode::cacheFileNameToHash ).
-		std::filesystem::remove_all( i );
-	}
-}
-
-std::filesystem::path CacheDirectoryManager::getCacheDirectory()
-{
-	const std::filesystem::path result = cacheDirFromScriptPath( m_currentScriptPath );
-	if( !m_currentCacheDirWritten )
-	{
-		std::filesystem::create_directories( result );
-		m_cacheDirectories.insert( result );
-		m_currentCacheDirWritten = true;
-	}
-
-	return result;
-}
-
-std::filesystem::path CacheDirectoryManager::acquireRecycleBin()
-{
-	std::filesystem::path result = getCacheDirectory() / ".recycleBin";
-
-	if( m_ownedRecycleBins.count( result ) )
-	{
-		// We already own this recycle bin
-		return result;
-	}
-
-	if( std::filesystem::exists( result ) )
-	{
-		// TODO - need a way to repair this
-		// TODO - put a tag file in the dir so we can identify owning process / handle differently if process still open?
-		// TODO - figure out why this is getting is triggered by backups
-		throw IECore::Exception( fmt::format( "Cannot acquire recycle bin - something else owns a recycle bin at {}", result ) );
-	}
-
-	std::filesystem::create_directories( result );
-
-	m_ownedRecycleBins.insert( result );
-
-	return result;
-}
-
-std::optional<std::filesystem::path> CacheDirectoryManager::findCache( const std::string &fileName ) const
-{
-	for( const std::filesystem::path &i : m_cacheDirectories )
-	{
-		if( std::filesystem::exists( i / fileName ) )
-		{
-			return i / fileName;
-		}
-	}
-	for( const std::filesystem::path &i : m_ownedRecycleBins )
-	{
-		if( std::filesystem::exists( i / fileName ) )
-		{
-			return i / fileName;
-		}
-	}
-
-	return {};
-}
-
-void CacheDirectoryManager::registerInitialDefaultCacheDirectory( const std::filesystem::path &scriptPath )
-{
-	const std::filesystem::path cacheDir( cacheDirFromScriptPath( scriptPath ) );
-	if( std::filesystem::exists( cacheDir ) )
-	{
-		m_cacheDirectories.insert( cacheDir );
-	}
-}
-
-void CacheDirectoryManager::startSerialisation( const std::filesystem::path &currentScriptPath, bool takeOwnership )
-{
-	m_currentScriptPath = currentScriptPath;
-	m_currentCacheDirWritten = false;
-	m_takeOwnership = takeOwnership;
-}
-
-void CacheDirectoryManager::finishSerialisation( const boost::unordered_set<IECore::MurmurHash> &usedCaches )
-{
-	if( !m_currentCacheDirWritten )
+	// TODO - should we clean if there is no CachedDataNode's?
+	if( m_cacheDirectory.empty() )
 	{
 		// No cleanup needed
 		return;
@@ -713,16 +713,17 @@ void CacheDirectoryManager::finishSerialisation( const boost::unordered_set<IECo
 	{
 		std::filesystem::path recycleBin;
 
+		std::cerr << "CLEANING " << getCacheDirectory().string() << "\n";
 		for( auto const& directoryEntry : std::filesystem::directory_iterator( getCacheDirectory() ) )
 		{
 			auto cacheFileHash = CachedDataNode::cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
 			if( cacheFileHash )
 			{
-				if( !usedCaches.count( *cacheFileHash ) )
+				if( !m_usedCaches.count( *cacheFileHash ) )
 				{
 					if( recycleBin.empty() )
 					{
-						recycleBin = acquireRecycleBin();
+						recycleBin = acquireRecycleBinManager( m_scriptNode ).acquireRecycleBin( getCacheDirectory() );
 					}
 					// TODO - check takeOwnership
 					// It's a little bit non-obvious whether it's safe to move this file while we have a
@@ -764,6 +765,42 @@ void CacheDirectoryManager::finishSerialisation( const boost::unordered_set<IECo
 		);
 	}
 
-	m_currentScriptPath.clear();
 	m_takeOwnership = false;
 }
+
+std::filesystem::path CacheDirectoryManager::getCacheDirectory()
+{
+	if( !m_scriptPath )
+	{
+		throw IECore::Exception( "TODO" );
+	}
+
+	const std::filesystem::path result = cacheDirFromScriptPath( *m_scriptPath );
+	if( m_cacheDirectory.empty() )
+	{
+		std::filesystem::create_directories( result );
+		m_cacheDirectory = result;
+	}
+
+	return result;
+}
+
+/*std::optional<std::filesystem::path> CacheDirectoryManager::findCache( const std::string &fileName ) const
+{
+	for( const std::filesystem::path &i : m_cacheDirectories )
+	{
+		if( std::filesystem::exists( i / fileName ) )
+		{
+			return i / fileName;
+		}
+	}
+	for( const std::filesystem::path &i : m_ownedRecycleBins )
+	{
+		if( std::filesystem::exists( i / fileName ) )
+		{
+			return i / fileName;
+		}
+	}
+
+	return {};
+}*/

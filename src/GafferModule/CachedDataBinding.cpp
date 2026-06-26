@@ -66,7 +66,7 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 		serialisation.addModule( "IECore" );
 		if( serialisation.cacheDirectoryManager() )
 		{
-			node->save( *serialisation.cacheDirectoryManager(), serialisation.usedCaches(), serialisation.cacheWarning() );
+			node->save( *serialisation.cacheDirectoryManager() );
 			sourceDirectory = std::filesystem::absolute( serialisation.cacheDirectoryManager()->getCacheDirectory() );
 		}
 		else
