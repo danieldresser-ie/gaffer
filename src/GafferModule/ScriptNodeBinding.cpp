@@ -182,7 +182,7 @@ boost::python::object executionDict( ScriptNodePtr script, NodePtr parent )
 	return std::move( result );
 }
 
-std::string serialise( const Node *parent, const Set *filter, CacheDirectoryManager *cacheDirectoryManager )
+std::string serialise( const Node *parent, const Set *filter, const std::filesystem::path *filePath )
 {
 	if( !Py_IsInitialized() )
 	{
@@ -207,7 +207,7 @@ std::string serialise( const Node *parent, const Set *filter, CacheDirectoryMana
 	std::string result;
 	try
 	{
-		Serialisation serialisation( parent, "parent", filter, cacheDirectoryManager );
+		Serialisation serialisation( parent, "parent", filter, filePath );
 		result = serialisation.result();
 	}
 	catch( boost::python::error_already_set & )

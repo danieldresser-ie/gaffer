@@ -823,6 +823,7 @@ std::string ScriptNode::serialise( const Node *parent, const Set *filter ) const
 
 void ScriptNode::serialiseToFile( const std::filesystem::path &fileName, const Node *parent, const Set *filter ) const
 {
+	/*
 	// TODO : We need to differentiate between a serialisation that is going to take ownership of caches
 	// ( for example, after a saveAs, the filename will be updated, and all the caches in the script
 	// should then point to the freshly saved files ), versus one that is not ( doing an
@@ -834,7 +835,8 @@ void ScriptNode::serialiseToFile( const std::filesystem::path &fileName, const N
 	// ... but this does seem to work for all current uses of this function.
 	bool takeCacheOwnership = !parent;
 	m_cacheDirectoryManager.startSerialisation( fileName, takeCacheOwnership );
-	std::string s = serialiseInternal( parent, filter, &m_cacheDirectoryManager );
+	*/
+	std::string s = serialiseInternal( parent, filter, &fileName );
 
 	std::ofstream f( fileName.c_str() );
 	if( !f.good() )
@@ -907,12 +909,7 @@ bool ScriptNode::importFile( const std::filesystem::path &fileName, Node *parent
 	return result;
 }
 
-const CacheDirectoryManager &ScriptNode::cacheDirectoryManager() const
-{
-	return m_cacheDirectoryManager;
-}
-
-std::string ScriptNode::serialiseInternal( const Node *parent, const Set *filter, CacheDirectoryManager *cacheDirectoryManager ) const
+std::string ScriptNode::serialiseInternal( const Node *parent, const Set *filter, const std::filesystem::path *filePath ) const
 {
 	if( !g_serialiseFunction )
 	{
@@ -926,7 +923,7 @@ std::string ScriptNode::serialiseInternal( const Node *parent, const Set *filter
 		scope.set( "serialiser:includeParentMetadata", &includeParentMetadata );
 	}
 
-	return g_serialiseFunction( parent ? parent : this, filter, cacheDirectoryManager );
+	return g_serialiseFunction( parent ? parent : this, filter, filePath );
 }
 
 bool ScriptNode::executeInternal( const std::string &serialisation, Node *parent, bool continueOnError, const std::string &context )
@@ -1023,13 +1020,6 @@ void ScriptNode::plugSet( Plug *plug )
 	else if( plug == fileNamePlug() )
 	{
 		const std::filesystem::path fileName( fileNamePlug()->getValue() );
-
-		if( m_context->get<std::string>( g_scriptName ).size() == 0 )
-		{
-			// If this is the first time this plug is being set, register the initial directory
-			m_cacheDirectoryManager.registerInitialDefaultCacheDirectory( fileName );
-		}
-
 		context()->set( g_scriptName, fileName.stem().string() );
 
 		MetadataAlgo::setReadOnly(
