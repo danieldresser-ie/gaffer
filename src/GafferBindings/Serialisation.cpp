@@ -146,8 +146,10 @@ std::string modulePathInternal( const boost::python::object &o )
 // Serialisation
 //////////////////////////////////////////////////////////////////////////
 
-Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName, const Gaffer::Set *filter, CacheDirectoryManager *cacheDirectoryManager )
-	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ), m_cacheDirectoryManager( cacheDirectoryManager ),
+// TODO - using whether parent can dynamic cast to ScriptNode to determine whether
+// this serialization owns the script doesn't feel quite right
+Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName, const Gaffer::Set *filter, const std::filesystem::path *scriptPath )
+	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ), m_cacheDirectoryManager( IECore::runTimeCast<const ScriptNode>( parent ), scriptPath ),
 		m_protectParentNamespace( Context::current()->get<bool>( "serialiser:protectParentNamespace", true ) )
 {
 	IECorePython::ScopedGILLock gilLock;
@@ -173,10 +175,11 @@ Serialisation::~Serialisation()
 		IECore::msg( IECore::Msg::Warning, "Serialisation", m_cacheWarning );
 	}
 
-	if( m_cacheDirectoryManager )
+	// TODO TODO TODO
+	/*if( m_cacheDirectoryManager )
 	{
 		m_cacheDirectoryManager->finishSerialisation( m_usedCaches );
-	}
+	}*/
 }
 
 const Gaffer::GraphComponent *Serialisation::parent() const
@@ -440,13 +443,14 @@ void Serialisation::addModule( const std::string &moduleName )
 
 CacheDirectoryManager *Serialisation::cacheDirectoryManager()
 {
-	return m_cacheDirectoryManager;
+	// TODO - not pointer any more?
+	return &m_cacheDirectoryManager;
 }
 
-boost::unordered_set< IECore::MurmurHash > &Serialisation::usedCaches()
+/*boost::unordered_set< IECore::MurmurHash > &Serialisation::usedCaches()
 {
 	return m_usedCaches;
-}
+}*/
 
 std::string &Serialisation::cacheWarning()
 {

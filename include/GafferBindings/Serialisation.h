@@ -56,7 +56,7 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 
 		/// Supports cancellation via the usual mechanism of scoping a Context
 		/// containing an `IECore::Canceller`.
-		Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName = "parent", const Gaffer::Set *filter = nullptr, Gaffer::CacheDirectoryManager *cacheDirectoryManager = nullptr );
+		Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName = "parent", const Gaffer::Set *filter = nullptr, const std::filesystem::path *filePath = nullptr );
 
 		~Serialisation();
 
@@ -80,13 +80,6 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		void addModule( const std::string &moduleName );
 
 		Gaffer::CacheDirectoryManager *cacheDirectoryManager();
-
-		// A set of caches, identified by their hashes, that have been saved during this serialisation
-		// TODO - there's a bit of a naming issue here with storing caches just as their hash, and
-		// calling them "caches" ... maybe this isn't clear enough? But I worry about calling them
-		// "cache hashes", because there are already so many other caches and hashes in Gaffer.
-
-		boost::unordered_set< IECore::MurmurHash > &usedCaches();
 
 		// Set to indicate that the cache system isn't behaving as expected
 		// ( If the filesystem somehow doesn't support hard links, we don't want to
@@ -178,7 +171,7 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		const Gaffer::GraphComponent *m_parent;
 		const std::string m_parentName;
 		const Gaffer::Set *m_filter;
-		Gaffer::CacheDirectoryManager *m_cacheDirectoryManager;
+		Gaffer::CacheDirectoryManager m_cacheDirectoryManager;
 		const bool m_protectParentNamespace;
 
 		std::string m_hierarchyScript;
