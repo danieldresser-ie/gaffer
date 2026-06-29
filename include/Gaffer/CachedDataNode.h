@@ -89,6 +89,7 @@ private:
 
 };
 
+class RecycleBinManager;
 
 class GAFFER_API CachedDataNode : public ComputeNode
 {
@@ -154,6 +155,7 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		const ObjectPlug *evaluatePlug() const;
 
 		mutable std::filesystem::path m_sourceDirectory;
+		mutable std::shared_ptr<RecycleBinManager> m_recycleBinManager;
 		std::map<IECore::InternedString, CacheEntry> m_caches;
 
 		static size_t g_firstPlugIndex;

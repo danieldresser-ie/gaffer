@@ -50,66 +50,54 @@
 using namespace Gaffer;
 using namespace boost::placeholders;
 
-namespace {
-
-static const IECore::InternedString g_cacheEvaluationKeyName( "__cacheEvaluationKey" );
-
-std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory )
+// TODO - where should this live?
+namespace Gaffer
 {
-	return cacheDirectory / ".recycleBin";
-}
-
 
 class RecycleBinManager
 {
 public:
-	RecycleBinManager( const ScriptNode *scriptNode )
+	RecycleBinManager( const std::filesystem::path &cacheDirectory )
+		: m_recycleBinPath( cacheDirectory / ".recycleBin" ), m_acquired( false )
 	{
-		// TODO - is this an illegal const cast? Is it safe to connect to parentChangedSignal during serialisation?
-		m_scriptParentChangedConnection = const_cast<ScriptNode*>( scriptNode )->parentChangedSignal().connect( boost::bind( &RecycleBinManager::scriptParentChanged, this, ::_1, ::_2 ) );
 	}
+
+	std::filesystem::path acquire()
+	{
+		if( !m_acquired )
+		{
+			if( std::filesystem::exists( m_recycleBinPath ) )
+			{
+				// TODO - need a way to repair this
+				// TODO - put a tag file in the dir so we can identify owning process / handle differently if process still open?
+				// TODO - figure out why this is getting is triggered by backups
+				throw IECore::Exception( fmt::format( "Cannot acquire recycle bin - something else owns a recycle bin at {}", m_recycleBinPath ) );
+			}
+
+			std::filesystem::create_directories( m_recycleBinPath );
+			m_acquired = true;
+		}
+
+		return m_recycleBinPath;
+	}
+
+	std::optional<std::filesystem::path> getIfExists()
+	{
+		if( m_acquired )
+		{
+			return m_recycleBinPath;
+		}
+		else
+		{
+			return {};
+		}
+	}
+
+
 
 	~RecycleBinManager()
 	{
-		releaseRecycleBins();
-	}
-
-	std::filesystem::path acquireRecycleBin( const std::filesystem::path &cacheDirectory )
-	{
-		std::filesystem::path result = recycleBinDirectory( cacheDirectory );
-
-		if( m_ownedRecycleBins.count( result ) )
-		{
-			// We already own this recycle bin
-			return result;
-		}
-
-		if( std::filesystem::exists( result ) )
-		{
-			// TODO - need a way to repair this
-			// TODO - put a tag file in the dir so we can identify owning process / handle differently if process still open?
-			// TODO - figure out why this is getting is triggered by backups
-			throw IECore::Exception( fmt::format( "Cannot acquire recycle bin - something else owns a recycle bin at {}", result ) );
-		}
-
-		std::filesystem::create_directories( result );
-
-		m_ownedRecycleBins.insert( result );
-
-		return result;
-	}
-
-	void scriptParentChanged( GraphComponent *scriptNode, GraphComponent *oldParent )
-	{
-		if( !scriptNode->parent() )
-		{
-			releaseRecycleBins();
-		}
-	}
-
-	void releaseRecycleBins()
-	{
-		for( const auto &i : m_ownedRecycleBins )
+		if( m_acquired )
 		{
 			// This is a fairly scary looking system call, so this is probably a good place to write
 			// down some justification why this seems like it should be safe:
@@ -123,25 +111,54 @@ public:
 			// a Gaffer cache ( ie. matches the regex "[0-9a-f]{32}.io", enforced by
 			// CachedDataNode::cacheFileNameToHash ).
 
-			std::cerr << "DELETING BIN " << i.string() << "\n";
-			std::filesystem::remove_all( i );
+			std::cerr << "DELETING BIN " << m_recycleBinPath.string() << "\n";
+			std::filesystem::remove_all( m_recycleBinPath );
 		}
-
-		m_ownedRecycleBins.clear();
-
 	}
 
 private:
 
-	Signals::ScopedConnection m_scriptParentChangedConnection;
-	std::set<std::filesystem::path> m_ownedRecycleBins;
+	std::filesystem::path m_recycleBinPath;
+	bool m_acquired;
 };
+}
 
-std::map< const ScriptNode *, RecycleBinManager > g_recycleBinManagers;
+namespace {
 
-RecycleBinManager &acquireRecycleBinManager( const ScriptNode *node )
+static const IECore::InternedString g_cacheEvaluationKeyName( "__cacheEvaluationKey" );
+
+std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory )
 {
-	return g_recycleBinManagers.try_emplace( node, node ).first->second;
+	return cacheDirectory / ".recycleBin";
+}
+
+
+
+std::map< std::filesystem::path, std::weak_ptr< Gaffer::RecycleBinManager > > g_recycleBinManagers;
+
+// TODO - not sure this should ever return null, but I'm still wondering whether a refactor is
+// needed for how this is bound to sourceDirectory.
+std::shared_ptr<Gaffer::RecycleBinManager> acquireRecycleBinManager( const std::filesystem::path &cacheDirectory )
+{
+	if( cacheDirectory.empty() )
+	{
+		return nullptr;
+	}
+
+	std::shared_ptr<Gaffer::RecycleBinManager> result;
+	auto it = g_recycleBinManagers.find( cacheDirectory );
+	if( it != g_recycleBinManagers.end() )
+	{
+		result = it->second.lock();
+	}
+
+	if( !result )
+	{
+		result = std::make_shared<Gaffer::RecycleBinManager>( cacheDirectory );
+		g_recycleBinManagers[ cacheDirectory ] = result;
+	}
+
+	return result;
 }
 
 } // namespace
@@ -161,6 +178,10 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 			// needing to use a previous or future sourceDirectory, and we can support that by recording
 			// this directory which is valid before or after this operation.
 			m_sourceDirectory = node->sourceDirectory();
+
+			// If there is a recycle bin created for this directory, we may need access to it,
+			// so we acquire a RecycleBinManager
+			m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
 
 			auto it = node->m_caches.find( key );
 			if( it != node->m_caches.end() )
@@ -216,6 +237,7 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 		IECore::InternedString m_key;
 
 		std::filesystem::path m_sourceDirectory;
+		std::shared_ptr<RecycleBinManager> m_recycleBinManager;
 
 		// \todo In a long paint session on heavy geo, it's very plausible that a large amount of memory
 		// could be consumed by holding live values in the undo queue. In theory, you could probably
@@ -240,7 +262,7 @@ CachedDataNode::CachedDataNode(
 		const std::string &name,
 		const std::string &sourceDirectory, IECore::ConstCompoundDataPtr caches
 )
-	:	ComputeNode( name ), m_sourceDirectory( sourceDirectory )
+	:	ComputeNode( name ), m_sourceDirectory( sourceDirectory ), m_recycleBinManager( acquireRecycleBinManager( sourceDirectory ) )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 
@@ -396,6 +418,7 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 	}
 
 	m_sourceDirectory = directory;
+	m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
 }
 
 std::string CachedDataNode::cacheFileNameFromHash( const IECore::MurmurHash &h )
@@ -497,6 +520,7 @@ void CachedDataNode::setEntryInternal( const IECore::InternedString &key, const 
 void CachedDataNode::setSourceDirectory( const std::filesystem::path &sourceDirectory )
 {
 	m_sourceDirectory = sourceDirectory;
+	m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
 }
 
 IECore::ConstObjectPtr CachedDataNode::getEntry( const IECore::InternedString &key, bool throwExceptions ) const
@@ -619,9 +643,9 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 					{
 						sourcePath = m_sourceDirectory / cacheFileName;
 					}
-					else
+					else if( const std::optional<std::filesystem::path> recycleBinDir = m_recycleBinManager ? m_recycleBinManager->getIfExists() : std::nullopt )
 					{
-						std::filesystem::path recycleBinPath = recycleBinDirectory( m_sourceDirectory ) / cacheFileName;
+						std::filesystem::path recycleBinPath = (*recycleBinDir) / cacheFileName;
 
 						if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
 						{
@@ -632,7 +656,9 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 
 				if( !sourcePath )
 				{
-					throw IECore::Exception( "Could not locate cache file " + cacheFileName );
+					throw IECore::Exception( fmt::format(
+						"Could not locate cache file {} in {}.", cacheFileName, m_sourceDirectory
+					) );
 				}
 
 				IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO(
@@ -711,9 +737,8 @@ CacheDirectoryManager::~CacheDirectoryManager()
 
 	try
 	{
-		std::filesystem::path recycleBin;
+		std::shared_ptr<RecycleBinManager> recycleBinManager = acquireRecycleBinManager( getCacheDirectory() );
 
-		std::cerr << "CLEANING " << getCacheDirectory().string() << "\n";
 		for( auto const& directoryEntry : std::filesystem::directory_iterator( getCacheDirectory() ) )
 		{
 			auto cacheFileHash = CachedDataNode::cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
@@ -721,16 +746,12 @@ CacheDirectoryManager::~CacheDirectoryManager()
 			{
 				if( !m_usedCaches.count( *cacheFileHash ) )
 				{
-					if( recycleBin.empty() )
-					{
-						recycleBin = acquireRecycleBinManager( m_scriptNode ).acquireRecycleBin( getCacheDirectory() );
-					}
 					// TODO - check takeOwnership
 					// It's a little bit non-obvious whether it's safe to move this file while we have a
 					// directory iterator, but the docs say about changing directory contents: "it is unspecified
 					// whether the change would be observed through the iterator." Since they don't say
 					// anything about the iterator becoming invalid, I guess this is fine.
-					const std::filesystem::path recycledPath( recycleBin / directoryEntry.path().filename() );
+					const std::filesystem::path recycledPath( recycleBinManager->acquire() / directoryEntry.path().filename() );
 
 					if( std::filesystem::exists( recycledPath ) )
 					{
