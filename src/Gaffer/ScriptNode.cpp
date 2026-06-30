@@ -455,6 +455,13 @@ const CompoundDataPlug *ScriptNode::variablesPlug() const
 	return getChild<CompoundDataPlug>( g_firstPlugIndex + 5 );
 }
 
+const IECore::InternedString &ScriptNode::serialisationSourceFileContextName()
+{
+	// TODO : think about name
+	static IECore::InternedString g_serialisationSourceFileContextName( "serialisation:sourceFile" );
+	return g_serialisationSourceFileContextName;
+}
+
 bool ScriptNode::acceptsParent( const GraphComponent *potentialParent ) const
 {
 	return potentialParent->isInstanceOf( ScriptContainer::staticTypeId() );
@@ -860,20 +867,20 @@ bool ScriptNode::execute( const std::string &serialisation, Node *parent, bool c
 bool ScriptNode::executeFile( const std::filesystem::path &fileName, Node *parent, bool continueOnError )
 {
 	const std::string serialisation = readFile( fileName );
-	return executeInternal( serialisation, parent, continueOnError, fileName.generic_string() );
+	return executeInternal( serialisation, parent, continueOnError, fileName.generic_string(), &fileName );
 }
 
 bool ScriptNode::load( bool continueOnError)
 {
 	DirtyPropagationScope dirtyScope;
 
-	const std::string fileName = fileNamePlug()->getValue();
+	const std::filesystem::path fileName = fileNamePlug()->getValue();
 	const std::string s = readFile( fileName );
 
 	deleteNodes();
 	variablesPlug()->clearChildren();
 
-	const bool result = executeInternal( s, nullptr, continueOnError, fileName );
+	const bool result = executeInternal( s, nullptr, continueOnError, fileName.generic_string(), &fileName );
 
 	UndoScope undoDisabled( this, UndoScope::Disabled );
 	unsavedChangesPlug()->setValue( false );
@@ -926,7 +933,7 @@ std::string ScriptNode::serialiseInternal( const Node *parent, const Set *filter
 	return g_serialiseFunction( parent ? parent : this, filter, filePath );
 }
 
-bool ScriptNode::executeInternal( const std::string &serialisation, Node *parent, bool continueOnError, const std::string &context )
+bool ScriptNode::executeInternal( const std::string &serialisation, Node *parent, bool continueOnError, const std::string &context, const std::filesystem::path *sourceFile )
 {
 	if( !g_executeFunction )
 	{
@@ -936,10 +943,18 @@ bool ScriptNode::executeInternal( const std::string &serialisation, Node *parent
 	bool result = false;
 	bool wasExecuting = m_executing;
 
+	Context::EditableScope s( Context::current() );
+	std::string sourceFileString;
+	if( sourceFile )
+	{
+		sourceFileString = sourceFile->generic_string();
+		s.set<std::string>( serialisationSourceFileContextName(), &sourceFileString );
+	}
+
 	// As with `ScriptNodeBinding::serialise()`, we don't want to perform string
 	// substitutions. Removing the current Process from ThreadState ensures
 	// `StringPlug::getValue()` will not perform substitutions.
-	const Context *contextVariables = Context::current();
+	const Context *contextVariables = s.context();
 	const Monitor::MonitorSet &monitors = Monitor::current();
 	const ThreadState defaultThreadState;
 	ThreadState::Scope defaultThreadStateScope( defaultThreadState );

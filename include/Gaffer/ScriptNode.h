@@ -289,6 +289,8 @@ class GAFFER_API ScriptNode : public Node
 		const CompoundDataPlug *variablesPlug() const;
 		//@}
 
+		static const IECore::InternedString &serialisationSourceFileContextName();
+
 	protected :
 
 		void parentChanging( Gaffer::GraphComponent *newParent ) override;
@@ -342,7 +344,10 @@ class GAFFER_API ScriptNode : public Node
 		// ===========================
 
 		std::string serialiseInternal( const Node *parent, const Set *filter, const std::filesystem::path *filePath = nullptr ) const;
-		bool executeInternal( const std::string &serialisation, Node *parent, bool continueOnError, const std::string &context = "" );
+		// TODO - currently context is just set to the file path if there's a source file, otherwise empty string.
+		// Should these parameters just be combined? Or could we want to set context to something other than a
+		// file path?
+		bool executeInternal( const std::string &serialisation, Node *parent, bool continueOnError, const std::string &context = "", const std::filesystem::path *sourceFile = nullptr );
 
 		using SerialiseFunction = std::function<std::string ( const Node *, const Set *, const std::filesystem::path *cacheDirectoryManager )>;
 		using ExecuteFunction = std::function<bool ( ScriptNode *, const std::string &, Node *, bool, const std::string & )>;
