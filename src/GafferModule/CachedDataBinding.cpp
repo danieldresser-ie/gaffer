@@ -92,7 +92,7 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 
 		std::string mySerial = fmt::format(
 			"Gaffer.CachedDataNode( \"{}\", {}, {} )",
-			node->getName().string(), sourceDirectory, cachesRepr
+			node->getName().string(), serialisation.cacheDirectoryManager() ? "" : sourceDirectory, cachesRepr
 		);
 
 

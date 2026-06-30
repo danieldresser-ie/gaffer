@@ -161,6 +161,11 @@ std::shared_ptr<Gaffer::RecycleBinManager> acquireRecycleBinManager( const std::
 	return result;
 }
 
+std::filesystem::path cacheDirFromScriptPath( const std::filesystem::path &scriptPath )
+{
+	return scriptPath.parent_path() / ( scriptPath.filename().string() + ".cachedData" );
+}
+
 } // namespace
 
 class CachedDataNode::SetEntryAction : public Gaffer::Action
@@ -262,7 +267,7 @@ CachedDataNode::CachedDataNode(
 		const std::string &name,
 		const std::string &sourceDirectory, IECore::ConstCompoundDataPtr caches
 )
-	:	ComputeNode( name ), m_sourceDirectory( sourceDirectory ), m_recycleBinManager( acquireRecycleBinManager( sourceDirectory ) )
+	:	ComputeNode( name )
 {
 	storeIndexOfNextChild( g_firstPlugIndex );
 
@@ -276,12 +281,22 @@ CachedDataNode::CachedDataNode(
 	// ( indicating a paste from a different script? )
 	if( caches )
 	{
+		if( sourceDirectory.empty() )
+		{
+			m_sourceDirectory = cacheDirFromScriptPath( Context::current()->get<std::string>( ScriptNode::serialisationSourceFileContextName() ) );
+		}
+		else
+		{
+			m_sourceDirectory = sourceDirectory;
+		}
+
+		m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
 		for( const auto &it : caches->readable() )
 		{
 			IECore::StringData *stringVal = IECore::runTimeCast<IECore::StringData>( it.second.get() );
 			if( !stringVal )
 			{
-				throw IECore::Exception( "Corrupt CahchedDataNode serialisation" );
+				throw IECore::Exception( "Corrupt CachedDataNode serialisation" );
 			}
 			m_caches[ it.first ] = { IECore::MurmurHash::fromString( stringVal->readable() ), nullptr };
 		}
@@ -400,7 +415,7 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 			// This value does not yet exist on disk, and we need to write it.
 			if( !cache.second.m_liveValue )
 			{
-				throw IECore::Exception( fmt::format( "Unable to save entry \"{}\" on \"{}\" - no live value, but cannot find on disk.", cache.first, fullName() ) );
+				throw IECore::Exception( fmt::format( "Unable to save entry \"{}\" on \"{}\" - no live value, but cannot find on disk in directory {}.", cache.first, fullName(), m_sourceDirectory ) );
 			}
 			IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO( destPath.generic_string(), IECore::IndexedIO::rootPath, IECore::IndexedIO::Exclusive | IECore::IndexedIO::Write);
 
@@ -707,16 +722,6 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 	}
 
 	ComputeNode::compute( output, context );
-}
-
-namespace
-{
-
-std::filesystem::path cacheDirFromScriptPath( const std::filesystem::path &scriptPath )
-{
-	return scriptPath.parent_path() / ( scriptPath.filename().string() + ".cachedData" );
-}
-
 }
 
 CacheDirectoryManager::CacheDirectoryManager( const ScriptNode *scriptNode, const std::filesystem::path *scriptPath )
