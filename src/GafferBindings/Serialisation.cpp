@@ -149,7 +149,7 @@ std::string modulePathInternal( const boost::python::object &o )
 // TODO - using whether parent can dynamic cast to ScriptNode to determine whether
 // this serialization owns the script doesn't feel quite right
 Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName, const Gaffer::Set *filter, const std::filesystem::path *scriptPath )
-	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ), m_cacheDirectoryManager( IECore::runTimeCast<const ScriptNode>( parent ), scriptPath ),
+	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ), m_cacheDirectoryManager( scriptPath ),
 		m_protectParentNamespace( Context::current()->get<bool>( "serialiser:protectParentNamespace", true ) )
 {
 	IECorePython::ScopedGILLock gilLock;
@@ -166,20 +166,6 @@ Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::s
 			m_postScript += metadataSerialisation( plug, parentName, *this );
 		}
 	}
-}
-
-Serialisation::~Serialisation()
-{
-	if( m_cacheWarning.size() )
-	{
-		IECore::msg( IECore::Msg::Warning, "Serialisation", m_cacheWarning );
-	}
-
-	// TODO TODO TODO
-	/*if( m_cacheDirectoryManager )
-	{
-		m_cacheDirectoryManager->finishSerialisation( m_usedCaches );
-	}*/
 }
 
 const Gaffer::GraphComponent *Serialisation::parent() const
@@ -445,16 +431,6 @@ CacheDirectoryManager *Serialisation::cacheDirectoryManager()
 {
 	// TODO - not pointer any more?
 	return &m_cacheDirectoryManager;
-}
-
-/*boost::unordered_set< IECore::MurmurHash > &Serialisation::usedCaches()
-{
-	return m_usedCaches;
-}*/
-
-std::string &Serialisation::cacheWarning()
-{
-	return m_cacheWarning;
 }
 
 void Serialisation::registerSerialiser( IECore::TypeId targetType, SerialiserPtr serialiser )

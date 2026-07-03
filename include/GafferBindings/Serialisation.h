@@ -58,8 +58,6 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		/// containing an `IECore::Canceller`.
 		Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName = "parent", const Gaffer::Set *filter = nullptr, const std::filesystem::path *filePath = nullptr );
 
-		~Serialisation();
-
 		/// Returns the parent passed to the constructor.
 		const Gaffer::GraphComponent *parent() const;
 
@@ -81,11 +79,6 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 
 		// TODO - should this be pointer and/or optional?
 		Gaffer::CacheDirectoryManager *cacheDirectoryManager();
-
-		// Set to indicate that the cache system isn't behaving as expected
-		// ( If the filesystem somehow doesn't support hard links, we don't want to
-		// emit separate warnings for every cache )
-		std::string &cacheWarning();
 
 		/// Returns the result of the serialisation.
 		std::string result() const;
@@ -180,8 +173,6 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		std::string m_postScript;
 
 		std::set<std::string> m_modules;
-		boost::unordered_set<IECore::MurmurHash> m_usedCaches;
-		std::string m_cacheWarning;
 
 		void walk( const Gaffer::GraphComponent *parent, const std::string &parentIdentifier, const Serialiser *parentSerialiser, const IECore::Canceller *canceller );
 
