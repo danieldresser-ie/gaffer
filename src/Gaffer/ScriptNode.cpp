@@ -710,7 +710,8 @@ void ScriptNode::copy( const Node *parent, const Set *filter )
 	ApplicationRoot *app = applicationRoot();
 	if( !app )
 	{
-		throw( "ScriptNode has no ApplicationRoot" );
+		// TODO - split to separate commit
+		throw IECore::Exception( "ScriptNode has no ApplicationRoot" );
 	}
 
 	std::string s = serialise( parent, filter );
