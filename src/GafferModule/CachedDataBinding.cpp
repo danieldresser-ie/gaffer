@@ -64,7 +64,7 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 
 		std::filesystem::path sourceDirectory = node->sourceDirectory();
 		serialisation.addModule( "IECore" );
-		if( serialisation.cacheDirectoryManager() )
+		if( serialisation.cacheDirectoryManager()->hasCacheDirectory() )
 		{
 			node->save( *serialisation.cacheDirectoryManager() );
 			sourceDirectory = std::filesystem::absolute( serialisation.cacheDirectoryManager()->getCacheDirectory() );
@@ -92,7 +92,7 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 
 		std::string mySerial = fmt::format(
 			"Gaffer.CachedDataNode( \"{}\", {}, {} )",
-			node->getName().string(), serialisation.cacheDirectoryManager() ? "" : sourceDirectory, cachesRepr
+			node->getName().string(), serialisation.cacheDirectoryManager()->hasCacheDirectory() ? "" : sourceDirectory, cachesRepr
 		);
 
 

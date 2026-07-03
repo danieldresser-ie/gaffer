@@ -61,6 +61,7 @@ public:
 	CacheDirectoryManager( const Gaffer::ScriptNode *scriptNode, const std::filesystem::path *scriptPath );
 	~CacheDirectoryManager();
 
+	bool hasCacheDirectory();
 	std::filesystem::path getCacheDirectory();
 
 

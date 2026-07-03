@@ -370,7 +370,8 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 
 		for i in range( 10 ):
 			# Create a cached entry unique to each script we save as
-			s["cachedDataNode"].setEntry( "a%i"%i, IECore.IntData( 1000 + i ) )
+			with Gaffer.UndoScope( s ) :
+				s["cachedDataNode"].setEntry( "a%i"%i, IECore.IntData( 1000 + i ) )
 
 			with Gaffer.UndoScope( s ) :
 				s["fileName"].setValue( self.temporaryDirectory() / ( "file%i.gfr" % i ) )
@@ -395,17 +396,21 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 2000 + i ) )
 
 		# Run back through the undo stack getting all the values from the recycle bins
-		s.undo()
-		for i in reversed( range( 1, 10 ) ):
+		for i in reversed( range( 0, 10 ) ):
+			s.undo()
+
 			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 1000 + i ) )
 
 			s.undo()
 			s.undo()
-		self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%0 ), IECore.IntData( 1000 ) )
+
+		self.assertEqual( s["cachedDataNode"]["keys"].getValue(), IECore.StringVectorData() )
 
 		# Redo everything
-		for i in range( 19 ):
+		for i in range( 30 ):
 			s.redo()
+
+		self.assertEqual( set( s["cachedDataNode"]["keys"].getValue() ), { "a%i"%i for i in range( 10 ) } )
 
 		for i in range( 10 ) :
 			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 2000 + i ) )
@@ -413,18 +418,28 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		# Run back through the undo stack getting all the values from the recycle bins, but this
 		# time we'll put new actions on the undo stack, forcing clearing of the undo stack
 
-		s.undo()
-		for i in reversed( range( 1, 10 ) ):
+
+		for i in reversed( range( 0, 10 ) ):
+			s.undo()
+
 			self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%i ), IECore.IntData( 1000 + i ) )
+
 			s.undo()
-			s.undo()
+
+			self.assertTrue( os.path.exists( self.temporaryDirectory() / ( "file%i.gfr.cachedData/.recycleBin" % i ) ) )
 
 			# Make a new edit, then immediately undo it, just to force the undo stack to be cleared
 			with Gaffer.UndoScope( s ) :
 				s["counter"].setValue( 10 + i )
 			s.undo()
-		self.assertEqual( s["cachedDataNode"].getEntry( "a%i"%0 ), IECore.IntData( 1000 ) )
 
+			s.undo()
+			self.assertFalse( os.path.exists( self.temporaryDirectory() / ( "file%i.gfr.cachedData/.recycleBin" % i ) ) )
+
+		self.assertEqual( s["cachedDataNode"]["keys"].getValue(), IECore.StringVectorData() )
+
+	# We now require that you rename the caches to match if you rename a script
+	@unittest.expectedFailure
 	def testRenameA( self ):
 		s = Gaffer.ScriptNode()
 		s["cachedDataNode"] = Gaffer.CachedDataNode()
@@ -460,6 +475,76 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		s.load()
 		self.assertEqual( s["cachedDataNode"].getEntry( "a" ), IECore.IntData( 42 ) )
 
+	def testCopyPaste( self ):
+
+		app = Gaffer.ApplicationRoot()
+
+		s = Gaffer.ScriptNode()
+
+		app["scripts"]["s"] = s
+
+		s["cachedDataNode"] = Gaffer.CachedDataNode()
+		s["cachedDataNode"].setEntry( "a", IECore.IntData( 7 ) )
+		s["cachedDataNode"].setEntry( "b", IECore.FloatData( 123.456 ) )
+		s["fileName"].setValue( self.temporaryDirectory() / "test.gfr" )
+
+		with self.assertRaisesRegex( Exception, "Cannot copy nodes that include caches that haven't yet been saved." ) :
+			s.copy()
+
+		s.save()
+		s.copy()
+		del s
+
+		t = Gaffer.ScriptNode()
+		app["scripts"]["t"] = t
+		t.paste()
+
+		self.assertEqual( t["cachedDataNode"].getEntry( "a" ), IECore.IntData( 7 ) )
+		self.assertEqual( t["cachedDataNode"].getEntry( "b" ), IECore.FloatData( 123.456 ) )
+
+		t["fileName"].setValue( self.temporaryDirectory() / "copied.gfr" )
+		t.save()
+
+		# Check that we find the source files, and link back to them.
+		self.assertEqual( os.stat( self.temporaryDirectory() / "copied.gfr.cachedData" / "5f4ab9972edafa975a49cad56ad69070.io" ).st_nlink, 2 )
+		self.assertEqual( os.stat( self.temporaryDirectory() / "copied.gfr.cachedData" / "22b41848d90e4f05d50ab80c68957527.io" ).st_nlink, 2 )
+
+		del t
+
+		shutil.rmtree( self.temporaryDirectory() / "copied.gfr.cachedData" )
+
+		# Try again, but this time we delete the source files after loading. This could happen if the
+		# caches were managed by another Gaffer session.
+		t = Gaffer.ScriptNode()
+		app["scripts"]["t"] = t
+		t.paste()
+
+		self.assertEqual( t["cachedDataNode"].getEntry( "a" ), IECore.IntData( 7 ) )
+		self.assertEqual( t["cachedDataNode"].getEntry( "b" ), IECore.FloatData( 123.456 ) )
+
+		shutil.rmtree( self.temporaryDirectory() / "test.gfr.cachedData" )
+		Gaffer.ValuePlug.clearCache()
+
+		# We force loaded the caches as soon as the paste happened, so the values are safe.
+		self.assertEqual( t["cachedDataNode"].getEntry( "a" ), IECore.IntData( 7 ) )
+		self.assertEqual( t["cachedDataNode"].getEntry( "b" ), IECore.FloatData( 123.456 ) )
+
+		t["fileName"].setValue( self.temporaryDirectory() / "copied.gfr" )
+		t.save()
+
+		# But we can't link any more, since we can't find the sources on disk - but we can still correctly
+		# write from the data that was loaded
+		self.assertEqual( os.stat( self.temporaryDirectory() / "copied.gfr.cachedData" / "5f4ab9972edafa975a49cad56ad69070.io" ).st_nlink, 1 )
+		self.assertEqual( os.stat( self.temporaryDirectory() / "copied.gfr.cachedData" / "22b41848d90e4f05d50ab80c68957527.io" ).st_nlink, 1 )
+
+		del t
+
+		# Now that the source data is gone though, trying to paste won't work
+		t = Gaffer.ScriptNode()
+		app["scripts"]["t"] = t
+
+		with self.assertRaisesRegex( Exception, "Cannot paste - source file uses data caches which are not accessible, or have been modified." ) :
+			t.paste()
 
 	# TODO : More undo tests
 	# TODO : think about backups and render scripts

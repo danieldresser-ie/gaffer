@@ -111,7 +111,6 @@ public:
 			// a Gaffer cache ( ie. matches the regex "[0-9a-f]{32}.io", enforced by
 			// CachedDataNode::cacheFileNameToHash ).
 
-			std::cerr << "DELETING BIN " << m_recycleBinPath.string() << "\n";
 			std::filesystem::remove_all( m_recycleBinPath );
 		}
 	}
@@ -164,6 +163,15 @@ std::shared_ptr<Gaffer::RecycleBinManager> acquireRecycleBinManager( const std::
 std::filesystem::path cacheDirFromScriptPath( const std::filesystem::path &scriptPath )
 {
 	return scriptPath.parent_path() / ( scriptPath.filename().string() + ".cachedData" );
+}
+
+IECore::ConstObjectPtr loadDataFile( const std::filesystem::path &filePath )
+{
+	IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO(
+		filePath.generic_string(), IECore::IndexedIO::rootPath, IECore::IndexedIO::Read
+	);
+
+	return IECore::Object::load( file, "object" );
 }
 
 } // namespace
@@ -279,8 +287,12 @@ CachedDataNode::CachedDataNode(
 
 	// TODO - should we force load as live data if sourceDirectory doesn't match current script
 	// ( indicating a paste from a different script? )
+	// TODO - rename "sourceDirectory" to "loadFrom"
 	if( caches )
 	{
+
+		// TODO - check if source matches current file.
+		bool needsLoad = !sourceDirectory.empty();
 		if( sourceDirectory.empty() )
 		{
 			m_sourceDirectory = cacheDirFromScriptPath( Context::current()->get<std::string>( ScriptNode::serialisationSourceFileContextName() ) );
@@ -298,7 +310,24 @@ CachedDataNode::CachedDataNode(
 			{
 				throw IECore::Exception( "Corrupt CachedDataNode serialisation" );
 			}
-			m_caches[ it.first ] = { IECore::MurmurHash::fromString( stringVal->readable() ), nullptr };
+
+			const IECore::MurmurHash hash( IECore::MurmurHash::fromString( stringVal->readable() ) );
+
+			if( !needsLoad )
+			{
+				m_caches[ it.first ] = { hash, nullptr };
+			}
+			else
+			{
+				try
+				{
+					m_caches[ it.first ] = { hash, loadDataFile( m_sourceDirectory / cacheFileNameFromHash( hash ) ) };
+				}
+				catch( const IECore::Exception & )
+				{
+					throw IECore::Exception( "Cannot paste - source file uses data caches which are not accessible, or have been modified." );
+				}
+			}
 		}
 	}
 }
@@ -360,6 +389,28 @@ const ObjectPlug *CachedDataNode::evaluatePlug() const
 void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 {
 	// TODO - weird things happen if exceptions occur during serialization
+
+	if( !cacheDirectoryManager.hasCacheDirectory() )
+	{
+		// If there is no cache directory set, that means that we're doing a copy,
+		// where we serialise to memory instead of a file. We support this only if
+		// all the caches are already saved to disk.
+
+		for( auto &cache : m_caches )
+		{
+			std::string fileName = cacheFileNameFromHash( cache.second.m_hash );
+
+			std::filesystem::path sourcePath = m_sourceDirectory / fileName;
+			if( !std::filesystem::exists( sourcePath ) )
+			{
+				// TODO - no longer triggered?
+				throw IECore::Exception( fmt::format( "Cannot copy, CachedDataNode \"{}\" is not saved yet.", fullName() ) );
+			}
+		}
+
+		// Everything is already saved to the source directory, so we're OK
+		return;
+	}
 
 	const std::filesystem::path directory = cacheDirectoryManager.getCacheDirectory();
 
@@ -676,11 +727,7 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 					) );
 				}
 
-				IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO(
-					sourcePath->generic_string(), IECore::IndexedIO::rootPath, IECore::IndexedIO::Read
-				);
-
-				result = IECore::Object::load( file, "object" );
+				result = loadDataFile( *sourcePath );
 			}
 		}
 
@@ -792,6 +839,11 @@ CacheDirectoryManager::~CacheDirectoryManager()
 	}
 
 	m_takeOwnership = false;
+}
+
+bool CacheDirectoryManager::hasCacheDirectory()
+{
+	return (bool)m_scriptPath;
 }
 
 std::filesystem::path CacheDirectoryManager::getCacheDirectory()
