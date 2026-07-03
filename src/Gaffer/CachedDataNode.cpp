@@ -266,6 +266,98 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 
 IE_CORE_DEFINERUNTIMETYPED( CachedDataNode::SetEntryAction );
 
+CacheDirectoryManager::CacheDirectoryManager( const std::filesystem::path *scriptPath )
+	: m_scriptPath( scriptPath )
+{
+	m_takeOwnership = false; // TODO
+}
+
+CacheDirectoryManager::~CacheDirectoryManager()
+{
+	// TODO - should we clean if there is no CachedDataNode's?
+	if( m_cacheDirectory.empty() )
+	{
+		// No cleanup needed
+		return;
+
+	}
+
+	try
+	{
+		std::shared_ptr<RecycleBinManager> recycleBinManager = acquireRecycleBinManager( getCacheDirectory() );
+
+		for( auto const& directoryEntry : std::filesystem::directory_iterator( getCacheDirectory() ) )
+		{
+			auto cacheFileHash = CachedDataNode::cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
+			if( cacheFileHash )
+			{
+				if( !m_usedCaches.count( *cacheFileHash ) )
+				{
+					// TODO - check takeOwnership
+					// It's a little bit non-obvious whether it's safe to move this file while we have a
+					// directory iterator, but the docs say about changing directory contents: "it is unspecified
+					// whether the change would be observed through the iterator." Since they don't say
+					// anything about the iterator becoming invalid, I guess this is fine.
+					const std::filesystem::path recycledPath( recycleBinManager->acquire() / directoryEntry.path().filename() );
+
+					if( std::filesystem::exists( recycledPath ) )
+					{
+						// We've already stored this in the recycle bin, so it's safe to just delete it
+						std::filesystem::remove( directoryEntry.path() );
+					}
+					else
+					{
+						std::filesystem::rename( directoryEntry.path(), recycledPath );
+					}
+				}
+			}
+			else
+			{
+				if( directoryEntry.path().filename() != ".recycleBin" )
+				{
+					IECore::msg(
+						IECore::Msg::Warning, "Serialisation",
+						fmt::format( "Unexpected file {} in cache directory {}.",
+							directoryEntry.path().filename(), getCacheDirectory()
+						)
+					);
+				}
+			}
+		}
+	}
+	catch( IECore::Exception &e )
+	{
+		IECore::msg(
+			IECore::Msg::Warning, "Serialisation",
+			std::string( "Unable to clean up unused caches : " ) + e.what()
+		);
+	}
+
+	m_takeOwnership = false;
+}
+
+bool CacheDirectoryManager::hasCacheDirectory()
+{
+	return (bool)m_scriptPath;
+}
+
+std::filesystem::path CacheDirectoryManager::getCacheDirectory()
+{
+	// TODO name/type of this function
+	if( !m_scriptPath )
+	{
+		throw IECore::Exception( "TODO" );
+	}
+
+	const std::filesystem::path result = cacheDirFromScriptPath( *m_scriptPath );
+	if( m_cacheDirectory.empty() )
+	{
+		std::filesystem::create_directories( result );
+		m_cacheDirectory = result;
+	}
+
+	return result;
+}
 
 GAFFER_NODE_DEFINE_TYPE( CachedDataNode );
 
@@ -771,114 +863,3 @@ void CachedDataNode::compute( ValuePlug *output, const Context *context ) const
 	ComputeNode::compute( output, context );
 }
 
-CacheDirectoryManager::CacheDirectoryManager( const ScriptNode *scriptNode, const std::filesystem::path *scriptPath )
-	: m_scriptNode( scriptNode ), m_scriptPath( scriptPath )
-{
-	m_takeOwnership = false; // TODO
-}
-
-CacheDirectoryManager::~CacheDirectoryManager()
-{
-	// TODO - should we clean if there is no CachedDataNode's?
-	if( m_cacheDirectory.empty() )
-	{
-		// No cleanup needed
-		return;
-
-	}
-
-	try
-	{
-		std::shared_ptr<RecycleBinManager> recycleBinManager = acquireRecycleBinManager( getCacheDirectory() );
-
-		for( auto const& directoryEntry : std::filesystem::directory_iterator( getCacheDirectory() ) )
-		{
-			auto cacheFileHash = CachedDataNode::cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
-			if( cacheFileHash )
-			{
-				if( !m_usedCaches.count( *cacheFileHash ) )
-				{
-					// TODO - check takeOwnership
-					// It's a little bit non-obvious whether it's safe to move this file while we have a
-					// directory iterator, but the docs say about changing directory contents: "it is unspecified
-					// whether the change would be observed through the iterator." Since they don't say
-					// anything about the iterator becoming invalid, I guess this is fine.
-					const std::filesystem::path recycledPath( recycleBinManager->acquire() / directoryEntry.path().filename() );
-
-					if( std::filesystem::exists( recycledPath ) )
-					{
-						// We've already stored this in the recycle bin, so it's safe to just delete it
-						std::filesystem::remove( directoryEntry.path() );
-					}
-					else
-					{
-						std::filesystem::rename( directoryEntry.path(), recycledPath );
-					}
-				}
-			}
-			else
-			{
-				if( directoryEntry.path().filename() != ".recycleBin" )
-				{
-					IECore::msg(
-						IECore::Msg::Warning, "Serialisation",
-						fmt::format( "Unexpected file {} in cache directory {}.",
-							directoryEntry.path().filename(), getCacheDirectory()
-						)
-					);
-				}
-			}
-		}
-	}
-	catch( IECore::Exception &e )
-	{
-		IECore::msg(
-			IECore::Msg::Warning, "Serialisation",
-			std::string( "Unable to clean up unused caches : " ) + e.what()
-		);
-	}
-
-	m_takeOwnership = false;
-}
-
-bool CacheDirectoryManager::hasCacheDirectory()
-{
-	return (bool)m_scriptPath;
-}
-
-std::filesystem::path CacheDirectoryManager::getCacheDirectory()
-{
-	if( !m_scriptPath )
-	{
-		throw IECore::Exception( "TODO" );
-	}
-
-	const std::filesystem::path result = cacheDirFromScriptPath( *m_scriptPath );
-	if( m_cacheDirectory.empty() )
-	{
-		std::filesystem::create_directories( result );
-		m_cacheDirectory = result;
-	}
-
-	return result;
-}
-
-/*std::optional<std::filesystem::path> CacheDirectoryManager::findCache( const std::string &fileName ) const
-{
-	for( const std::filesystem::path &i : m_cacheDirectories )
-	{
-		if( std::filesystem::exists( i / fileName ) )
-		{
-			return i / fileName;
-		}
-	}
-	for( const std::filesystem::path &i : m_ownedRecycleBins )
-	{
-		if( std::filesystem::exists( i / fileName ) )
-		{
-			return i / fileName;
-		}
-	}
-
-	return {};
-}*/

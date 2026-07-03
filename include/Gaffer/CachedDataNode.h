@@ -58,7 +58,7 @@ namespace Gaffer
 class GAFFER_API CacheDirectoryManager
 {
 public:
-	CacheDirectoryManager( const Gaffer::ScriptNode *scriptNode, const std::filesystem::path *scriptPath );
+	CacheDirectoryManager( const std::filesystem::path *scriptPath );
 	~CacheDirectoryManager();
 
 	bool hasCacheDirectory();
