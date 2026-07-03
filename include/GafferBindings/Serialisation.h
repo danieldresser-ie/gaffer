@@ -79,6 +79,7 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		/// Ensures that `import moduleName` is included in the result.
 		void addModule( const std::string &moduleName );
 
+		// TODO - should this be pointer and/or optional?
 		Gaffer::CacheDirectoryManager *cacheDirectoryManager();
 
 		// Set to indicate that the cache system isn't behaving as expected
