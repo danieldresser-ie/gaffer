@@ -336,11 +336,6 @@ CacheDirectoryManager::~CacheDirectoryManager()
 	m_takeOwnership = false;
 }
 
-bool CacheDirectoryManager::hasCacheDirectory()
-{
-	return (bool)m_scriptPath;
-}
-
 std::filesystem::path CacheDirectoryManager::getCacheDirectory()
 {
 	// TODO name/type of this function
@@ -478,11 +473,11 @@ const ObjectPlug *CachedDataNode::evaluatePlug() const
 	return getChild<ObjectPlug>( g_firstPlugIndex + 4 );
 }
 
-void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
+void CachedDataNode::save( CacheDirectoryManager *cacheDirectoryManager ) const
 {
 	// TODO - weird things happen if exceptions occur during serialization
 
-	if( !cacheDirectoryManager.hasCacheDirectory() )
+	if( !cacheDirectoryManager )
 	{
 		// If there is no cache directory set, that means that we're doing a copy,
 		// where we serialise to memory instead of a file. We support this only if
@@ -504,11 +499,11 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 		return;
 	}
 
-	const std::filesystem::path directory = cacheDirectoryManager.getCacheDirectory();
+	const std::filesystem::path directory = cacheDirectoryManager->getCacheDirectory();
 
 	for( auto &cache : m_caches )
 	{
-		if( !cacheDirectoryManager.m_usedCaches.insert( cache.second.m_hash ).second )
+		if( !cacheDirectoryManager->m_usedCaches.insert( cache.second.m_hash ).second )
 		{
 			// This value was already saved during this serialization
 			continue;
@@ -545,9 +540,9 @@ void CachedDataNode::save( CacheDirectoryManager &cacheDirectoryManager ) const
 			std::filesystem::create_hard_link( *sourcePath, destPath, ec );
 			if( ec )
 			{
-				if( !cacheDirectoryManager.m_warning.size() )
+				if( !cacheDirectoryManager->m_warning.size() )
 				{
-					cacheDirectoryManager.m_warning = fmt::format( "While saving \"{}\", could not create hardlink at \"{}\" pointing to \"{}\", falling back to copying file.", fullName(), destPath, *sourcePath );
+					cacheDirectoryManager->m_warning = fmt::format( "While saving \"{}\", could not create hardlink at \"{}\" pointing to \"{}\", falling back to copying file.", fullName(), destPath, *sourcePath );
 				}
 				// If that failed, just copy.
 				std::filesystem::copy_file( *sourcePath, destPath );

@@ -487,7 +487,7 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		s["cachedDataNode"].setEntry( "b", IECore.FloatData( 123.456 ) )
 		s["fileName"].setValue( self.temporaryDirectory() / "test.gfr" )
 
-		with self.assertRaisesRegex( Exception, "Cannot copy nodes that include caches that haven't yet been saved." ) :
+		with self.assertRaisesRegex( Exception, 'Cannot copy, CachedDataNode "ApplicationRoot.scripts.s.cachedDataNode" is not saved yet.' ) :
 			s.copy()
 
 		s.save()

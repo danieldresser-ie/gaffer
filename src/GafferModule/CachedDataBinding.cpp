@@ -62,20 +62,9 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 	{
 		const CachedDataNode *node = IECore::runTimeCast<const CachedDataNode>( graphComponent );
 
-		std::filesystem::path sourceDirectory = node->sourceDirectory();
 		serialisation.addModule( "IECore" );
-		if( serialisation.cacheDirectoryManager()->hasCacheDirectory() )
-		{
-			node->save( *serialisation.cacheDirectoryManager() );
-			sourceDirectory = std::filesystem::absolute( serialisation.cacheDirectoryManager()->getCacheDirectory() );
-		}
-		else
-		{
-			if( node->hasLiveEntries() )
-			{
-				throw IECore::Exception( "Cannot copy nodes that include caches that haven't yet been saved." );
-			}
-		}
+
+		node->save( serialisation.cacheDirectoryManager() );
 
 		// TODO - I haven't confirmed exactly why using ValuePlugSerialiser::valueRepr here results in:
 		// TypeError: No to_python (by-value) converter found for C++ type: IECore::CompoundObject
@@ -92,7 +81,7 @@ class CachedDataNodeSerialiser : public NodeSerialiser
 
 		std::string mySerial = fmt::format(
 			"Gaffer.CachedDataNode( \"{}\", {}, {} )",
-			node->getName().string(), serialisation.cacheDirectoryManager()->hasCacheDirectory() ? "" : sourceDirectory, cachesRepr
+			node->getName().string(), serialisation.cacheDirectoryManager() ? "" : node->sourceDirectory(), cachesRepr
 		);
 
 

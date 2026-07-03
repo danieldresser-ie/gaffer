@@ -114,7 +114,7 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		StringVectorDataPlug *keysPlug();
 		const StringVectorDataPlug *keysPlug() const;
 
-		void save( CacheDirectoryManager &cacheDirectoryManager ) const;
+		void save( CacheDirectoryManager *cacheDirectoryManager ) const;
 
 		virtual void affects( const Plug *input, AffectedPlugsContainer &outputs ) const override;
 
