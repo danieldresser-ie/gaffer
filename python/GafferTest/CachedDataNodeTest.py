@@ -287,7 +287,7 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 
 		# Test that if we hold a cache value the same through several versions of a file, we
 		# keep a link back to the original instead of duplicating the file.
-		testValue = IECore.IntVectorData( [i for i in range( 1000 ) ] )
+		testValue = IECore.IntVectorData( [i for i in range( 100000 ) ] )
 		s = Gaffer.ScriptNode()
 		s["cachedDataNode"] = Gaffer.CachedDataNode()
 		s["cachedDataNode"].setEntry( "a", testValue )
@@ -304,10 +304,9 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		s.save()
 		del s
 
-
-		self.assertEqual( os.stat( self.temporaryDirectory() / "file1.gfr.cachedData" / "17203d2f6ca74c8d1082e27b8b828bd0.io" ).st_nlink, 3 )
-		self.assertEqual( os.stat( self.temporaryDirectory() / "file2.gfr.cachedData" / "17203d2f6ca74c8d1082e27b8b828bd0.io" ).st_nlink, 3 )
-		self.assertEqual( os.stat( self.temporaryDirectory() / "file3.gfr.cachedData" / "17203d2f6ca74c8d1082e27b8b828bd0.io" ).st_nlink, 3 )
+		self.assertEqual( os.stat( self.temporaryDirectory() / "file1.gfr.cachedData" / "2be6e2024a34d8808b87824ac350c907.io" ).st_nlink, 3 )
+		self.assertEqual( os.stat( self.temporaryDirectory() / "file2.gfr.cachedData" / "2be6e2024a34d8808b87824ac350c907.io" ).st_nlink, 3 )
+		self.assertEqual( os.stat( self.temporaryDirectory() / "file3.gfr.cachedData" / "2be6e2024a34d8808b87824ac350c907.io" ).st_nlink, 3 )
 
 		s = Gaffer.ScriptNode()
 		s["fileName"].setValue( self.temporaryDirectory() / "file3.gfr" )
@@ -546,10 +545,60 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		with self.assertRaisesRegex( Exception, "Cannot paste - source file uses data caches which are not accessible, or have been modified." ) :
 			t.paste()
 
+	def testReference( self ):
+
+		s = Gaffer.ScriptNode()
+		s["b"] = Gaffer.Box()
+		s["b"]["cachedDataNode"] = Gaffer.CachedDataNode()
+		s["b"]["cachedDataNode"].setEntry( "a", IECore.StringData( "aa" ) )
+		s["b"]["cachedDataNode"].setEntry( "b", IECore.StringData( "bb" ) )
+		s["b"]["cachedDataNode"].setEntry( "c", IECore.StringData( "cc" ) )
+
+		s["b"].exportForReference( self.temporaryDirectory() / "ref.grf" )
+
+		del s
+
+		# Data is stored with reference
+		self.assertEqual( len( os.listdir( self.temporaryDirectory() / "ref.grf.cachedData" ) ), 3 )
+
+		s = Gaffer.ScriptNode()
+		s["r"] = Gaffer.Reference()
+		s["r"].load( self.temporaryDirectory() / "ref.grf" )
+
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "a" ), IECore.StringData( "aa" ) )
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "b" ), IECore.StringData( "bb" ) )
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "c" ), IECore.StringData( "cc" ) )
+
+		s["cachedDataNode"] = Gaffer.CachedDataNode()
+		s["cachedDataNode"].setEntry( "d", IECore.StringData( "dd" ) )
+
+		s["fileName"].setValue( self.temporaryDirectory() / "test.gfr" )
+		s.save()
+
+		del s
+
+		s = Gaffer.ScriptNode()
+		s["fileName"].setValue( self.temporaryDirectory() / "test.gfr" )
+		s.load()
+
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "a" ), IECore.StringData( "aa" ) )
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "b" ), IECore.StringData( "bb" ) )
+		self.assertEqual( s["r"]["cachedDataNode"].getEntry( "c" ), IECore.StringData( "cc" ) )
+		self.assertEqual( s["cachedDataNode"].getEntry( "d" ), IECore.StringData( "dd" ) )
+
+		# Check that we're still using the data files from the reference, and we only save out
+		# the one data file for the local CachedDataNode
+		self.assertEqual( len( os.listdir( self.temporaryDirectory() / "test.gfr.cachedData" ) ), 1 )
+
+
+
+
+
+
+
 	# TODO : More undo tests
 	# TODO : think about backups and render scripts
 	# TODO : test save as
-	# TODO : Test pasting into new script
 	# TODO : Implement/Test takeOwnership for dealing with Reference
 	# TODO : Switch to using cob files
 
