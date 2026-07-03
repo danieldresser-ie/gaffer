@@ -46,7 +46,6 @@
 #include "Gaffer/CachedDataNode.h"
 #include "Gaffer/Context.h"
 #include "Gaffer/Plug.h"
-#include "Gaffer/ScriptNode.h"
 #include "Gaffer/Spreadsheet.h"
 #include "Gaffer/Version.h"
 
@@ -63,7 +62,6 @@
 #include "boost/tokenizer.hpp"
 
 #include "fmt/format.h"
-#include "fmt/std.h"
 
 #include <unordered_map>
 
@@ -146,10 +144,9 @@ std::string modulePathInternal( const boost::python::object &o )
 // Serialisation
 //////////////////////////////////////////////////////////////////////////
 
-// TODO - using whether parent can dynamic cast to ScriptNode to determine whether
-// this serialization owns the script doesn't feel quite right
 Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName, const Gaffer::Set *filter, const std::filesystem::path *scriptPath )
-	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ), m_cacheDirectoryManager( scriptPath ),
+	:	m_parent( parent ), m_parentName( parentName ), m_filter( filter ),
+		m_cacheDirectoryManager( scriptPath ? std::make_unique<CacheDirectoryManager>( scriptPath ) : nullptr ),
 		m_protectParentNamespace( Context::current()->get<bool>( "serialiser:protectParentNamespace", true ) )
 {
 	IECorePython::ScopedGILLock gilLock;
@@ -166,6 +163,12 @@ Serialisation::Serialisation( const Gaffer::GraphComponent *parent, const std::s
 			m_postScript += metadataSerialisation( plug, parentName, *this );
 		}
 	}
+}
+
+// We don't use a default constructor just so we don't need a full declaration of CacheDirectoryManager
+// in Serialisation.h
+Serialisation::~Serialisation()
+{
 }
 
 const Gaffer::GraphComponent *Serialisation::parent() const
@@ -429,8 +432,7 @@ void Serialisation::addModule( const std::string &moduleName )
 
 CacheDirectoryManager *Serialisation::cacheDirectoryManager()
 {
-	// TODO - not pointer any more?
-	return &m_cacheDirectoryManager;
+	return m_cacheDirectoryManager.get();
 }
 
 void Serialisation::registerSerialiser( IECore::TypeId targetType, SerialiserPtr serialiser )

@@ -39,12 +39,22 @@
 
 #include "GafferBindings/Export.h"
 
-#include "Gaffer/CachedDataNode.h"
 #include "Gaffer/GraphComponent.h"
 #include "Gaffer/Set.h"
 
 #include "IECore/Canceller.h"
 #include "IECore/Object.h"
+
+#include <filesystem>
+
+namespace Gaffer
+{
+
+// Forward declaration of class to handle any data files associated with this serialization,
+// declared in StoredData.h.
+class CacheDirectoryManager;
+
+}
 
 namespace GafferBindings
 {
@@ -57,6 +67,8 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		/// Supports cancellation via the usual mechanism of scoping a Context
 		/// containing an `IECore::Canceller`.
 		Serialisation( const Gaffer::GraphComponent *parent, const std::string &parentName = "parent", const Gaffer::Set *filter = nullptr, const std::filesystem::path *filePath = nullptr );
+
+		~Serialisation();
 
 		/// Returns the parent passed to the constructor.
 		const Gaffer::GraphComponent *parent() const;
@@ -77,7 +89,7 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		/// Ensures that `import moduleName` is included in the result.
 		void addModule( const std::string &moduleName );
 
-		// TODO - should this be pointer and/or optional?
+		// TODO - comment
 		Gaffer::CacheDirectoryManager *cacheDirectoryManager();
 
 		/// Returns the result of the serialisation.
@@ -165,7 +177,7 @@ class GAFFERBINDINGS_API Serialisation : boost::noncopyable
 		const Gaffer::GraphComponent *m_parent;
 		const std::string m_parentName;
 		const Gaffer::Set *m_filter;
-		Gaffer::CacheDirectoryManager m_cacheDirectoryManager;
+		std::unique_ptr<Gaffer::CacheDirectoryManager> m_cacheDirectoryManager;
 		const bool m_protectParentNamespace;
 
 		std::string m_hierarchyScript;
