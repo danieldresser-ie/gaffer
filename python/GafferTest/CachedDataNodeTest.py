@@ -41,10 +41,30 @@ import IECore
 import Gaffer
 import GafferTest
 import os
+import pathlib
 import random
 import shutil
+import tempfile
 
 class CachedDataNodeTest( GafferTest.TestCase ) :
+
+	def setUp( self ):
+		GafferTest.TestCase.setUp( self )
+
+		self.__altMountTemporaryDirectory = None
+
+	def tearDown( self ):
+		GafferTest.TestCase.tearDown( self )
+
+		if self.__altMountTemporaryDirectory is not None :
+			shutil.rmtree( self.__altMountTemporaryDirectory )
+
+	def altMountTemporaryDirectory( self ):
+		# Set up a temp directory in /dev/shm, which should be a separate mount, allowing us to test the case
+		# where hardlinking fails.
+		if self.__altMountTemporaryDirectory is None:
+			self.__altMountTemporaryDirectory = pathlib.Path( tempfile.mkdtemp( prefix = "gafferTest", dir = "/dev/shm" ) )
+		return self.__altMountTemporaryDirectory
 
 	def setupComparison( self, s ) :
 		s["cachedDataNode"] = Gaffer.CachedDataNode()
@@ -590,7 +610,39 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 		# the one data file for the local CachedDataNode
 		self.assertEqual( len( os.listdir( self.temporaryDirectory() / "test.gfr.cachedData" ) ), 1 )
 
+	@unittest.skipIf( not os.path.exists( "/dev/shm" ), "No /dev/shm, can't test linking across different mounts." )
+	def testHardLinkFailure( self ):
 
+		s = Gaffer.ScriptNode()
+		s["cachedDataNode"] = Gaffer.CachedDataNode()
+		s["cachedDataNode"].setEntry( "a", IECore.IntData( 7 ) )
+		s["cachedDataNode"].setEntry( "b", IECore.FloatData( 123.456 ) )
+		s["cachedDataNode"].setEntry( "c", IECore.StringData( "Hello world" ) )
+		s["fileName"].setValue( self.temporaryDirectory() / "test.gfr" )
+		s.save()
+
+		s["fileName"].setValue( self.altMountTemporaryDirectory() / "test.gfr" )
+
+		# Saving as a new file on a different mount will mean we can't use hardlinks, so we should get a warning.
+		with IECore.CapturingMessageHandler() as mh :
+			s.save()
+
+		self.assertEqual( len( mh.messages ), 1 )
+		self.assertRegex( mh.messages[0].message, 'While saving "ScriptNode.cachedDataNode", could not create hardlink at ".*" pointing to ".*", falling back to copying file.' )
+
+		del s
+
+		Gaffer.ValuePlug.clearCache()
+
+		# But everything should still work
+
+		s = Gaffer.ScriptNode()
+		s["fileName"].setValue( self.altMountTemporaryDirectory() / "test.gfr" )
+		s.load()
+
+		self.assertEqual( s["cachedDataNode"].getEntry( "a" ), IECore.IntData( 7 ) )
+		self.assertEqual( s["cachedDataNode"].getEntry( "b" ), IECore.FloatData( 123.456 ) )
+		self.assertEqual( s["cachedDataNode"].getEntry( "c" ), IECore.StringData( "Hello world" ) )
 
 
 
