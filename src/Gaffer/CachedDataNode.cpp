@@ -286,15 +286,14 @@ class CachedDataNode::SetEntryAction : public Gaffer::Action
 IE_CORE_DEFINERUNTIMETYPED( CachedDataNode::SetEntryAction );
 
 CacheDirectoryManager::CacheDirectoryManager( const std::filesystem::path *scriptPath )
-	: m_scriptPath( scriptPath )
+	: m_directory( cacheDirFromScriptPath( *scriptPath ) ), m_created( false )
 {
-	m_takeOwnership = false; // TODO
 }
 
 CacheDirectoryManager::~CacheDirectoryManager()
 {
 	// TODO - should we clean if there is no CachedDataNode's?
-	if( m_cacheDirectory.empty() )
+	if( !m_created )
 	{
 		// No cleanup needed
 		return;
@@ -352,8 +351,6 @@ CacheDirectoryManager::~CacheDirectoryManager()
 		);
 	}
 
-	m_takeOwnership = false;
-
 	if( m_warning.size() )
 	{
 		IECore::msg( IECore::Msg::Warning, "Serialisation", m_warning );
@@ -362,20 +359,13 @@ CacheDirectoryManager::~CacheDirectoryManager()
 
 std::filesystem::path CacheDirectoryManager::getCacheDirectory()
 {
-	// TODO name/type of this function
-	if( !m_scriptPath )
+	if( !m_created )
 	{
-		throw IECore::Exception( "TODO" );
+		std::filesystem::create_directories( m_directory );
+		m_created = true;
 	}
 
-	const std::filesystem::path result = cacheDirFromScriptPath( *m_scriptPath );
-	if( m_cacheDirectory.empty() )
-	{
-		std::filesystem::create_directories( result );
-		m_cacheDirectory = result;
-	}
-
-	return result;
+	return m_directory;
 }
 
 bool CacheDirectoryManager::addData( const IECore::MurmurHash &hash, const std::filesystem::path &sourceDirectory, const IECore::Object *liveValue )

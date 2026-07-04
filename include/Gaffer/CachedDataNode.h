@@ -70,23 +70,17 @@ public:
 
 private:
 
-	boost::unordered_set< IECore::MurmurHash > m_usedCaches;
-	std::string m_warning;
-
-	std::filesystem::path acquireRecycleBin();
-
-	const std::filesystem::path *m_scriptPath;
-	bool m_takeOwnership;
-	//bool m_currentCacheDirWritten;
-	std::filesystem::path m_cacheDirectory;
-
-	//std::set<std::filesystem::path> m_cacheDirectories;
+	const std::filesystem::path m_directory;
+	// TODO - rethink
+	bool m_created;
 
 	// A set of caches, identified by their hashes, that have been saved during this serialisation
 	// TODO - there's a bit of a naming issue here with storing caches just as their hash, and
 	// calling them "caches" ... maybe this isn't clear enough? But I worry about calling them
 	// "cache hashes", because there are already so many other caches and hashes in Gaffer.
+	boost::unordered_set< IECore::MurmurHash > m_usedCaches;
 
+	std::string m_warning;
 };
 
 class RecycleBinManager;
