@@ -109,7 +109,7 @@ public:
 			// In order to be placed in a recycle bin, a file must be found in a "_cacheDir" directory
 			// corresponding to a script file that is currently being overwritten, and must look like
 			// a Gaffer cache ( ie. matches the regex "[0-9a-f]{32}.io", enforced by
-			// CachedDataNode::cacheFileNameToHash ).
+			// cacheFileNameToHash ).
 
 			std::filesystem::remove_all( m_recycleBinPath );
 		}
@@ -125,6 +125,25 @@ private:
 namespace {
 
 static const IECore::InternedString g_cacheEvaluationKeyName( "__cacheEvaluationKey" );
+
+std::string cacheFileNameFromHash( const IECore::MurmurHash &h )
+{
+	return h.toString() + ".io";
+}
+
+std::optional<IECore::MurmurHash> cacheFileNameToHash( const std::string &fileName )
+{
+	static const std::regex g_cacheFileNameRegex( R"(([0-9a-f]{32}).io)" );
+
+	std::smatch match;
+	if( std::regex_match( fileName, match, g_cacheFileNameRegex ) )
+	{
+		return IECore::MurmurHash::fromString( match.str( 1 ) );
+	}
+
+	return {};
+}
+
 
 std::filesystem::path recycleBinDirectory( const std::filesystem::path &cacheDirectory )
 {
@@ -288,7 +307,7 @@ CacheDirectoryManager::~CacheDirectoryManager()
 
 		for( auto const& directoryEntry : std::filesystem::directory_iterator( getCacheDirectory() ) )
 		{
-			auto cacheFileHash = CachedDataNode::cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
+			auto cacheFileHash = cacheFileNameToHash( directoryEntry.path().filename().generic_string() );
 			if( cacheFileHash )
 			{
 				if( !m_usedCaches.count( *cacheFileHash ) )
@@ -357,6 +376,76 @@ std::filesystem::path CacheDirectoryManager::getCacheDirectory()
 	}
 
 	return result;
+}
+
+bool CacheDirectoryManager::addData( const IECore::MurmurHash &hash, const std::filesystem::path &sourceDirectory, const IECore::Object *liveValue )
+{
+	if( !m_usedCaches.insert( hash ).second )
+	{
+		// This value was already saved during this serialization
+		return true;
+	}
+
+	std::string fileName = cacheFileNameFromHash( hash );
+
+	const std::filesystem::path directory = getCacheDirectory();
+
+	std::filesystem::path destPath = directory / fileName;
+	if( std::filesystem::exists( destPath ) )
+	{
+		// This value was already saved during a previous serialization
+		return true;
+	}
+
+	std::optional<std::filesystem::path> sourcePath;
+	if( !sourceDirectory.empty() )
+	{
+		if( sourceDirectory != directory && std::filesystem::exists( sourceDirectory / fileName ) )
+		{
+			sourcePath = sourceDirectory / fileName;
+		}
+		else
+		{
+			std::filesystem::path recycleBinPath = recycleBinDirectory( sourceDirectory ) / fileName;
+			if( std::filesystem::exists( recycleBinPath ) )
+			{
+				sourcePath = recycleBinPath;
+			}
+		}
+	}
+
+	if( sourcePath )
+	{
+		// This value already exists on disk, but in a different directory.
+		// Try to hardlink to it.
+		std::error_code ec;
+		std::filesystem::create_hard_link( *sourcePath, destPath, ec );
+		if( ec )
+		{
+			if( !m_warning.size() )
+			{
+				m_warning = fmt::format( "During saving, could not create hardlink at {} pointing to {}, falling back to copying file.", destPath, *sourcePath );
+			}
+
+			// If that failed, just copy.
+			std::filesystem::copy_file( *sourcePath, destPath );
+		}
+	}
+	else
+	{
+		// This value does not yet exist on disk, and we need to write it.
+		if( !liveValue )
+		{
+			return false;
+			//throw IECore::Exception( fmt::format( "Unable to save entry \"{}\" on \"{}\" - no live value, but cannot find on disk in directory {}.", cache.first, fullName(), sourceDirectory ) );
+		}
+
+		IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO( destPath.generic_string(), IECore::IndexedIO::rootPath, IECore::IndexedIO::Exclusive | IECore::IndexedIO::Write);
+
+		liveValue->save( file, "object" );
+	}
+
+	return true;
 }
 
 GAFFER_NODE_DEFINE_TYPE( CachedDataNode );
@@ -495,106 +584,33 @@ void CachedDataNode::save( CacheDirectoryManager *cacheDirectoryManager ) const
 			std::filesystem::path sourcePath = m_sourceDirectory / fileName;
 			if( !std::filesystem::exists( sourcePath ) )
 			{
-				// TODO - no longer triggered?
 				throw IECore::Exception( fmt::format( "Cannot copy, CachedDataNode \"{}\" is not saved yet.", fullName() ) );
 			}
 		}
-
-		// Everything is already saved to the source directory, so we're OK
-		return;
 	}
-
-	const std::filesystem::path directory = cacheDirectoryManager->getCacheDirectory();
-
-	for( auto &cache : m_caches )
+	else
 	{
-		if( !cacheDirectoryManager->m_usedCaches.insert( cache.second.m_hash ).second )
+		for( auto &cache : m_caches )
 		{
-			// This value was already saved during this serialization
-			continue;
-		}
-
-		std::string fileName = cacheFileNameFromHash( cache.second.m_hash );
-
-		std::filesystem::path destPath = directory / fileName;
-		if( std::filesystem::exists( destPath ) )
-		{
-			// This value was already saved during a previous serialization
-			continue;
-		}
-
-		std::optional<std::filesystem::path> sourcePath;
-		if( !m_sourceDirectory.empty() && m_sourceDirectory != directory && std::filesystem::exists( m_sourceDirectory / fileName ) )
-		{
-			sourcePath = m_sourceDirectory / fileName;
-		}
-		else
-		{
-			std::filesystem::path recycleBinPath = recycleBinDirectory( m_sourceDirectory ) / fileName;
-			if( std::filesystem::exists( recycleBinPath ) )
-			{
-				sourcePath = recycleBinPath;
-			}
-		}
-
-		if( sourcePath )
-		{
-			// This value already exists on disk, but in a different directory.
-			// Try to hardlink to it.
-			std::error_code ec;
-			std::filesystem::create_hard_link( *sourcePath, destPath, ec );
-			if( ec )
-			{
-				if( !cacheDirectoryManager->m_warning.size() )
-				{
-					cacheDirectoryManager->m_warning = fmt::format( "While saving \"{}\", could not create hardlink at {} pointing to {}, falling back to copying file.", fullName(), destPath, *sourcePath );
-				}
-				// If that failed, just copy.
-				std::filesystem::copy_file( *sourcePath, destPath );
-			}
-		}
-		else
-		{
-			// This value does not yet exist on disk, and we need to write it.
-			if( !cache.second.m_liveValue )
+			if( !cacheDirectoryManager->addData( cache.second.m_hash, m_sourceDirectory, cache.second.m_liveValue.get() ) )
 			{
 				throw IECore::Exception( fmt::format( "Unable to save entry \"{}\" on \"{}\" - no live value, but cannot find on disk in directory {}.", cache.first, fullName(), m_sourceDirectory ) );
-			}
-			IECore::FileIndexedIOPtr file = new IECore::FileIndexedIO( destPath.generic_string(), IECore::IndexedIO::rootPath, IECore::IndexedIO::Exclusive | IECore::IndexedIO::Write);
 
-			cache.second.m_liveValue->save( file, "object" );
+			}
 		}
 
+		// TODO - should this not create the dir?
+		m_sourceDirectory = cacheDirectoryManager->getCacheDirectory();
+		m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
 	}
 
-	// TODO - check takeOwnership
-	// Caches successfully written to target directory. Update so that we'll now read the disk caches
+	// Caches now exist in target directory. Update so that we'll now read the disk caches
 	// instead of needing to hold live values.
 	for( auto &cache : m_caches )
 	{
 		cache.second.m_liveValue.reset();
 	}
 
-	m_sourceDirectory = directory;
-	m_recycleBinManager = acquireRecycleBinManager( m_sourceDirectory );
-}
-
-std::string CachedDataNode::cacheFileNameFromHash( const IECore::MurmurHash &h )
-{
-	return h.toString() + ".io";
-}
-
-std::optional<IECore::MurmurHash> CachedDataNode::cacheFileNameToHash( const std::string &fileName )
-{
-	static const std::regex g_cacheFileNameRegex( R"(([0-9a-f]{32}).io)" );
-
-	std::smatch match;
-	if( std::regex_match( fileName, match, g_cacheFileNameRegex ) )
-	{
-		return IECore::MurmurHash::fromString( match.str( 1 ) );
-	}
-
-	return {};
 }
 
 std::filesystem::path CachedDataNode::sourceDirectory() const

@@ -61,21 +61,20 @@ public:
 	CacheDirectoryManager( const std::filesystem::path *scriptPath );
 	~CacheDirectoryManager();
 
-	bool hasCacheDirectory();
 	std::filesystem::path getCacheDirectory();
 
-
+	bool addData( const IECore::MurmurHash &hash, const std::filesystem::path &sourceDirectory, const IECore::Object *liveValue );
 
 	//std::optional<std::filesystem::path> findCache( const std::string &fileName ) const;
+
+
+private:
 
 	boost::unordered_set< IECore::MurmurHash > m_usedCaches;
 	std::string m_warning;
 
-private:
-
 	std::filesystem::path acquireRecycleBin();
 
-	const Gaffer::ScriptNode *m_scriptNode;
 	const std::filesystem::path *m_scriptPath;
 	bool m_takeOwnership;
 	//bool m_currentCacheDirWritten;
@@ -125,9 +124,6 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		bool hasLiveEntries() const;
 		std::map<IECore::InternedString, IECore::MurmurHash> entryHashes() const;
 
-		static std::string cacheFileNameFromHash( const IECore::MurmurHash &h );
-		static std::optional<IECore::MurmurHash> cacheFileNameToHash( const std::string &fileName );
-
 		std::filesystem::path sourceDirectory() const;
 
 	protected :
@@ -155,6 +151,7 @@ class GAFFER_API CachedDataNode : public ComputeNode
 		ObjectPlug *evaluatePlug();
 		const ObjectPlug *evaluatePlug() const;
 
+		// TODO - bundle these two together?
 		mutable std::filesystem::path m_sourceDirectory;
 		mutable std::shared_ptr<RecycleBinManager> m_recycleBinManager;
 		std::map<IECore::InternedString, CacheEntry> m_caches;

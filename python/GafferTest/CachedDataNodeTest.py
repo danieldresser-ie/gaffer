@@ -628,7 +628,7 @@ class CachedDataNodeTest( GafferTest.TestCase ) :
 			s.save()
 
 		self.assertEqual( len( mh.messages ), 1 )
-		self.assertRegex( mh.messages[0].message, 'While saving "ScriptNode.cachedDataNode", could not create hardlink at ".*" pointing to ".*", falling back to copying file.' )
+		self.assertRegex( mh.messages[0].message, 'During saving, could not create hardlink at ".*" pointing to ".*", falling back to copying file.' )
 
 		del s
 
