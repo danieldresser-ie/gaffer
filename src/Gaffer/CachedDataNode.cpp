@@ -334,6 +334,11 @@ CacheDirectoryManager::~CacheDirectoryManager()
 	}
 
 	m_takeOwnership = false;
+
+	if( m_warning.size() )
+	{
+		IECore::msg( IECore::Msg::Warning, "Serialisation", m_warning );
+	}
 }
 
 std::filesystem::path CacheDirectoryManager::getCacheDirectory()
@@ -542,7 +547,7 @@ void CachedDataNode::save( CacheDirectoryManager *cacheDirectoryManager ) const
 			{
 				if( !cacheDirectoryManager->m_warning.size() )
 				{
-					cacheDirectoryManager->m_warning = fmt::format( "While saving \"{}\", could not create hardlink at \"{}\" pointing to \"{}\", falling back to copying file.", fullName(), destPath, *sourcePath );
+					cacheDirectoryManager->m_warning = fmt::format( "While saving \"{}\", could not create hardlink at {} pointing to {}, falling back to copying file.", fullName(), destPath, *sourcePath );
 				}
 				// If that failed, just copy.
 				std::filesystem::copy_file( *sourcePath, destPath );
