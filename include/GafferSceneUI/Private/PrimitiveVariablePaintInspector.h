@@ -1,6 +1,6 @@
 //////////////////////////////////////////////////////////////////////////
 //
-//  Copyright (c) 2012, John Haddon. All rights reserved.
+//  Copyright (c) 2026, Image Engine Design Inc. All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
 //  modification, are permitted provided that the following conditions are
@@ -36,44 +36,42 @@
 
 #pragma once
 
+#include "GafferSceneUI/Export.h"
+
+#include "GafferSceneUI/Private/PrimitiveVariableInspector.h"
+
 namespace GafferSceneUI
 {
 
-enum TypeId
+namespace Private
 {
-	SceneViewTypeId = 121000,
-	SceneGadgetTypeId = 121001,
-	SelectionToolTypeId = 121002,
-	CropWindowToolTypeId = 121003,
-	ShaderViewTypeId = 121004,
-	ShaderNodeGadgetTypeId = 121005,
-	TransformToolTypeId = 121006,
-	TranslateToolTypeId = 121007,
-	ScaleToolTypeId = 121008,
-	RotateToolTypeId = 121009,
-	CameraToolTypeId = 121010,
-	UVViewTypeId = 121011,
-	UVSceneTypeId = 121012,
-	HistoryPathTypeId = 121013,
-	SetPathTypeId = 121014,
-	LightToolTypeId = 121015,
-	LightPositionToolTypeId = 121016,
-	RenderPassPathTypeId = 121017,
-	VisualiserToolTypeId = 121018,
-	ImageSelectionToolTypeId = 121019,
-	InspectorTypeId = 121020,
-	OptionInspectorTypeId = 121021,
-	AttributeInspectorTypeId = 121022,
-	ParameterInspectorTypeId = 121023,
-	SetMembershipInspectorTypeId = 121024,
-	BasicInspectorTypeId = 121025,
-	UniformPLocatorTypeId = 121026,  // Private to `VisualiserTool`
-	InspectorPathTypeId = 121027,
-	TransformInspectorTypeId = 121028,
-	PrimitiveVariableInspectorTypeId = 121029,
-	PrimitiveVariablePaintInspectorTypeId = 121030,
 
-	LastTypeId = 121199
+class GAFFERSCENEUI_API PrimitiveVariablePaintInspector : public PrimitiveVariableInspector
+{
+
+	public :
+
+		PrimitiveVariablePaintInspector(
+			const GafferScene::ScenePlugPtr &scene,
+			const Gaffer::PlugPtr &editScope,
+			IECore::InternedString primitiveVariable,
+			const std::string &name = ""
+		);
+
+		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferSceneUI::Private::PrimitiveVariablePaintInspector, PrimitiveVariablePaintInspectorTypeId, PrimitiveVariableInspector );
+
+        AcquireEditFunctionOrFailure acquireEditFunction( Gaffer::EditScope *scope, const GafferScene::SceneAlgo::History *history ) const override;
+		CanEditFunction canEditFunction( const GafferScene::SceneAlgo::History *history ) const override;
+        EditFunction editFunction( const GafferScene::SceneAlgo::History *history ) const override;
+
+	protected :
+
+		Gaffer::ValuePlugPtr source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const override;
+
 };
 
-} // namespace GafferSceneUI
+IE_CORE_DECLAREPTR( PrimitiveVariablePaintInspector )
+
+}  // namespace Private
+
+}  // namespace GafferSceneUI
