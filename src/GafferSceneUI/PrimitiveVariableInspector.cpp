@@ -218,7 +218,7 @@ PrimitiveVariableInspector::PrimitiveVariableInspector(
 	const std::string &type
 )
 	:	Inspector( { scene->objectPlug() }, type, name == "" ? primitiveVariable.string() : name, editScope ),
-		m_scene( scene ), m_primitiveVariable( primitiveVariable ), m_property( property )
+		m_primitiveVariable( primitiveVariable ), m_scene( scene ), m_property( property )
 {
 }
 
