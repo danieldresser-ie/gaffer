@@ -77,10 +77,11 @@ class GAFFERSCENEUI_API PrimitiveVariableInspector : public Inspector
 		IECore::ConstObjectPtr value( const GafferScene::SceneAlgo::History *history) const override;
 		Gaffer::ValuePlugPtr source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const override;
 
+		const IECore::InternedString m_primitiveVariable;
+
 	private :
 
 		const GafferScene::ScenePlugPtr m_scene;
-		const IECore::InternedString m_primitiveVariable;
 		const Property m_property;
 
 };
