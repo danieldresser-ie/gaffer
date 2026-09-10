@@ -105,8 +105,6 @@ class GAFFERSCENEUI_API PaintTool : public GafferSceneUI::SelectionTool
 		Gaffer::FloatPlug *hardnessPlug();
 		const Gaffer::FloatPlug *hardnessPlug() const;
 
-		const GafferScene::ScenePlug* sceneSourcePlug() const;
-
 		const std::unordered_set< std::string > &warnings() const;
 
 		std::unordered_set< const Gaffer::GraphComponent* > editTargets();
