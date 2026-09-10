@@ -323,12 +323,17 @@ Inspector::ResultPtr Inspector::inspect() const
 	}
 	inspectHistoryWalk( history.get(), result.get(), Context::current()->canceller() );
 
-	if( !result->m_value && !result->m_fallbackValue && !result->editable() )
+	// TODO - hack that is necessary for our current PrimitiveVariablePaintInspector approach to work:
+	// PrimVarPaint doesn't have a plug to set a value on ( since it's connected to a DataStore ),
+	// therefore acquireEdit() cannot return a plug, therefore editable() must return false.
+	// But we still need to find EditScopes to make paint edits in, therefore we can't return null
+	// here just because editable() is false. Does this change break other things in Gaffer?
+	/*if( !result->m_value && !result->m_fallbackValue && !result->editable() )
 	{
 		// The property doesn't exist, and there's no
 		// way of making it.
 		return nullptr;
-	}
+	}*/
 
 	// If we failed to initialise our editors, then initialise with failures
 	// explaining why.
