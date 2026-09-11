@@ -505,7 +505,10 @@ void DataStore::hash( const ValuePlug *output, const Context *context, IECore::M
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			throw IECore::Exception( "Unknown key: " + key );
+			// TODO TODO TODO
+			// This will be a passthrough to a default value plug
+			IECore::NullObject::defaultNullObject()->hash( h );
+			return;
 		}
 
 		h = it->second.m_hash;
@@ -545,53 +548,57 @@ void DataStore::compute( ValuePlug *output, const Context *context ) const
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			throw IECore::Exception( "Unknown key: " + key );
-		}
-
-		tbb::spin_rw_mutex::scoped_lock liveValueLock( m_entriesLiveValueMutex, /* write = */ false );
-		if( it->second.m_liveValue )
-		{
-			result = it->second.m_liveValue;
+			// TODO TODO TODO
+			// This will be a passthrough to a default value plug
+			result = IECore::NullObject::defaultNullObject();
 		}
 		else
 		{
-			auto entryIt = m_entries.find( key );
-			if( entryIt != m_entries.end() )
+			tbb::spin_rw_mutex::scoped_lock liveValueLock( m_entriesLiveValueMutex, /* write = */ false );
+			if( it->second.m_liveValue )
 			{
-				std::string dataStoreFileName = dataStoreFileNameFromHash( entryIt->second.m_hash );
-
-				std::optional<std::filesystem::path> sourcePath;
-				if( m_sourceDirectory )
+				result = it->second.m_liveValue;
+			}
+			else
+			{
+				auto entryIt = m_entries.find( key );
+				if( entryIt != m_entries.end() )
 				{
-					if( IECore::FileIndexedIO::canRead( ( m_sourceDirectory->dataStoreDirectory() / dataStoreFileName ).generic_string() ) )
-					{
-						sourcePath = m_sourceDirectory->dataStoreDirectory() / dataStoreFileName;
-					}
-					else if( const std::optional<std::filesystem::path> recycleBinDir = m_sourceDirectory ? m_sourceDirectory->getRecycleBinIfExists() : std::nullopt )
-					{
-						std::filesystem::path recycleBinPath = (*recycleBinDir) / dataStoreFileName;
+					std::string dataStoreFileName = dataStoreFileNameFromHash( entryIt->second.m_hash );
 
-						if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
+					std::optional<std::filesystem::path> sourcePath;
+					if( m_sourceDirectory )
+					{
+						if( IECore::FileIndexedIO::canRead( ( m_sourceDirectory->dataStoreDirectory() / dataStoreFileName ).generic_string() ) )
 						{
-							sourcePath = recycleBinPath;
+							sourcePath = m_sourceDirectory->dataStoreDirectory() / dataStoreFileName;
+						}
+						else if( const std::optional<std::filesystem::path> recycleBinDir = m_sourceDirectory ? m_sourceDirectory->getRecycleBinIfExists() : std::nullopt )
+						{
+							std::filesystem::path recycleBinPath = (*recycleBinDir) / dataStoreFileName;
+
+							if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
+							{
+								sourcePath = recycleBinPath;
+							}
 						}
 					}
-				}
 
-				if( !sourcePath )
-				{
-					throw IECore::Exception( fmt::format(
-						"Could not locate data store file {} in {}.", dataStoreFileName, m_sourceDirectory->dataStoreDirectory()
-					) );
-				}
+					if( !sourcePath )
+					{
+						throw IECore::Exception( fmt::format(
+							"Could not locate data store file {} in {}.", dataStoreFileName, m_sourceDirectory->dataStoreDirectory()
+						) );
+					}
 
-				result = loadDataFile( *sourcePath );
+					result = loadDataFile( *sourcePath );
+				}
 			}
-		}
 
-		if( !result )
-		{
-			throw IECore::Exception( "Unknown key: " + key );
+			if( !result )
+			{
+				throw IECore::Exception( "Unknown key: " + key );
+			}
 		}
 
 		static_cast<ObjectPlug *>( output )->setValue( result );
