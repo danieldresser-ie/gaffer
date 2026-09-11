@@ -36,79 +36,15 @@
 
 #include "GafferSceneUI/Private/PrimitiveVariablePaintInspector.h"
 
-#include "GafferScene/EditScopeAlgo.h"
 #include "GafferScene/PrimitiveVariablePaint.h"
 
-#include "Gaffer/DataStore.h"
-
-#include "IECore/DataAlgo.h"
+#include "IECore/NullObject.h"
 
 using namespace IECore;
 using namespace IECoreScene;
 using namespace Gaffer;
 using namespace GafferScene;
 using namespace GafferSceneUI::Private;
-
-namespace
-{
-
-BoolPlugPtr g_dummyPlug = new BoolPlug();
-
-void edit( DataStore *target, const ScenePlug::ScenePath &scenePath, const IECore::InternedString &primitiveVariable, const IECore::Object *value )
-{
-	IECore::InternedString pathString( ScenePlug::pathToString( scenePath ) );
-
-	ConstCompoundObjectPtr sourceData = IECore::runTimeCast<const CompoundObject>( target->getEntry( pathString, false ) );
-
-	CompoundObjectPtr locPaintData;
-	if( sourceData )
-	{
-		locPaintData = sourceData->copy();
-	}
-	else
-	{
-		locPaintData = new CompoundObject();
-	}
-
-	if( !value )
-	{
-		throw IECore::Exception( "Trying to create with no value" );
-
-	}
-
-	locPaintData->members()[primitiveVariable] = const_cast<IECore::Object*>( value );
-
-	target->setEntry( pathString, locPaintData );
-}
-
-bool canEditPaint( const Gaffer::ValuePlug *plug, const IECore::Object *value, std::string &failureReason )
-{
-	if( !plug )
-	{
-		failureReason = "Could not find plug";
-		return false;
-	}
-
-	const DataStore *dataStore = IECore::runTimeCast<const DataStore>( plug->node() );
-	if( dataStore && plug == dataStore->enabledPlug() )
-	{
-		return true;
-	}
-
-	if( !plug->parent() )
-	{
-		// Weird workaround to handle some weirdness from inspector::Result::canEdit - if there is no
-		// source, but there is an editScope we can create an edit, this is represented by a temporary
-		// dummy that isn't connected to anything
-		return true;
-	}
-
-	failureReason = fmt::format( "Plug is not on DataStore driving PrimitiveVariablePaint : \"{}\"", plug->fullName() );
-
-    return false;
-}
-
-} // namespace
 
 //////////////////////////////////////////////////////////////////////////
 // PrimitiveVariablePaintInspector
@@ -126,60 +62,11 @@ PrimitiveVariablePaintInspector::PrimitiveVariablePaintInspector(
 {
 }
 
-Gaffer::ValuePlugPtr PrimitiveVariablePaintInspector::source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const
+IECore::ConstObjectPtr PrimitiveVariablePaintInspector::fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const
 {
-	auto sceneNode = runTimeCast<SceneNode>( history->scene->node() );
-    if( !sceneNode || history->scene != sceneNode->outPlug() )
-    {
-        return nullptr;
-    }
-	else if( auto primitiveVariablePaintNode = runTimeCast<GafferScene::PrimitiveVariablePaint>( sceneNode ) )
-	{
-		for( NameValuePlug::Iterator it( primitiveVariablePaintNode->primitiveVariablesPlug() ); !it.done(); ++it )
-		{
-			NameValuePlug *primVarPlug = it->get();
-			bool active = true;
-			if( auto enabledPlug = primVarPlug->enabledPlug() )
-			{
-				active = enabledPlug->getValue();
-			}
-
-			if( ( !active ) || primVarPlug->namePlug()->getValue() != m_primitiveVariable.string() )
-			{
-				continue;
-			}
-
-			Plug *dataStoreOutput = primVarPlug->valuePlug()->getInput();
-			if( dataStoreOutput )
-			{
-				DataStore *dataStore = IECore::runTimeCast<DataStore>( dataStoreOutput->node() );
-				if( dataStore )
-				{
-					return dataStore->enabledPlug();
-				}
-			}
-		}
-	}
-
-	return PrimitiveVariableInspector::source( history, editWarning );
-}
-
-Inspector::AcquireEditFunctionOrFailure PrimitiveVariablePaintInspector::acquireEditFunction( Gaffer::EditScope *editScope, const GafferScene::SceneAlgo::History *history ) const
-{
-	return [] ( bool createIfNecessary ) {
-		return g_dummyPlug.get();
-	};
-}
-
-Inspector::CanEditFunction PrimitiveVariablePaintInspector::canEditFunction( const GafferScene::SceneAlgo::History *history ) const
-{
-	return [] ( const Gaffer::ValuePlug *plug, const IECore::Object *value, std::string &failureReason ) { return canEditPaint( plug, value, failureReason ); };
-}
-
-Inspector::EditFunction PrimitiveVariablePaintInspector::editFunction( const GafferScene::SceneAlgo::History *history ) const
-{
-	const ScenePlug::ScenePath &scenePath = history->context->get<ScenePlug::ScenePath>( ScenePlug::scenePathContextName );
-    return [scenePath, primitiveVariable = this->m_primitiveVariable] ( Gaffer::ValuePlug *plug, const IECore::Object *value ) {
-        ::edit( IECore::runTimeCast<DataStore>( plug->node() ), scenePath, primitiveVariable, value );
-    };
+	// If the user hasn't selected the right EditScope, and the primitive variable doesn't exist yet, we still want
+	// Inspector::inspect() to return a result rather than nullptr. In order to get this behaviour, we must declare
+	// some fallbackValue, but it doesn't matter what it is.
+	description = "TODO TEMP - just putting a fallback value here so we can find out whether an EditScope is in the history";
+	return NullObject::defaultNullObject();
 }
