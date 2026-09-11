@@ -1799,9 +1799,10 @@ const GraphComponent *GafferScene::EditScopeAlgo::paintEditReadOnlyReason( const
 		return MetadataAlgo::readOnlyReason( scope );
 	}
 
-	if( MetadataAlgo::getReadOnly( paintEdit ) )
+	const Gaffer::GraphComponent *reason = MetadataAlgo::readOnlyReason( paintEdit );
+	if( reason )
 	{
-		return paintEdit;
+		return reason;
 	}
 
 	return nullptr;
