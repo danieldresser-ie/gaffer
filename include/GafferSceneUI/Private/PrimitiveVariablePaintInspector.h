@@ -60,13 +60,9 @@ class GAFFERSCENEUI_API PrimitiveVariablePaintInspector : public PrimitiveVariab
 
 		IE_CORE_DECLARERUNTIMETYPEDEXTENSION( GafferSceneUI::Private::PrimitiveVariablePaintInspector, PrimitiveVariablePaintInspectorTypeId, PrimitiveVariableInspector );
 
-        AcquireEditFunctionOrFailure acquireEditFunction( Gaffer::EditScope *scope, const GafferScene::SceneAlgo::History *history ) const override;
-		CanEditFunction canEditFunction( const GafferScene::SceneAlgo::History *history ) const override;
-        EditFunction editFunction( const GafferScene::SceneAlgo::History *history ) const override;
-
 	protected :
 
-		Gaffer::ValuePlugPtr source( const GafferScene::SceneAlgo::History *history, std::string &editWarning ) const override;
+		IECore::ConstObjectPtr fallbackValue( const GafferScene::SceneAlgo::History *history, std::string &description ) const override;
 
 };
 
