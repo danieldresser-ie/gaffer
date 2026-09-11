@@ -763,27 +763,9 @@ std::string PaintTool::LocationCache::update(
 
 	if( m_inspectorResult )
 	{
-		// \todo : Not sure why we need to check nonEditableReason ourselves, but if we just call canEdit, it
-		// will often just return "Direct editing is not supported." instead of the meaningful
-		// nonEditableReason().
-		// TODO : This does not seem to be catching EditScopes that are locked, probably because of all
-		// the hacking I had to do to Inspector.
-		warning = m_inspectorResult->nonEditableReason();
-		if( warning.empty() )
-		{
-			m_editable = m_inspectorResult->canEdit( IECore::NullObject::defaultNullObject(), warning );
-		}
-
 		if( m_inspectorResult->editScopeInHistory() )
 		{
 			editScope = m_inspectorResult->editScope();
-		}
-
-		if( !m_editable && !m_inspectorResult->editScope() )
-		{
-			// A bit more useful than "No editable source found in history" for the common
-			// case where we can't find a valid editScope because there is no edit scope targetted.
-			warning = "Target an EditScope in order to create paint.";
 		}
 	}
 	else
@@ -791,7 +773,7 @@ std::string PaintTool::LocationCache::update(
 		warning = fmt::format( "Location not found : \"{}\"", ScenePlug::pathToString( m_path ) );
 	}
 
-	if( m_editable && editScope )
+	if( editScope )
 	{
 		const GraphComponent *readOnlyReason = EditScopeAlgo::paintEditReadOnlyReason( editScope, variableName );
 
@@ -804,8 +786,37 @@ std::string PaintTool::LocationCache::update(
 				"{} is locked.",
 				readOnlyReason->relativeName( readOnlyReason->ancestor<ScriptNode>() )
 			);
-			m_editable = false;
 		}
+		else
+		{
+			m_editable = true;
+		}
+	}
+	else
+	{
+		warning = "Target an EditScope in order to create paint.";
+	}
+
+	GafferScene::ConstPaintOperationPtr paintEntry = nullptr;
+
+	if( m_editable && editScope )
+	{
+		m_paintEdit = EditScopeAlgo::acquirePaintEdit( editScope, variableName, false );
+
+		if( m_paintEdit )
+		{
+			// \todo : Path not tracked.
+			// This should be getting the path from the upstream context, in case the path has been
+			// changed in between the viewed node and the paint edit. But Inspector doesn't currently support
+			// this for non-plug-based edits, so for now we just assume the path hasn't changed.
+			paintEntry = IECore::runTimeCast<const PaintOperation>(
+				m_paintEdit->getEntry( ScenePlug::pathToString( path() ), false )
+			);
+		}
+	}
+	else
+	{
+		m_paintEdit = nullptr;
 	}
 
 	const ScenePlug *sourceScene = nullptr;
@@ -849,28 +860,6 @@ std::string PaintTool::LocationCache::update(
 	}
 
 	IECore::MurmurHash paintEntryHash;
-	GafferScene::ConstPaintOperationPtr paintEntry = nullptr;
-
-	if( m_editable && editScope )
-	{
-		m_paintEdit = EditScopeAlgo::acquirePaintEdit( editScope, variableName, false );
-
-		if( m_paintEdit )
-		{
-			// \todo : Path not tracked.
-			// This should be getting the path from the upstream context, in case the path has been
-			// changed in between the viewed node and the paint edit. But Inspector doesn't currently support
-			// this for non-plug-based edits, so for now we just assume the path hasn't changed.
-			paintEntry = IECore::runTimeCast<const PaintOperation>(
-				m_paintEdit->getEntry( ScenePlug::pathToString( path() ), false )
-			);
-		}
-	}
-	else
-	{
-		m_paintEdit = nullptr;
-	}
-
 	if( paintEntry )
 	{
 		paintEntry->hash( paintEntryHash );
