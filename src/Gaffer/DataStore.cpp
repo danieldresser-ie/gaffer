@@ -327,6 +327,7 @@ DataStore::DataStore( const std::string &name )
 	storeIndexOfNextChild( g_firstPlugIndex );
 
 	addChild( new StringPlug( "selector", Plug::In ) );
+	addChild( new ObjectPlug( "default", Plug::In, new IECore::NullObject() ) );
 	addChild( new ObjectPlug( "out", Plug::Out, new IECore::NullObject() ) );
 	addChild( new StringVectorDataPlug( "keys", Plug::Out ) );
 	addChild( new IntPlug( "__refreshCount", Plug::In, 0, Plug::Default & ~Plug::Serialisable ) );
@@ -347,44 +348,54 @@ const StringPlug *DataStore::selectorPlug() const
 	return getChild<StringPlug>( g_firstPlugIndex + 0 );
 }
 
-ObjectPlug *DataStore::outPlug()
+ObjectPlug *DataStore::defaultPlug()
 {
 	return getChild<ObjectPlug>( g_firstPlugIndex + 1 );
+}
+
+const ObjectPlug *DataStore::defaultPlug() const
+{
+	return getChild<ObjectPlug>( g_firstPlugIndex + 1 );
+}
+
+ObjectPlug *DataStore::outPlug()
+{
+	return getChild<ObjectPlug>( g_firstPlugIndex + 2 );
 }
 
 const ObjectPlug *DataStore::outPlug() const
 {
-	return getChild<ObjectPlug>( g_firstPlugIndex + 1 );
+	return getChild<ObjectPlug>( g_firstPlugIndex + 2 );
 }
 
 StringVectorDataPlug *DataStore::keysPlug()
 {
-	return getChild<StringVectorDataPlug>( g_firstPlugIndex + 2 );
+	return getChild<StringVectorDataPlug>( g_firstPlugIndex + 3 );
 }
 
 const StringVectorDataPlug *DataStore::keysPlug() const
 {
-	return getChild<StringVectorDataPlug>( g_firstPlugIndex + 2 );
+	return getChild<StringVectorDataPlug>( g_firstPlugIndex + 3 );
 }
 
 IntPlug *DataStore::refreshCountPlug()
 {
-	return getChild<IntPlug>( g_firstPlugIndex + 3 );
+	return getChild<IntPlug>( g_firstPlugIndex + 4 );
 }
 
 const IntPlug *DataStore::refreshCountPlug() const
 {
-	return getChild<IntPlug>( g_firstPlugIndex + 3 );
+	return getChild<IntPlug>( g_firstPlugIndex + 4 );
 }
 
 ObjectPlug *DataStore::evaluatePlug()
 {
-	return getChild<ObjectPlug>( g_firstPlugIndex + 4 );
+	return getChild<ObjectPlug>( g_firstPlugIndex + 5 );
 }
 
 const ObjectPlug *DataStore::evaluatePlug() const
 {
-	return getChild<ObjectPlug>( g_firstPlugIndex + 4 );
+	return getChild<ObjectPlug>( g_firstPlugIndex + 5 );
 }
 
 void DataStore::setEntry( const std::string &key, IECore::ConstObjectPtr value )
@@ -475,7 +486,8 @@ void DataStore::affects( const Plug *input, AffectedPlugsContainer &outputs ) co
 
 	if(
 		input == refreshCountPlug() ||
-		input == selectorPlug()
+		input == selectorPlug() ||
+		input == defaultPlug()
 	)
 	{
 		outputs.push_back( evaluatePlug() );
@@ -505,9 +517,9 @@ void DataStore::hash( const ValuePlug *output, const Context *context, IECore::M
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			// TODO TODO TODO
-			// This will be a passthrough to a default value plug
-			IECore::NullObject::defaultNullObject()->hash( h );
+			Context::EditableScope s( context );
+			s.remove( g_dataStoreEvaluationKeyName );
+			h = defaultPlug()->hash();
 			return;
 		}
 
@@ -548,9 +560,9 @@ void DataStore::compute( ValuePlug *output, const Context *context ) const
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			// TODO TODO TODO
-			// This will be a passthrough to a default value plug
-			result = IECore::NullObject::defaultNullObject();
+			Context::EditableScope s( context );
+			s.remove( g_dataStoreEvaluationKeyName );
+			result = defaultPlug()->getValue();
 		}
 		else
 		{

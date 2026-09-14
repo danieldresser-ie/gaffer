@@ -72,6 +72,14 @@ Gaffer.Metadata.registerNode(
 			"nodule:type" : "",
 		},
 
+		"default" : {
+
+			"description" :
+			"""
+			The value that will be returned if `selector` is set to a key
+			without a corresponding entry.
+			""",
+		},
 
 		"out" : {
 
