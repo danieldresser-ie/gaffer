@@ -486,8 +486,7 @@ void DataStore::affects( const Plug *input, AffectedPlugsContainer &outputs ) co
 
 	if(
 		input == refreshCountPlug() ||
-		input == selectorPlug() ||
-		input == defaultPlug()
+		input == selectorPlug()
 	)
 	{
 		outputs.push_back( evaluatePlug() );
@@ -501,7 +500,8 @@ void DataStore::affects( const Plug *input, AffectedPlugsContainer &outputs ) co
 	}
 
 	if(
-		input == evaluatePlug()
+		input == evaluatePlug() ||
+		input == defaultPlug()
 	)
 	{
 		outputs.push_back( outPlug() );
@@ -517,10 +517,7 @@ void DataStore::hash( const ValuePlug *output, const Context *context, IECore::M
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			Context::EditableScope s( context );
-			s.remove( g_dataStoreEvaluationKeyName );
-			h = defaultPlug()->hash();
-			return;
+			throw IECore::Exception( "Unknown key: " + key );
 		}
 
 		h = it->second.m_hash;
@@ -528,11 +525,18 @@ void DataStore::hash( const ValuePlug *output, const Context *context, IECore::M
 	}
 	else if( output == outPlug() )
 	{
-		Context::EditableScope s( context );
-		std::string select = selectorPlug()->getValue();
-		s.set( g_dataStoreEvaluationKeyName, &select );
+		try
+		{
+			Context::EditableScope s( context );
+			std::string select = selectorPlug()->getValue();
+			s.set( g_dataStoreEvaluationKeyName, &select );
+			h = evaluatePlug()->hash();
+		}
+		catch( ProcessException &e )
+		{
+			h = defaultPlug()->hash();
+		}
 
-		h = evaluatePlug()->hash();
 		return;
 	}
 	else if( output == keysPlug() )
@@ -560,57 +564,53 @@ void DataStore::compute( ValuePlug *output, const Context *context ) const
 		auto it = m_entries.find( key );
 		if( it == m_entries.end() )
 		{
-			Context::EditableScope s( context );
-			s.remove( g_dataStoreEvaluationKeyName );
-			result = defaultPlug()->getValue();
+			throw IECore::Exception( "Unknown key: " + key );
+		}
+
+		tbb::spin_rw_mutex::scoped_lock liveValueLock( m_entriesLiveValueMutex, /* write = */ false );
+		if( it->second.m_liveValue )
+		{
+			result = it->second.m_liveValue;
 		}
 		else
 		{
-			tbb::spin_rw_mutex::scoped_lock liveValueLock( m_entriesLiveValueMutex, /* write = */ false );
-			if( it->second.m_liveValue )
+			auto entryIt = m_entries.find( key );
+			if( entryIt != m_entries.end() )
 			{
-				result = it->second.m_liveValue;
-			}
-			else
-			{
-				auto entryIt = m_entries.find( key );
-				if( entryIt != m_entries.end() )
+				std::string dataStoreFileName = dataStoreFileNameFromHash( entryIt->second.m_hash );
+
+				std::optional<std::filesystem::path> sourcePath;
+				if( m_sourceDirectory )
 				{
-					std::string dataStoreFileName = dataStoreFileNameFromHash( entryIt->second.m_hash );
-
-					std::optional<std::filesystem::path> sourcePath;
-					if( m_sourceDirectory )
+					if( IECore::FileIndexedIO::canRead( ( m_sourceDirectory->dataStoreDirectory() / dataStoreFileName ).generic_string() ) )
 					{
-						if( IECore::FileIndexedIO::canRead( ( m_sourceDirectory->dataStoreDirectory() / dataStoreFileName ).generic_string() ) )
-						{
-							sourcePath = m_sourceDirectory->dataStoreDirectory() / dataStoreFileName;
-						}
-						else if( const std::optional<std::filesystem::path> recycleBinDir = m_sourceDirectory ? m_sourceDirectory->getRecycleBinIfExists() : std::nullopt )
-						{
-							std::filesystem::path recycleBinPath = (*recycleBinDir) / dataStoreFileName;
+						sourcePath = m_sourceDirectory->dataStoreDirectory() / dataStoreFileName;
+					}
+					else if( const std::optional<std::filesystem::path> recycleBinDir = m_sourceDirectory ? m_sourceDirectory->getRecycleBinIfExists() : std::nullopt )
+					{
+						std::filesystem::path recycleBinPath = (*recycleBinDir) / dataStoreFileName;
 
-							if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
-							{
-								sourcePath = recycleBinPath;
-							}
+						if( IECore::FileIndexedIO::canRead( recycleBinPath.generic_string() ) )
+						{
+							sourcePath = recycleBinPath;
 						}
 					}
-
-					if( !sourcePath )
-					{
-						throw IECore::Exception( fmt::format(
-							"Could not locate data store file {} in {}.", dataStoreFileName, m_sourceDirectory->dataStoreDirectory()
-						) );
-					}
-
-					result = loadDataFile( *sourcePath );
 				}
-			}
 
-			if( !result )
-			{
-				throw IECore::Exception( "Unknown key: " + key );
+				if( !sourcePath )
+				{
+					throw IECore::Exception( fmt::format(
+						"Could not locate data store file {} in {}.", dataStoreFileName, m_sourceDirectory->dataStoreDirectory()
+					) );
+				}
+
+				result = loadDataFile( *sourcePath );
 			}
+		}
+
+		if( !result )
+		{
+			throw IECore::Exception( "Unknown key: " + key );
 		}
 
 		static_cast<ObjectPlug *>( output )->setValue( result );
@@ -619,11 +619,20 @@ void DataStore::compute( ValuePlug *output, const Context *context ) const
 	}
 	else if( output == outPlug() )
 	{
-		Context::EditableScope s( context );
-		std::string select = selectorPlug()->getValue();
-		s.set( g_dataStoreEvaluationKeyName, &select );
+		IECore::ConstObjectPtr result;
+		try
+		{
+			Context::EditableScope s( context );
+			std::string select = selectorPlug()->getValue();
+			s.set( g_dataStoreEvaluationKeyName, &select );
+			result = evaluatePlug()->getValue();
+		}
+		catch( ProcessException &e )
+		{
+			result = defaultPlug()->getValue();
+		}
 
-		static_cast<ObjectPlug *>( output )->setValue( evaluatePlug()->getValue() );
+		static_cast<ObjectPlug *>( output )->setValue( result );
 		return;
 	}
 	else if( output == keysPlug() )

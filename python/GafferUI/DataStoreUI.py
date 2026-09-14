@@ -76,7 +76,7 @@ Gaffer.Metadata.registerNode(
 
 			"description" :
 			"""
-			The value that will be returned if `selector` is set to a key
+			The value that will be used for `out` if `selector` is set to a key
 			without a corresponding entry.
 			""",
 		},
