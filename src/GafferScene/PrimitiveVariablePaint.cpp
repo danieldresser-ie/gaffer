@@ -191,10 +191,8 @@ void PaintOperation::memoryUsage( IECore::Object::MemoryAccumulator &accumulator
 
 void PaintOperation::apply( IECore::DataPtr &resultData, size_t outputSize ) const
 {
-	const std::vector<float> &opacity = m_opacityData->readable();
-
 	IECore::dispatch( m_valueData.get(),
-		[&opacity, outputSize, &resultData, this]( auto *typedValueData )
+		[outputSize, &resultData, this]( auto *typedValueData )
 		{
 			using SourceType = typename std::remove_const_t< std::remove_pointer_t<decltype( typedValueData )> >;
 
@@ -213,11 +211,23 @@ void PaintOperation::apply( IECore::DataPtr &resultData, size_t outputSize ) con
 						typename SourceType::Ptr typedResultData = IECore::runTimeCast<SourceType>( resultData );
 						if( !typedResultData )
 						{
-							// If the result hasn't been filled with data yet, start from a vector of
-							// zeros
-							typedResultData = new SourceType();
-							typedResultData->writable().resize( outputSize, ValueType( 0.0f ) );
-							resultData = typedResultData;
+							if( !resultData )
+							{
+								// If the result hasn't been filled with data yet, start from a vector of
+								// zeros
+								typedResultData = new SourceType();
+								typedResultData->writable().resize( outputSize, ValueType( 0.0f ) );
+								resultData = typedResultData;
+							}
+							else
+							{
+								throw IECore::Exception(
+									fmt::format(
+										"Cannot apply PaintOperation with value type {} to variable of type {}",
+										typedValueData->typeName(), resultData->typeName()
+									)
+								);
+							}
 						}
 
 						auto &resultVec = typedResultData->writable();
@@ -227,15 +237,47 @@ void PaintOperation::apply( IECore::DataPtr &resultData, size_t outputSize ) con
 						{
 							const std::vector<int> &indices = m_indicesData->readable();
 
-							for( size_t i = 0; i < indices.size(); i++ )
+							if( typedValue.size() != indices.size() )
 							{
-								if( (size_t)indices[i] > resultVec.size() )
+								throw IECore::Exception(
+									fmt::format( "Value size {} does not match indices size {}", typedValue.size(), indices.size() )
+								);
+							}
+
+							if( m_opacityData )
+							{
+								const std::vector<float> &opacity = m_opacityData->readable();
+
+								if( opacity.size() != indices.size() )
 								{
 									throw IECore::Exception(
-										fmt::format( "invalid index {} in variable size {}", indices[i], outputSize )
+										fmt::format( "Opacity size {} does not match indices size {}", opacity.size(), indices.size() )
 									);
 								}
-								resultVec[ indices[i] ] = ( 1 - opacity[i] ) * resultVec[ indices[i] ] + typedValue[i];
+
+								for( size_t i = 0; i < indices.size(); i++ )
+								{
+									if( (size_t)indices[i] > resultVec.size() )
+									{
+										throw IECore::Exception(
+											fmt::format( "Invalid index {} in variable size {}", indices[i], outputSize )
+										);
+									}
+									resultVec[ indices[i] ] = ( 1 - opacity[i] ) * resultVec[ indices[i] ] + typedValue[i];
+								}
+							}
+							else
+							{
+								for( size_t i = 0; i < indices.size(); i++ )
+								{
+									if( (size_t)indices[i] > resultVec.size() )
+									{
+										throw IECore::Exception(
+											fmt::format( "Invalid index {} in variable size {}", indices[i], outputSize )
+										);
+									}
+									resultVec[ indices[i] ] = typedValue[i];
+								}
 							}
 
 						}
@@ -246,19 +288,29 @@ void PaintOperation::apply( IECore::DataPtr &resultData, size_t outputSize ) con
 							if( typedValue.size() != outputSize )
 							{
 								throw IECore::Exception(
-									fmt::format( "value size {} does not match {}", typedValue.size(), outputSize )
-								);
-							}
-							if( opacity.size() != outputSize )
-							{
-								throw IECore::Exception(
-									fmt::format( "opacity size {} does not match {}", opacity.size(), outputSize )
+									fmt::format( "Value size {} does not match {}", typedValue.size(), outputSize )
 								);
 							}
 
-							for( size_t i = 0; i < resultVec.size(); i++ )
+							if( m_opacityData )
 							{
-								resultVec[i] = ( 1 - opacity[i] ) * resultVec[i] + typedValue[i];
+								const std::vector<float> &opacity = m_opacityData->readable();
+
+								if( opacity.size() != outputSize )
+								{
+									throw IECore::Exception(
+										fmt::format( "Opacity size {} does not match {}", opacity.size(), outputSize )
+									);
+								}
+
+								for( size_t i = 0; i < resultVec.size(); i++ )
+								{
+									resultVec[i] = ( 1 - opacity[i] ) * resultVec[i] + typedValue[i];
+								}
+							}
+							else
+							{
+								resultVec = typedValue;
 							}
 						}
 
@@ -268,7 +320,7 @@ void PaintOperation::apply( IECore::DataPtr &resultData, size_t outputSize ) con
 			}
 
 			throw IECore::Exception( fmt::format(
-				"PrimitiveVariablePaint : Cannot apply type \"{}\"", typedValueData->typeName()
+				"Cannot apply type \"{}\"", typedValueData->typeName()
 			) );
 		}
 	);
@@ -402,7 +454,7 @@ IECore::ConstObjectPtr PrimitiveVariablePaint::computeProcessedObject( const Sce
 		catch( IECore::Exception &e )
 		{
 			throw IECore::Exception( fmt::format(
-				"Invalid paint for variable {} at location {} : {} ",
+				"Invalid paint for variable {} at location {} : {}",
 				varName,
 				ScenePlug::pathToString( path ),
 				e.what()

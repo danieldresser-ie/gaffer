@@ -44,11 +44,14 @@ namespace GafferScene
 {
 
 // TODO - should go in class namespace?
+// TODO - currently the value is stored premultiplied - is that desirable? It saves a multiply,
+// but maybe it's less intuitive?
 class GAFFERSCENE_API PaintOperation : public IECore::Object
 {
 
 	public :
 
+		// TODO - const
 		PaintOperation(
 			IECore::DataPtr valueData = nullptr,
 			IECore::FloatVectorDataPtr opacityData = nullptr,

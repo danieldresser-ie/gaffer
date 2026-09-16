@@ -110,7 +110,6 @@ void GafferSceneModule::bindPrimitiveVariables()
 	GafferBindings::DependencyNodeClass<PrimitiveVariableExists>();
 	GafferBindings::DependencyNodeClass<ShufflePrimitiveVariables>();
 	GafferBindings::DependencyNodeClass<QuantizePrimitiveVariables>();
-	GafferBindings::DependencyNodeClass<PrimitiveVariablePaint>();
 
 	{
 		boost::python::scope tweaksScope = GafferBindings::DependencyNodeClass<PrimitiveVariableTweaks>();
@@ -160,6 +159,16 @@ void GafferSceneModule::bindPrimitiveVariables()
 			.value( "V3d", PrimitiveVariableType::Type::V3d )
 			.value( "Color3f", PrimitiveVariableType::Type::Color3f )
 			.value( "Color4f", PrimitiveVariableType::Type::Color4f )
+		;
+	}
+
+	{
+		boost::python::scope paintScope = GafferBindings::DependencyNodeClass<PrimitiveVariablePaint>();
+		IECorePython::RunTimeTypedClass<PaintOperation>()
+			.def( boost::python::init<>() )
+			.def( boost::python::init<IECore::DataPtr>() )
+			.def( boost::python::init<IECore::DataPtr, IECore::FloatVectorDataPtr>() )
+			.def( boost::python::init<IECore::DataPtr, IECore::FloatVectorDataPtr, IECore::IntVectorDataPtr>() )
 		;
 	}
 }
