@@ -72,7 +72,7 @@ struct HistoryCacheKey
 {
 	HistoryCacheKey() {};
 	HistoryCacheKey( const ValuePlug *plug )
-		:	plug( plug ), contextHash( Context::current()->hash() ), dirtyCount( plug->dirtyCount() )
+		:	plug( plug ), hash( plug->hash() )
 	{
 	}
 
@@ -80,22 +80,18 @@ struct HistoryCacheKey
 	{
 		return
 			plug == rhs.plug &&
-			contextHash == rhs.contextHash &&
-			dirtyCount == rhs.dirtyCount
+			hash == rhs.hash
 		;
 	}
 
 	const ValuePlug *plug;
-	IECore::MurmurHash contextHash;
-	uint64_t dirtyCount;
+	IECore::MurmurHash hash;
 };
 
 size_t hash_value( const HistoryCacheKey &key )
 {
 	size_t result = 0;
-	boost::hash_combine( result, key.plug );
-	boost::hash_combine( result, key.contextHash );
-	boost::hash_combine( result, key.dirtyCount );
+	boost::hash_combine( result, key.hash );
 	return result;
 }
 
@@ -170,7 +166,7 @@ PrimitiveVariableHistoryCache g_primitiveVariableHistoryCache(
 		}
 	},
 	// Max cost
-	1000,
+	10000,
 	// Removal callback
 	[] ( const PrimitiveVariableHistoryCacheKey &key, const SceneAlgo::History::ConstPtr &history ) {
 		// See comment in g_historyCache
