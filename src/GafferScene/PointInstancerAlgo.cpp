@@ -219,6 +219,156 @@ M44f flattenedTransform( const ScenePlug *scene, ScenePlug::ScenePath path, size
 
 const IECore::InternedString g_sceneVisible( "scene:visible" );
 
+FlattenedPrototype flattenedPrototype( const Private::RendererAlgo::RenderOptions &renderOptions, const ScenePlug *scene, const string &rootPath, const ScenePlug::ScenePath &fullRootPath );
+
+FlattenedPrototype flattenedNestedInstancer( const IECoreScene::PointInstancer *instancer, const Private::RendererAlgo::RenderOptions &renderOptions, const ScenePlug *scene, const string &rootPath, const ScenePlug::ScenePath &fullRootPath )
+{
+	FlattenedPrototype result;
+
+	auto prototypePaths = instancer->getPrototypes();
+	auto prototypeIndex = instancer->getPrototypeIndex();
+
+	if( !prototypePaths || !prototypeIndex )
+	{
+		return result;
+	}
+
+	// For each prototype, get a flattened list of descendant locations
+	// with non-empty objects.
+
+	vector<FlattenedPrototype> flattenedPrototypes;
+	flattenedPrototypes.resize( prototypePaths.size() );
+
+	const auto &currentPath = Context::current()->get<ScenePlug::ScenePath>( ScenePlug::scenePathContextName );
+	const ThreadState &threadState = ThreadState::current();
+	tbb::task_group_context taskGroupContext( tbb::task_group_context::isolated );
+
+	tbb::parallel_for(
+
+		tbb::blocked_range<size_t>( 0, prototypePaths.size() ),
+
+		[&]( const tbb::blocked_range<size_t> &r )
+		{
+			ScenePlug::PathScope prototypeScope( threadState );
+
+			for( size_t prototypeIndex = r.begin(); prototypeIndex != r.end(); ++prototypeIndex )
+			{
+				auto fullPath = Private::PointInstancerAlgo::fullPrototypePath( prototypePaths[prototypeIndex], currentPath );
+				prototypeScope.setPath( &fullPath );
+				if( !scene->existsPlug()->getValue() )
+				{
+					IECore::msg(
+						IECore::Msg::Warning, "PointInstancer", "Prototype `{}` does not exist for instancer `{}`.",
+						ScenePlug::pathToString( fullPath ), ScenePlug::pathToString( currentPath )
+					);
+					continue;
+				}
+
+				flattenedPrototypes[prototypeIndex] = flattenedPrototype( renderOptions, scene, prototypePaths[prototypeIndex], fullPath );
+			}
+
+		},
+
+		taskGroupContext
+	);
+
+	// Assign indices to flattened prototypes.
+
+	/*StringVectorDataPtr flattenedPrototypeRootsData = new StringVectorData;
+	auto &flattenedPrototypeRoots = flattenedPrototypeRootsData->writable();
+	int offset = 0;
+	for( auto &flattenedPrototype : flattenedPrototypes )
+	{
+		for( auto &location : flattenedPrototype )
+		{
+			location.index = offset++;
+			flattenedPrototypeRoots.push_back( location.path );
+		}
+	}*/
+
+	// Figure out how many points we'll have after flattening and allocate
+	// vertex data for them. Also calculate per-point offsets into the data so
+	// we can fill it in parallel.
+
+	PointInstancer::VisibilityQuery visibilityQuery( *instancer );
+
+	vector<size_t> pointOffsets; pointOffsets.reserve( prototypeIndex.size() );
+	size_t numFlattenedPoints = 0;
+	const size_t hiddenPointOffset = std::numeric_limits<size_t>::max(); // Sentinel to indicate a point has been hidden.
+	for( size_t pointIndex = 0; pointIndex < prototypeIndex.size(); ++pointIndex )
+	{
+		if(
+			prototypeIndex[pointIndex] >= 0 &&
+			(size_t)prototypeIndex[pointIndex] < flattenedPrototypes.size() &&
+			visibilityQuery.visible( pointIndex )
+		)
+		{
+			pointOffsets[pointIndex] = numFlattenedPoints;
+			numFlattenedPoints += flattenedPrototypes[prototypeIndex[pointIndex]].size();
+		}
+		else
+		{
+			pointOffsets[pointIndex] = hiddenPointOffset;
+		}
+	}
+
+	result.resize( numFlattenedPoints );
+
+	/*
+	TODO : Hmmm
+	Int64VectorDataPtr flattenedIDData;
+	vector<int64_t> *flattenedID = nullptr;
+	auto id = instancer->getID();
+	if( id )
+	{
+		flattenedIDData = new Int64VectorData();
+		result->setID( flattenedIDData );
+		flattenedID = &flattenedIDData->writable();
+		flattenedID->resize( numFlattenedPoints );
+	}
+	*/
+
+	// Fill the result, parallelising across points.
+
+	PointInstancer::TransformQuery transformQuery( *instancer );
+
+	tbb::parallel_for(
+
+		tbb::blocked_range<size_t>( 0, prototypeIndex.size() ),
+
+		[&]( const tbb::blocked_range<size_t> &r )
+		{
+
+			for( size_t pointIndex = r.begin(); pointIndex < r.end(); ++pointIndex )
+			{
+				if( pointOffsets[pointIndex] == hiddenPointOffset )
+				{
+					continue;
+				}
+
+				size_t flattenedPointIndex = pointOffsets[pointIndex];
+				for( const auto &location : flattenedPrototypes[prototypeIndex[pointIndex]] )
+				{
+					result[flattenedPointIndex].path = location.path;
+					result[flattenedPointIndex].transform = location.transform * transformQuery.transform( pointIndex );
+
+					/*if( flattenedID )
+					{
+						(*flattenedID)[flattenedPointIndex] = id[pointIndex];
+					}*/
+
+					flattenedPointIndex++;
+				}
+			}
+
+		},
+
+		taskGroupContext
+	);
+
+	return result;
+}
+
 FlattenedPrototype flattenedPrototype( const Private::RendererAlgo::RenderOptions &renderOptions, const ScenePlug *scene, const string &rootPath, const ScenePlug::ScenePath &fullRootPath )
 {
 	std::mutex resultMutex;
@@ -251,10 +401,30 @@ FlattenedPrototype flattenedPrototype( const Private::RendererAlgo::RenderOption
 			return true;
 		}
 
+		M44f flattenedTrans = flattenedTransform( scene, path, fullRootPath.size() );
 		ScenePlug::ScenePath relativePath( path.begin() + fullRootPath.size(), path.end() );
+
+		if( const IECoreScene::PointInstancer *nestedInstancer = runTimeCast<const IECoreScene::PointInstancer>( o.get() ) )
+		{
+			FlattenedPrototype nested = flattenedNestedInstancer( nestedInstancer, renderOptions, scene, rootPath, fullRootPath );
+
+			for( PrototypeLocation &i : nested )
+			{
+				i.path = rootPath + ScenePlug::pathToString( relativePath ) + "/" + i.path;
+				i.transform = i.transform * flattenedTrans;
+			}
+
+			std::lock_guard resultLock( resultMutex );
+			result.insert( result.end(), nested.begin(), nested.end() );
+
+			return false;
+		}
+
+
+
 		PrototypeLocation prototypeLocation = {
 			relativePath.size() ? rootPath + ScenePlug::pathToString( relativePath ) : rootPath,
-			flattenedTransform( scene, path, fullRootPath.size() )
+			flattenedTrans
 		};
 
 		std::lock_guard resultLock( resultMutex );
